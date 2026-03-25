@@ -486,8 +486,11 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
   const messageGroups = useMemo(() => groupMessages(conv.messages), [conv.messages]);
 
   const handleSubmitFeedback = (groupIdx: number) => {
-    if (!feedbackText.trim()) return;
-    toast.success("Feedback submitted — this will help improve agent behavior");
+    // Content is optional — submitting without text just marks the reply as "needs review"
+    toast.success(feedbackText.trim()
+      ? "Feedback submitted — this will help improve agent behavior"
+      : "Marked for review — you can add details later"
+    );
     setFeedbackText("");
     setFeedbackGroup(null);
   };
@@ -609,29 +612,49 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
                         <div className="flex-1 space-y-1.5 p-2.5 rounded-md bg-amber-50/50 border border-amber-200/50">
                           <div className="flex items-center gap-1.5 mb-1">
                             <MessageCircleWarning className="w-3 h-3 text-amber-600" />
-                            <span className="text-[10px] font-medium text-amber-800">What could be improved?</span>
+                            <span className="text-[10px] font-medium text-amber-800">Flag this reply for review</span>
                             <button onClick={() => setFeedbackGroup(null)} className="ml-auto"><X className="w-3 h-3 text-muted-foreground" /></button>
                           </div>
                           <Textarea
-                            placeholder="e.g., Should have asked for photo evidence before processing refund..."
+                            placeholder="Optional: describe what could be improved..."
                             value={feedbackText}
                             onChange={e => setFeedbackText(e.target.value)}
                             rows={2}
                             className="text-xs resize-none bg-white"
                           />
-                          <div className="flex justify-end gap-1.5">
-                            <Button variant="ghost" size="sm" className="text-[10px] h-6" onClick={() => setFeedbackGroup(null)}>Cancel</Button>
-                            <Button size="sm" className="text-[10px] h-6" onClick={() => handleSubmitFeedback(group.reasoningIndex)}>Submit</Button>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] text-muted-foreground">Details are optional</span>
+                            <div className="flex gap-1.5">
+                              <Button variant="ghost" size="sm" className="text-[10px] h-6" onClick={() => setFeedbackGroup(null)}>Cancel</Button>
+                              <Button size="sm" className="text-[10px] h-6" onClick={() => handleSubmitFeedback(group.reasoningIndex)}>
+                                <Flag className="w-2.5 h-2.5 mr-1" />
+                                {feedbackText.trim() ? "Submit Feedback" : "Flag for Review"}
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => { setFeedbackGroup(group.reasoningIndex); setFeedbackText(""); }}
-                          className="flex items-center gap-1 text-[9px] text-muted-foreground/50 hover:text-amber-600 transition-colors"
-                        >
-                          <Flag className="w-2.5 h-2.5" />
-                          <span>Leave feedback</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { setFeedbackGroup(group.reasoningIndex); setFeedbackText(""); }}
+                            className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-amber-600 transition-colors px-1.5 py-0.5 rounded hover:bg-amber-50"
+                          >
+                            <Flag className="w-2.5 h-2.5" />
+                            <span>Flag reply</span>
+                          </button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button className="flex items-center gap-1 text-[10px] text-muted-foreground/40 cursor-default px-1.5 py-0.5">
+                                <MessageCircleWarning className="w-2.5 h-2.5" />
+                                <span>Instruct Agent</span>
+                                <Badge variant="secondary" className="text-[7px] px-1 py-0 ml-0.5">Soon</Badge>
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="text-[10px] max-w-[200px]">
+                              Coming soon: directly instruct the agent on how to handle similar situations in the future
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                       )}
                     </div>
                   </div>

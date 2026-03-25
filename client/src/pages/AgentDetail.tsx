@@ -7,7 +7,9 @@
  *   (no Deployment Mode / Escalation Group for chat), Guardrails marked Coming Soon
  * - Simulator: Batch Test marked as V1.1 Coming Soon
  */
-import { useState } from "react";
+import { useState, Fragment } from "react";
+import { AnimatePresence } from "framer-motion";
+import { ChevronDown } from "lucide-react";
 import { useParams, Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -16,7 +18,7 @@ import {
   Target, Power, Eye, Play, Instagram,
   ExternalLink, Plus, X,
   Loader2, Package, Shield, ShoppingCart, HelpCircle,
-  Lock, Settings, Globe, RefreshCw, AlertTriangle,
+  Lock, Settings, Globe, RefreshCw, AlertTriangle, Sparkles,
   Rocket, FlaskConical,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -674,69 +676,8 @@ function ConfigurationTab({ agent }: { agent: AgentData }) {
         </div>
       )}
 
-      {/* ── Skills Section ── */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-sm font-semibold">Skills</h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              {skills.filter(s => s.enabled).length} of {skills.length} enabled
-              {diffCount > 0 && <span className="text-amber-600"> · {diffCount} differ from global</span>}
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {diffCount > 0 && (
-              <Button variant="ghost" size="sm" className="text-[10px] h-6 text-muted-foreground" onClick={handleSyncWithGlobal}>
-                <RefreshCw className="w-2.5 h-2.5 mr-1" /> Sync with Global
-              </Button>
-            )}
-            <Button variant="outline" size="sm" className="text-xs gap-1 h-7" onClick={() => setShowAddSkill(true)}>
-              <Plus className="w-3 h-3" /> Add
-            </Button>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {skills.map(skill => {
-            const si = skillIconMap[skill.id] || { icon: HelpCircle, color: "bg-gray-100 text-gray-600" };
-            const SkillIcon = si.icon;
-            const global = allSkills.find(g => g.id === skill.id);
-            const differsFromGlobal = global && global.globalEnabled !== skill.enabled;
-
-            return (
-              <div key={skill.id} className={cn(
-                "flex items-center gap-3 p-3 rounded-lg border transition-all",
-                skill.enabled ? "border-border bg-card" : "border-border/50 bg-muted/10 opacity-60",
-                differsFromGlobal && "border-amber-200"
-              )}>
-                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", si.color.split(" ")[0])}>
-                  <SkillIcon className={cn("w-4 h-4", si.color.split(" ")[1])} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-medium">{skill.name}</p>
-                    {skill.globalEnabled && <Badge variant="secondary" className="text-[8px] px-1 py-0">Global</Badge>}
-                    {differsFromGlobal && (
-                      <Badge variant="outline" className="text-[8px] px-1 py-0 text-amber-600 border-amber-300">
-                        Differs
-                      </Badge>
-                    )}
-                  </div>
-                  {skill.conversations !== undefined && (
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-[10px] text-muted-foreground">{skill.conversations} conversations</span>
-                      <span className="text-[10px] text-muted-foreground">{skill.successRate}% success</span>
-                    </div>
-                  )}
-                </div>
-                <Switch checked={skill.enabled} onCheckedChange={() => {
-                  setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, enabled: !s.enabled } : s));
-                  markChanged();
-                }} />
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      {/* ── Skills Section — Collapsed by default, expand to see details ── */}
+      <SkillsSection skills={skills} setSkills={setSkills} isLive={isLive} diffCount={diffCount} markChanged={markChanged} handleSyncWithGlobal={handleSyncWithGlobal} setShowAddSkill={setShowAddSkill} />
 
       {/* ── Channel Settings ── */}
       <section>
@@ -1044,6 +985,114 @@ function TestPanel({ agentName }: { agentName: string }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════ */
+/* ── Skills Section — Collapsed view          */
+/* External: name + toggle only                */
+/* Click to expand: description, stats          */
+/* ═══════════════════════════════════════════ */
+function SkillsSection({
+  skills, setSkills, isLive, diffCount, markChanged, handleSyncWithGlobal, setShowAddSkill,
+}: {
+  skills: Skill[];
+  setSkills: React.Dispatch<React.SetStateAction<Skill[]>>;
+  isLive: boolean;
+  diffCount: number;
+  markChanged: () => void;
+  handleSyncWithGlobal: () => void;
+  setShowAddSkill: (v: boolean) => void;
+}) {
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold">Skills</h3>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {skills.filter(s => s.enabled).length} of {skills.length} enabled
+            {diffCount > 0 && <span className="text-amber-600"> · {diffCount} differ from global</span>}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {diffCount > 0 && (
+            <Button variant="ghost" size="sm" className="text-[10px] h-6 text-muted-foreground" onClick={handleSyncWithGlobal}>
+              <RefreshCw className="w-2.5 h-2.5 mr-1" /> Sync with Global
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className="text-xs gap-1 h-7" onClick={() => setShowAddSkill(true)}>
+            <Plus className="w-3 h-3" /> Add
+          </Button>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {skills.map(skill => {
+          const si = skillIconMap[skill.id] || { icon: HelpCircle, color: "bg-gray-100 text-gray-600" };
+          const SkillIcon = si.icon;
+          const isExpanded = expandedSkill === skill.id;
+
+          return (
+            <div key={skill.id} className={cn(
+              "rounded-lg border transition-all",
+              skill.enabled ? "border-border bg-card" : "border-border/50 bg-muted/10 opacity-60"
+            )}>
+              {/* Collapsed row — always visible */}
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <div className={cn("w-7 h-7 rounded-md flex items-center justify-center shrink-0", si.color.split(" ")[0])}>
+                  <SkillIcon className={cn("w-3.5 h-3.5", si.color.split(" ")[1])} />
+                </div>
+                <button
+                  className="flex-1 min-w-0 text-left flex items-center gap-1.5"
+                  onClick={() => setExpandedSkill(isExpanded ? null : skill.id)}
+                >
+                  <p className="text-xs font-medium">{skill.name}</p>
+                  {skill.globalEnabled && <Badge variant="secondary" className="text-[8px] px-1 py-0">Global</Badge>}
+                  <ChevronDown className={cn("w-3 h-3 text-muted-foreground/40 transition-transform ml-1", isExpanded && "rotate-180")} />
+                </button>
+                <Switch
+                  checked={skill.enabled}
+                  onCheckedChange={() => {
+                    setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, enabled: !s.enabled } : s));
+                    markChanged();
+                  }}
+                />
+              </div>
+
+              {/* Expanded detail */}
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-3 pb-3 pt-0 border-t border-border/30">
+                      <p className="text-[10px] text-muted-foreground mt-2">{skill.desc}</p>
+                      {skill.conversations !== undefined && (
+                        <div className="flex items-center gap-4 mt-2">
+                          <div className="flex items-center gap-1">
+                            <MessageSquare className="w-2.5 h-2.5 text-muted-foreground" />
+                            <span className="text-[10px] text-muted-foreground">{skill.conversations} conversations</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-primary" />
+                            <span className="text-[10px] text-muted-foreground">{skill.successRate}% success rate</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
