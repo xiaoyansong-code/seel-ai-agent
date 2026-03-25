@@ -1,19 +1,18 @@
 /**
- * AgentDetail V9 — Redesigned Setup as step-by-step wizard
- * Each setup step is a full action section (not a checklist item).
- * Zendesk config (OAuth, Trigger guide, Reply Mode, Escalation Group) is Step 1-2.
+ * AgentDetail V10 — Flat config page for setup, production-style UX.
+ * No wizard steps. All config sections visible on one page.
+ * Test panel opens as a right-side Sheet drawer.
  */
 import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowLeft, MessageSquare, BarChart3, CheckCircle2,
   Send, Zap, BookOpen, Mail, MessageCircle, Bot,
   Target, Power, Eye, Play, Instagram,
-  ExternalLink, Pencil, Globe, Plus, X,
-  Loader2, ArrowRight, Package, Shield, ShoppingCart,
-  Lock, Copy, HelpCircle, RefreshCw, ChevronDown, ChevronRight,
-  AlertTriangle, Info,
+  ExternalLink, Plus, X,
+  Loader2, Package, Shield, ShoppingCart,
+  Lock, Copy, HelpCircle, Globe,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -56,26 +55,24 @@ interface AgentData {
   auditLog: { time: string; action: string; ticket: string; detail: string; status: string }[];
 }
 
-/* ── Available skills for Add Skill dialog ── */
 const allSkills: Skill[] = [
-  { id: "s1", name: "Post-purchase Claims", desc: "Handle refund requests, damaged items, and missing orders", enabled: true, isDefault: true },
-  { id: "s2", name: "Where Is My Order (WISMO)", desc: "Track order status, provide shipping updates, and handle delivery inquiries", enabled: true, isDefault: true },
-  { id: "s3", name: "Order Changes", desc: "Process cancellations, address changes, and item swaps", enabled: false },
-  { id: "s4", name: "Returns & Exchanges", desc: "Initiate returns, generate labels, and process exchanges", enabled: false },
-  { id: "s5", name: "Subscription Management", desc: "Handle subscription pause, resume, upgrade, and cancellation", enabled: false },
-  { id: "s6", name: "Product Inquiry", desc: "Answer product questions using knowledge base, recommend alternatives", enabled: false },
+  { id: "s1", name: "Post-purchase Claims", desc: "Refund requests, damaged items, missing orders", enabled: true, isDefault: true },
+  { id: "s2", name: "Where Is My Order (WISMO)", desc: "Order tracking, shipping updates, delivery inquiries", enabled: true, isDefault: true },
+  { id: "s3", name: "Order Changes", desc: "Cancellations, address changes, item swaps", enabled: false },
+  { id: "s4", name: "Returns & Exchanges", desc: "Returns, labels, exchanges", enabled: false },
+  { id: "s5", name: "Subscription Management", desc: "Pause, resume, upgrade, cancel subscriptions", enabled: false },
+  { id: "s6", name: "Product Inquiry", desc: "Product questions, recommendations", enabled: false },
 ];
 
-/* ── Mock agent data ── */
 const agentsDb: Record<string, AgentData> = {
   "rc-chat": {
     name: "RC Live Chat Agent",
     status: "live",
     channel: { type: "chat", label: "Live Chat", provider: "RC Widget", integration: "RC Widget" },
     skills: [
-      { id: "s1", name: "Post-purchase Claims", desc: "Handle refund requests", enabled: true, isDefault: true, conversations: 276, successRate: 94.2 },
-      { id: "s2", name: "Where Is My Order (WISMO)", desc: "Track order status", enabled: true, isDefault: true, conversations: 342, successRate: 97.1 },
-      { id: "s3", name: "Order Changes", desc: "Process cancellations", enabled: true, conversations: 154, successRate: 88.5 },
+      { id: "s1", name: "Post-purchase Claims", desc: "Refund requests", enabled: true, isDefault: true, conversations: 276, successRate: 94.2 },
+      { id: "s2", name: "Where Is My Order (WISMO)", desc: "Order tracking", enabled: true, isDefault: true, conversations: 342, successRate: 97.1 },
+      { id: "s3", name: "Order Changes", desc: "Cancellations", enabled: true, conversations: 154, successRate: 88.5 },
     ],
     csat: 4.6, resolutionRate: 91.2, avgResponseTime: "1.1s", sessionsToday: 847, escalationRate: 8.8,
     recentConversations: [
@@ -97,8 +94,8 @@ const agentsDb: Record<string, AgentData> = {
     status: "setting-up",
     channel: { type: "email", label: "Email", provider: "Zendesk", integration: "Zendesk Email" },
     skills: [
-      { id: "s1", name: "Post-purchase Claims", desc: "Handle refund requests, damaged items, and missing orders", enabled: true, isDefault: true },
-      { id: "s2", name: "Where Is My Order (WISMO)", desc: "Track order status, provide shipping updates, and handle delivery inquiries", enabled: true, isDefault: true },
+      { id: "s1", name: "Post-purchase Claims", desc: "Refund requests, damaged items, missing orders", enabled: true, isDefault: true },
+      { id: "s2", name: "Where Is My Order (WISMO)", desc: "Order tracking, shipping updates, delivery inquiries", enabled: true, isDefault: true },
     ],
     csat: 0, resolutionRate: 0, avgResponseTime: "—", sessionsToday: 0, escalationRate: 0,
     recentConversations: [],
@@ -108,7 +105,6 @@ const agentsDb: Record<string, AgentData> = {
 
 const defaultAgent = agentsDb["rc-chat"];
 
-/* ── Test messages ── */
 const testMessages = [
   { role: "customer" as const, text: "Hi, I ordered a pair of shoes last week and they arrived damaged. I'd like a refund please.", time: "Test" },
   { role: "agent" as const, text: "I'm sorry to hear about the damaged shoes. I can see your order #4521 — a pair of Classic Sneakers for $89. I'll process a full refund for you right away. You should see the refund in 3-5 business days. Is there anything else I can help with?", time: "Test" },
@@ -158,29 +154,28 @@ export default function AgentDetail() {
   );
 }
 
-/* ═══════════════════════════════════════════ */
-/* ── Setting Up View — Step-by-step Wizard ── */
-/* ═══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════ */
+/* ── Setting Up View — Flat config page, no wizard ──    */
+/* ═══════════════════════════════════════════════════════ */
 function SettingUpView({ agent }: { agent: AgentData }) {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [stepsCompleted, setStepsCompleted] = useState<Record<number, boolean>>({ 1: false, 2: false, 3: false, 4: false });
-
-  // Step 1: Connect Zendesk
+  // Zendesk connection
   const [zdConnected, setZdConnected] = useState(false);
   const [zdSubdomain, setZdSubdomain] = useState("");
   const [connecting, setConnecting] = useState(false);
 
-  // Step 2: Configure
+  // Channel config
   const [replyMode, setReplyMode] = useState("internal_note");
   const [escalationGroup, setEscalationGroup] = useState("tier-2-support");
-  const [triggerGuideOpen, setTriggerGuideOpen] = useState(false);
 
-  // Step 3: Skills
+  // Skills
   const [skills, setSkills] = useState<Skill[]>(agent.skills);
   const [showAddSkill, setShowAddSkill] = useState(false);
 
-  const totalSteps = 4;
-  const completedCount = Object.values(stepsCompleted).filter(Boolean).length;
+  // Trigger guide
+  const [triggerGuideOpen, setTriggerGuideOpen] = useState(false);
+
+  // Test drawer
+  const [testOpen, setTestOpen] = useState(false);
 
   const handleConnectZendesk = () => {
     if (!zdSubdomain.trim()) return;
@@ -190,14 +185,6 @@ function SettingUpView({ agent }: { agent: AgentData }) {
       setZdConnected(true);
       toast.success(`Connected to ${zdSubdomain}.zendesk.com`);
     }, 1200);
-  };
-
-  const completeStep = (step: number) => {
-    setStepsCompleted(prev => ({ ...prev, [step]: true }));
-    if (step < totalSteps) {
-      setCurrentStep(step + 1);
-    }
-    toast.success("Step completed");
   };
 
   const handleToggleSkill = (skillId: string) => {
@@ -212,328 +199,187 @@ function SettingUpView({ agent }: { agent: AgentData }) {
 
   const availableToAdd = allSkills.filter(s => !skills.find(existing => existing.id === s.id));
 
-  const steps = [
-    { num: 1, title: "Connect Zendesk", desc: "Authorize Seel to access your Zendesk account" },
-    { num: 2, title: "Configure Channel", desc: "Set up how the agent interacts with Zendesk" },
-    { num: 3, title: "Review Skills", desc: "Choose which skills this agent can use" },
-    { num: 4, title: "Test Agent", desc: "Verify your agent works as expected" },
-  ];
-
   return (
-    <div className="space-y-5">
-      {/* ── Step Navigation ── */}
-      <div className="flex items-center gap-1">
-        {steps.map((step, i) => (
-          <div key={step.num} className="flex items-center">
-            <button
-              onClick={() => setCurrentStep(step.num)}
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-left",
-                currentStep === step.num
-                  ? "bg-primary/10 border border-primary/20"
-                  : stepsCompleted[step.num]
-                    ? "hover:bg-muted/50"
-                    : "hover:bg-muted/30 opacity-70"
-              )}
-            >
-              <div className={cn(
-                "w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold",
-                stepsCompleted[step.num]
-                  ? "bg-primary text-white"
-                  : currentStep === step.num
-                    ? "bg-primary/20 text-primary border border-primary/30"
-                    : "bg-muted text-muted-foreground"
-              )}>
-                {stepsCompleted[step.num] ? <CheckCircle2 className="w-3.5 h-3.5" /> : step.num}
-              </div>
-              <div className="hidden sm:block">
-                <p className={cn("text-xs font-medium leading-tight", currentStep === step.num ? "text-primary" : "")}>{step.title}</p>
-              </div>
-            </button>
-            {i < steps.length - 1 && (
-              <div className={cn("w-6 h-px mx-1", stepsCompleted[step.num] ? "bg-primary/40" : "bg-border")} />
-            )}
-          </div>
-        ))}
-      </div>
+    <div className="space-y-6">
+      {/* ── Section: Zendesk Connection ── */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold">Zendesk connection</h2>
 
-      {/* Progress summary */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-          <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${(completedCount / totalSteps) * 100}%` }} />
-        </div>
-        <span>{completedCount} of {totalSteps} completed</span>
-      </div>
-
-      {/* ── Step Content ── */}
-      <AnimatePresence mode="wait">
-        <motion.div key={currentStep} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-
-          {/* ══ Step 1: Connect Zendesk ══ */}
-          {currentStep === 1 && (
-            <Card>
-              <CardContent className="p-6 space-y-5">
-                <div>
-                  <h2 className="text-base font-semibold flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                      <Mail className="w-4 h-4 text-blue-500" />
-                    </div>
-                    Connect Zendesk
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1 ml-10">Authorize Seel to access your Zendesk account via the Seel App. This uses OAuth — no API tokens needed.</p>
-                </div>
-
-                {!zdConnected ? (
-                  <div className="ml-10 space-y-4">
-                    <div>
-                      <Label className="text-sm">Zendesk Subdomain</Label>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <Input
-                          value={zdSubdomain}
-                          onChange={e => setZdSubdomain(e.target.value)}
-                          placeholder="your-company"
-                          className="max-w-[220px] h-9"
-                        />
-                        <span className="text-sm text-muted-foreground">.zendesk.com</span>
-                      </div>
-                    </div>
-                    <Button onClick={handleConnectZendesk} disabled={!zdSubdomain.trim() || connecting} className="gap-2">
-                      {connecting ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Connecting...</>
-                      ) : (
-                        <><ExternalLink className="w-4 h-4" /> Authorize with Zendesk</>
-                      )}
-                    </Button>
-                    <p className="text-[11px] text-muted-foreground">
-                      This will redirect you to Zendesk to approve the Seel App. Permissions include: read/write tickets, read users, read groups.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="ml-10 space-y-4">
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
-                      <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium">Connected to {zdSubdomain}.zendesk.com</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Authorized via Seel App (OAuth)</p>
-                      </div>
-                    </div>
-
-                    {!stepsCompleted[1] && (
-                      <Button onClick={() => completeStep(1)} className="gap-1.5">
-                        Continue <ArrowRight className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ══ Step 2: Configure Channel ══ */}
-          {currentStep === 2 && (
-            <Card>
-              <CardContent className="p-6 space-y-6">
-                <div>
-                  <h2 className="text-base font-semibold flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-                      <Zap className="w-4 h-4 text-amber-600" />
-                    </div>
-                    Configure Channel
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1 ml-10">Set up how tickets are routed and how the agent responds.</p>
-                </div>
-
-                {/* Trigger Setup */}
-                <div className="ml-10 p-4 rounded-lg border border-amber-200/60 bg-amber-50/30 space-y-3">
-                  <div className="flex items-start gap-2">
-                    <Zap className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Zendesk Trigger Setup</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        You need to create a Trigger in your Zendesk admin panel to route tickets to Seel. This is a one-time setup in your Zendesk account.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => setTriggerGuideOpen(true)}>
-                      <BookOpen className="w-3 h-3" /> View Setup Guide
-                    </Button>
-                    <a
-                      href="https://support.zendesk.com/hc/en-us/articles/203662246"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <ExternalLink className="w-3 h-3" /> Zendesk Docs
-                    </a>
-                  </div>
-                </div>
-
-                {/* Reply Mode */}
-                <div className="ml-10 space-y-2">
+        {!zdConnected ? (
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-end gap-3">
+                <div className="flex-1 max-w-[260px]">
+                  <Label className="text-xs mb-1.5 block">Subdomain</Label>
                   <div className="flex items-center gap-1.5">
-                    <Label className="text-sm font-medium">Reply Mode</Label>
-                    <Tooltip delayDuration={0}>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="w-3 h-3 text-muted-foreground/60 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="text-xs max-w-[280px]">
-                        "Public reply" is visible to the customer. "Internal note" is only visible to your team — recommended for initial rollout.
-                      </TooltipContent>
-                    </Tooltip>
+                    <Input
+                      value={zdSubdomain}
+                      onChange={e => setZdSubdomain(e.target.value)}
+                      placeholder="your-company"
+                      className="h-9"
+                    />
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">.zendesk.com</span>
                   </div>
-                  <Select value={replyMode} onValueChange={setReplyMode}>
-                    <SelectTrigger className="max-w-sm h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="public_reply">
-                        <span className="flex items-center gap-2">
-                          <Globe className="w-3.5 h-3.5 text-primary" />
-                          Public Reply — visible to customer
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="internal_note">
-                        <span className="flex items-center gap-2">
-                          <Lock className="w-3.5 h-3.5 text-amber-500" />
-                          Internal Note — team only (recommended)
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {replyMode === "internal_note" && (
-                    <p className="text-[11px] text-amber-600 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      Human agents will review AI drafts before sending to customers.
-                    </p>
-                  )}
-                  {replyMode === "public_reply" && (
-                    <p className="text-[11px] text-primary flex items-center gap-1">
-                      <Zap className="w-3 h-3" />
-                      AI responses go directly to customers. Ensure guardrails are configured.
-                    </p>
-                  )}
                 </div>
+                <Button onClick={handleConnectZendesk} disabled={!zdSubdomain.trim() || connecting} className="h-9 gap-1.5">
+                  {connecting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Connecting</> : <><ExternalLink className="w-3.5 h-3.5" /> Authorize</>}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2">OAuth via the Seel App. Permissions: read/write tickets, read users, read groups.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+              <span className="text-sm font-medium flex-1">{zdSubdomain}.zendesk.com</span>
+              <Badge variant="outline" className="text-[10px] text-primary border-primary/20">Connected</Badge>
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => { setZdConnected(false); setZdSubdomain(""); }}>Disconnect</Button>
+            </CardContent>
+          </Card>
+        )}
+      </section>
 
-                {/* Escalation Group */}
-                <div className="ml-10 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <Label className="text-sm font-medium">Escalation Group</Label>
-                    <Tooltip delayDuration={0}>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="w-3 h-3 text-muted-foreground/60 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="text-xs max-w-[280px]">
-                        When the agent can't resolve an issue, the ticket is reassigned to this Zendesk group with an internal note.
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Select value={escalationGroup} onValueChange={setEscalationGroup}>
-                    <SelectTrigger className="max-w-sm h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="tier-2-support">Tier 2 Support</SelectItem>
-                      <SelectItem value="senior-agents">Senior Agents</SelectItem>
-                      <SelectItem value="cx-managers">CX Managers</SelectItem>
-                      <SelectItem value="billing-team">Billing Team</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-muted-foreground">
-                    Groups are synced from your Zendesk account.{" "}
-                    <button className="text-primary hover:underline" onClick={() => toast.success("Groups refreshed")}>Refresh</button>
-                  </p>
-                </div>
-
-                {/* Continue */}
-                {!stepsCompleted[2] && (
-                  <div className="ml-10 pt-2">
-                    <Button onClick={() => completeStep(2)} className="gap-1.5">
-                      Continue <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ══ Step 3: Review Skills ══ */}
-          {currentStep === 3 && (
-            <Card>
-              <CardContent className="p-6 space-y-5">
-                <div>
-                  <h2 className="text-base font-semibold flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Target className="w-4 h-4 text-primary" />
-                    </div>
-                    Review Skills
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1 ml-10">Choose which skills this agent can use. Default skills are pre-enabled based on your setup.</p>
-                </div>
-
-                <div className="ml-10 space-y-2">
-                  {skills.map(skill => (
-                    <div key={skill.id} className={cn(
-                      "flex items-start gap-3 p-3 rounded-lg border transition-all",
-                      skill.enabled ? "border-border" : "border-border/50 opacity-60"
-                    )}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium">{skill.name}</p>
-                          {skill.isDefault && <Badge variant="secondary" className="text-[9px] px-1.5 py-0">Default</Badge>}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{skill.desc}</p>
-                      </div>
-                      <Switch
-                        checked={skill.enabled}
-                        onCheckedChange={() => handleToggleSkill(skill.id)}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="ml-10 flex items-center gap-3">
-                  <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => setShowAddSkill(true)}>
-                    <Plus className="w-3 h-3" /> Add Skill
-                  </Button>
-                  <Link href="/playbook/skills">
-                    <span className="text-xs text-primary hover:underline cursor-pointer">Manage all skills →</span>
-                  </Link>
-                </div>
-
-                {!stepsCompleted[3] && (
-                  <div className="ml-10 pt-2">
-                    <Button onClick={() => completeStep(3)} className="gap-1.5">
-                      Continue <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ══ Step 4: Test Agent ══ */}
-          {currentStep === 4 && (
-            <TestStep agent={agent} onComplete={() => completeStep(4)} completed={stepsCompleted[4]} />
-          )}
-        </motion.div>
-      </AnimatePresence>
-
-      {/* ── All steps done banner ── */}
-      {completedCount === totalSteps && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between p-4 rounded-lg bg-primary/5 border border-primary/20">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-primary" />
-            <div>
-              <p className="text-sm font-semibold text-primary">Setup Complete</p>
-              <p className="text-xs text-muted-foreground">Your agent is ready to go live.</p>
-            </div>
-          </div>
-          <Button className="gap-1.5" onClick={() => toast.success(`${agent.name} is now Live!`)}>
-            <Play className="w-4 h-4" /> Deploy Live
+      {/* ── Section: Ticket routing ── */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Ticket routing</h2>
+          <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" onClick={() => setTriggerGuideOpen(true)}>
+            <BookOpen className="w-3 h-3" /> Setup guide
           </Button>
-        </motion.div>
-      )}
+        </div>
+
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs mb-1.5 block">Webhook URL</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input readOnly value="https://api.seel.com/webhooks/zendesk/acme" className="h-8 text-xs bg-muted/30 font-mono" />
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => { navigator.clipboard.writeText("https://api.seel.com/webhooks/zendesk/acme"); toast.success("Copied"); }}>
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs mb-1.5 block">Webhook Secret</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input readOnly value="whsec_••••••••••••" className="h-8 text-xs bg-muted/30 font-mono" />
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => { navigator.clipboard.writeText("whsec_abc123xyz"); toast.success("Copied"); }}>
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Create a Trigger in Zendesk to send new tickets to this webhook.{" "}
+              <button className="text-primary hover:underline" onClick={() => setTriggerGuideOpen(true)}>View guide</button>
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── Section: Reply settings ── */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold">Reply settings</h2>
+
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs mb-1.5 block">Reply mode</Label>
+                <Select value={replyMode} onValueChange={setReplyMode}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="public_reply">Public reply</SelectItem>
+                    <SelectItem value="internal_note">Internal note</SelectItem>
+                  </SelectContent>
+                </Select>
+                {replyMode === "internal_note" && (
+                  <p className="text-[11px] text-muted-foreground mt-1">Human agents review AI drafts before sending.</p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs mb-1.5 block">Escalation group</Label>
+                <Select value={escalationGroup} onValueChange={setEscalationGroup}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tier-2-support">Tier 2 Support</SelectItem>
+                    <SelectItem value="senior-agents">Senior Agents</SelectItem>
+                    <SelectItem value="cx-managers">CX Managers</SelectItem>
+                    <SelectItem value="billing-team">Billing Team</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground mt-1">Unresolved tickets are reassigned to this group.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── Section: Skills ── */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Skills</h2>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" onClick={() => setShowAddSkill(true)}>
+              <Plus className="w-3 h-3" /> Add
+            </Button>
+            <Link href="/playbook/skills">
+              <span className="text-xs text-primary hover:underline cursor-pointer">Manage →</span>
+            </Link>
+          </div>
+        </div>
+
+        <Card>
+          <CardContent className="p-0">
+            {skills.map((skill, i) => (
+              <div key={skill.id} className={cn(
+                "flex items-center gap-3 px-4 py-3",
+                i < skills.length - 1 && "border-b"
+              )}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{skill.name}</span>
+                    {skill.isDefault && <Badge variant="secondary" className="text-[9px] px-1.5 py-0">Default</Badge>}
+                  </div>
+                </div>
+                <Switch
+                  checked={skill.enabled}
+                  onCheckedChange={() => handleToggleSkill(skill.id)}
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── Actions bar ── */}
+      <div className="flex items-center justify-between pt-2 border-t">
+        <Button variant="outline" className="gap-1.5" onClick={() => setTestOpen(true)}>
+          <MessageSquare className="w-4 h-4" /> Test Agent
+        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={() => toast.success("Settings saved")}>Save</Button>
+          <Button className="gap-1.5" onClick={() => toast.success(`${agent.name} is now Live!`)}>
+            <Play className="w-4 h-4" /> Deploy
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Test Agent Sheet (right drawer) ── */}
+      <Sheet open={testOpen} onOpenChange={setTestOpen}>
+        <SheetContent className="sm:max-w-[420px] p-0 flex flex-col">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="text-sm">Test Agent</SheetTitle>
+          </SheetHeader>
+          <TestPanel agentName={agent.name} />
+        </SheetContent>
+      </Sheet>
 
       {/* ── Add Skill Dialog ── */}
       <Dialog open={showAddSkill} onOpenChange={setShowAddSkill}>
@@ -563,81 +409,57 @@ function SettingUpView({ agent }: { agent: AgentData }) {
 
       {/* ── Trigger Setup Guide Dialog ── */}
       <Dialog open={triggerGuideOpen} onOpenChange={setTriggerGuideOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[560px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-primary" />
-              Zendesk Trigger Setup Guide
-            </DialogTitle>
-            <DialogDescription>
-              Follow these steps to route tickets to Seel AI Agent.
-            </DialogDescription>
+            <DialogTitle>Zendesk Trigger Setup</DialogTitle>
+            <DialogDescription>Create a Trigger in Zendesk to route tickets to Seel.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-5 pt-2">
-            <GuideStep num={1} title="Open Zendesk Admin Center">
-              <p className="text-xs text-muted-foreground">
-                Navigate to <code className="bg-muted px-1 rounded text-[11px]">Admin Center &gt; Objects and rules &gt; Business rules &gt; Triggers</code>
-              </p>
-            </GuideStep>
-
-            <GuideStep num={2} title="Create a New Trigger">
-              <p className="text-xs text-muted-foreground mb-2">Click "Add trigger" and configure:</p>
-              <div className="p-3 rounded-lg bg-muted/20 border border-border/50 space-y-2 text-xs">
+          <div className="space-y-4 pt-2 text-sm">
+            <div>
+              <p className="font-medium mb-1">1. Go to Triggers</p>
+              <code className="text-xs bg-muted px-2 py-1 rounded block">Admin Center → Objects and rules → Triggers</code>
+            </div>
+            <div>
+              <p className="font-medium mb-1">2. Create Trigger</p>
+              <div className="p-3 rounded border bg-muted/20 space-y-2 text-xs">
+                <div><span className="font-medium">Name:</span> <code className="bg-muted px-1 rounded">Seel AI Agent - Route New Tickets</code></div>
                 <div>
-                  <p className="font-medium text-[11px]">Trigger Name</p>
-                  <code className="bg-muted px-2 py-0.5 rounded text-[11px]">Seel AI Agent - Route New Tickets</code>
-                </div>
-                <div>
-                  <p className="font-medium text-[11px]">Conditions (Meet ALL)</p>
-                  <ul className="text-muted-foreground mt-1 space-y-0.5 ml-3 list-disc text-[11px]">
-                    <li>Ticket: Status is New</li>
-                    <li>Ticket: Channel is Email (or preferred channels)</li>
-                    <li>Ticket: Tags does not contain <code className="bg-muted px-1 rounded">seel_skip</code></li>
+                  <span className="font-medium">Conditions (ALL):</span>
+                  <ul className="mt-1 ml-4 list-disc text-muted-foreground">
+                    <li>Status is New</li>
+                    <li>Channel is Email</li>
+                    <li>Tags does not contain <code className="bg-muted px-1 rounded">seel_skip</code></li>
                   </ul>
                 </div>
                 <div>
-                  <p className="font-medium text-[11px]">Actions</p>
-                  <ul className="text-muted-foreground mt-1 space-y-0.5 ml-3 list-disc text-[11px]">
-                    <li>Notify target: <code className="bg-muted px-1 rounded">Seel AI Webhook</code></li>
+                  <span className="font-medium">Actions:</span>
+                  <ul className="mt-1 ml-4 list-disc text-muted-foreground">
+                    <li>Notify target: Seel AI Webhook</li>
                     <li>Add tags: <code className="bg-muted px-1 rounded">seel_ai_processing</code></li>
                   </ul>
                 </div>
               </div>
-            </GuideStep>
-
-            <GuideStep num={3} title="Create the Webhook Target">
-              <p className="text-xs text-muted-foreground mb-2">
-                In <code className="bg-muted px-1 rounded text-[11px]">Admin Center &gt; Apps and integrations &gt; Webhooks</code>:
-              </p>
-              <div className="p-3 rounded-lg bg-muted/20 border border-border/50 space-y-2 text-xs">
-                <div>
-                  <p className="font-medium text-[11px]">Endpoint URL</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <code className="bg-muted px-2 py-0.5 rounded text-[11px] flex-1">https://api.seel.com/webhooks/zendesk/acme</code>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { navigator.clipboard.writeText("https://api.seel.com/webhooks/zendesk/acme"); toast.success("Copied"); }}>
-                      <Copy className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex gap-6">
-                  <div><p className="font-medium text-[11px]">Method</p><code className="bg-muted px-2 py-0.5 rounded text-[11px]">POST</code></div>
-                  <div><p className="font-medium text-[11px]">Format</p><code className="bg-muted px-2 py-0.5 rounded text-[11px]">JSON</code></div>
-                </div>
-              </div>
-            </GuideStep>
-
-            <GuideStep num={4} title="Test the Trigger">
-              <p className="text-xs text-muted-foreground">
-                Create a test ticket in Zendesk and verify the webhook is received. You can check the connection status in Step 1.
-              </p>
-            </GuideStep>
-
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/15">
-              <HelpCircle className="w-4 h-4 text-primary shrink-0" />
-              <p className="text-xs text-primary">
-                Need help? Contact <a href="mailto:support@seel.com" className="underline">support@seel.com</a>
-              </p>
             </div>
+            <div>
+              <p className="font-medium mb-1">3. Create Webhook</p>
+              <div className="p-3 rounded border bg-muted/20 text-xs space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">URL:</span>
+                  <code className="bg-muted px-1 rounded flex-1">https://api.seel.com/webhooks/zendesk/acme</code>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { navigator.clipboard.writeText("https://api.seel.com/webhooks/zendesk/acme"); toast.success("Copied"); }}>
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+                <div><span className="font-medium">Method:</span> POST &nbsp; <span className="font-medium">Format:</span> JSON</div>
+              </div>
+            </div>
+            <div>
+              <p className="font-medium mb-1">4. Test</p>
+              <p className="text-xs text-muted-foreground">Create a test ticket in Zendesk to verify the webhook fires correctly.</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Need help? <a href="https://support.zendesk.com/hc/en-us/articles/203662246" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Zendesk docs</a> · <a href="mailto:support@seel.com" className="text-primary hover:underline">support@seel.com</a>
+            </p>
           </div>
         </DialogContent>
       </Dialog>
@@ -645,28 +467,15 @@ function SettingUpView({ agent }: { agent: AgentData }) {
   );
 }
 
-/* ── Guide Step helper ── */
-function GuideStep({ num, title, children }: { num: number; title: string; children: React.ReactNode }) {
-  return (
-    <div className="flex gap-3">
-      <div className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-xs font-bold shrink-0">{num}</div>
-      <div className="flex-1">
-        <p className="text-sm font-semibold">{title}</p>
-        <div className="mt-1">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Test Step Component ── */
-function TestStep({ agent, onComplete, completed }: { agent: AgentData; onComplete: () => void; completed: boolean }) {
-  const [testInput, setTestInput] = useState("");
+/* ── Test Panel (used inside Sheet) ── */
+function TestPanel({ agentName }: { agentName: string }) {
+  const [input, setInput] = useState("");
   const [messages, setMessages] = useState(testMessages);
 
   const handleSend = () => {
-    if (!testInput.trim()) return;
-    setMessages(prev => [...prev, { role: "customer" as const, text: testInput, time: "Test" }]);
-    setTestInput("");
+    if (!input.trim()) return;
+    setMessages(prev => [...prev, { role: "customer" as const, text: input, time: "Test" }]);
+    setInput("");
     setTimeout(() => {
       setMessages(prev => [...prev, {
         role: "agent" as const,
@@ -677,48 +486,24 @@ function TestStep({ agent, onComplete, completed }: { agent: AgentData; onComple
   };
 
   return (
-    <Card>
-      <CardContent className="p-6 space-y-5">
-        <div>
-          <h2 className="text-base font-semibold flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-              <MessageSquare className="w-4 h-4 text-blue-500" />
-            </div>
-            Test Your Agent
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1 ml-10">Send test messages to verify your agent responds correctly before going live.</p>
-        </div>
-
-        <div className="ml-10">
-          <div className="border rounded-lg overflow-hidden">
-            <div className="h-[280px] overflow-y-auto p-3 space-y-2.5 bg-muted/10">
-              {messages.map((msg, i) => (
-                <div key={i} className={cn("flex", msg.role === "customer" ? "justify-end" : "justify-start")}>
-                  <div className={cn("max-w-[75%] rounded-xl px-3 py-2",
-                    msg.role === "customer" ? "bg-muted" : "bg-primary/10 border border-primary/15"
-                  )}>
-                    <p className="text-[10px] font-medium text-muted-foreground mb-0.5">{msg.role === "customer" ? "Test Customer" : agent.name}</p>
-                    <p className="text-xs leading-relaxed">{msg.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 p-2 border-t bg-background">
-              <Input value={testInput} onChange={e => setTestInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Type a test message as a customer..." className="text-xs h-8" />
-              <Button size="sm" onClick={handleSend} className="h-8 px-3"><Send className="w-3.5 h-3.5" /></Button>
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+        {messages.map((msg, i) => (
+          <div key={i} className={cn("flex", msg.role === "customer" ? "justify-end" : "justify-start")}>
+            <div className={cn("max-w-[80%] rounded-xl px-3 py-2",
+              msg.role === "customer" ? "bg-muted" : "bg-primary/10 border border-primary/15"
+            )}>
+              <p className="text-[10px] font-medium text-muted-foreground mb-0.5">{msg.role === "customer" ? "Test Customer" : agentName}</p>
+              <p className="text-xs leading-relaxed">{msg.text}</p>
             </div>
           </div>
-        </div>
-
-        {!completed && (
-          <div className="ml-10 pt-2">
-            <Button onClick={onComplete} className="gap-1.5">
-              Mark as Tested <CheckCircle2 className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        ))}
+      </div>
+      <div className="flex gap-2 p-3 border-t">
+        <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Type as a customer..." className="text-xs h-8" />
+        <Button size="sm" onClick={handleSend} className="h-8 px-3"><Send className="w-3.5 h-3.5" /></Button>
+      </div>
+    </div>
   );
 }
 
@@ -726,22 +511,8 @@ function TestStep({ agent, onComplete, completed }: { agent: AgentData; onComple
 /* ── Ready to Test View ── */
 /* ═══════════════════════════════════════════ */
 function ReadyToTestView({ agent }: { agent: AgentData }) {
-  const [testInput, setTestInput] = useState("");
-  const [messages, setMessages] = useState(testMessages);
+  const [testOpen, setTestOpen] = useState(false);
   const [deploying, setDeploying] = useState(false);
-
-  const handleSend = () => {
-    if (!testInput.trim()) return;
-    setMessages(prev => [...prev, { role: "customer" as const, text: testInput, time: "Test" }]);
-    setTestInput("");
-    setTimeout(() => {
-      setMessages(prev => [...prev, {
-        role: "agent" as const,
-        text: "Thank you for reaching out. Let me look into that for you. I can see the details of your order and I'll help resolve this right away.",
-        time: "Test",
-      }]);
-    }, 1000);
-  };
 
   const handleDeploy = () => {
     setDeploying(true);
@@ -756,40 +527,26 @@ function ReadyToTestView({ agent }: { agent: AgentData }) {
       <div className="flex items-center justify-between p-3 rounded-lg bg-blue-50 border border-blue-200">
         <div className="flex items-center gap-2">
           <Eye className="w-4 h-4 text-blue-600" />
-          <div>
-            <p className="text-xs font-semibold text-blue-800">Ready to Test</p>
-            <p className="text-[10px] text-blue-600">All setup steps completed. Test your agent before going live.</p>
-          </div>
+          <p className="text-xs text-blue-800">Setup complete. Test your agent before going live.</p>
         </div>
-        <Button size="sm" className="text-xs gap-1" onClick={handleDeploy} disabled={deploying}>
-          {deploying ? "Deploying..." : <><Play className="w-3 h-3" /> Deploy Live</>}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => setTestOpen(true)}>
+            <MessageSquare className="w-3 h-3" /> Test
+          </Button>
+          <Button size="sm" className="text-xs gap-1" onClick={handleDeploy} disabled={deploying}>
+            {deploying ? "Deploying..." : <><Play className="w-3 h-3" /> Deploy Live</>}
+          </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-5">
-          <p className="text-sm font-semibold mb-1">Test Console</p>
-          <p className="text-xs text-muted-foreground mb-3">Send test messages to see how your agent responds.</p>
-          <div className="border rounded-lg overflow-hidden">
-            <div className="h-[280px] overflow-y-auto p-3 space-y-2.5 bg-muted/10">
-              {messages.map((msg, i) => (
-                <div key={i} className={cn("flex", msg.role === "customer" ? "justify-end" : "justify-start")}>
-                  <div className={cn("max-w-[75%] rounded-xl px-3 py-2",
-                    msg.role === "customer" ? "bg-muted" : "bg-primary/10 border border-primary/15"
-                  )}>
-                    <p className="text-[10px] font-medium text-muted-foreground mb-0.5">{msg.role === "customer" ? "Test Customer" : agent.name}</p>
-                    <p className="text-xs leading-relaxed">{msg.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 p-2 border-t bg-background">
-              <Input value={testInput} onChange={e => setTestInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Type a test message as a customer..." className="text-xs h-8" />
-              <Button size="sm" onClick={handleSend} className="h-8 px-3"><Send className="w-3.5 h-3.5" /></Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <Sheet open={testOpen} onOpenChange={setTestOpen}>
+        <SheetContent className="sm:max-w-[420px] p-0 flex flex-col">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="text-sm">Test Agent</SheetTitle>
+          </SheetHeader>
+          <TestPanel agentName={agent.name} />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -910,10 +667,10 @@ function LiveView({ agent }: { agent: AgentData }) {
                 skill.enabled ? "border-border bg-card" : "border-border/50 bg-muted/10 opacity-60"
               )}>
                 <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-                  skill.id === "order-tracking" ? "bg-blue-50" : skill.id === "seel-protection" ? "bg-primary/10" : "bg-amber-50"
+                  skill.id === "s1" ? "bg-blue-50" : skill.id === "s2" ? "bg-primary/10" : "bg-amber-50"
                 )}>
-                  {skill.id === "order-tracking" ? <Package className="w-4 h-4 text-blue-600" /> :
-                   skill.id === "seel-protection" ? <Shield className="w-4 h-4 text-primary" /> :
+                  {skill.id === "s1" ? <Package className="w-4 h-4 text-blue-600" /> :
+                   skill.id === "s2" ? <Shield className="w-4 h-4 text-primary" /> :
                    <ShoppingCart className="w-4 h-4 text-amber-600" />}
                 </div>
                 <div className="flex-1 min-w-0">
