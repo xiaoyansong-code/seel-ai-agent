@@ -1,8 +1,8 @@
 /**
  * Actions — Playbook > Actions
- * V2: Redesigned around business objects (Order, Protection) as primary Tabs.
+ * V3: Updated for flattened Skill model (no Scenario nesting).
+ * Business objects (Order, Protection) as primary Tabs.
  * Grid card layout. Dropdown filters. Unconnected connector state.
- * Stats row removed for cleaner visual.
  */
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
@@ -26,8 +26,8 @@ interface ActionItem {
   enabled: boolean;
   /** Business object this action operates on */
   object: string;
-  /** Which skills/scenarios reference this action */
-  usedIn: { skillName: string; scenarioIntent: string }[];
+  /** Which skills reference this action */
+  usedIn: string[];
   disabledHint?: string;
 }
 
@@ -59,11 +59,7 @@ const allActions: ActionItem[] = [
     connector: "Shopify",
     enabled: true,
     object: "Order",
-    usedIn: [
-      { skillName: "Order Tracking", scenarioIntent: "Where is my order?" },
-      { skillName: "Order Tracking", scenarioIntent: "My order shows delivered but I didn't receive it." },
-      { skillName: "Order Management", scenarioIntent: "I want to cancel my order." },
-    ],
+    usedIn: ["Order Tracking", "Order Cancellation"],
   },
   {
     id: "order-tracking",
@@ -73,11 +69,7 @@ const allActions: ActionItem[] = [
     connector: "Shopify",
     enabled: true,
     object: "Order",
-    usedIn: [
-      { skillName: "Order Tracking", scenarioIntent: "Where is my order?" },
-      { skillName: "Order Tracking", scenarioIntent: "When will my order arrive?" },
-      { skillName: "Order Tracking", scenarioIntent: "My order shows delivered but I didn't receive it." },
-    ],
+    usedIn: ["Order Tracking"],
   },
   {
     id: "order-cancel",
@@ -87,11 +79,7 @@ const allActions: ActionItem[] = [
     connector: "Shopify",
     enabled: false,
     object: "Order",
-    usedIn: [
-      { skillName: "Order Management", scenarioIntent: "I want to cancel my order." },
-      { skillName: "Order Management", scenarioIntent: "Can I still cancel? I just placed it." },
-      { skillName: "Order Management", scenarioIntent: "I changed my mind about my purchase." },
-    ],
+    usedIn: ["Order Cancellation"],
     disabledHint: "Agent will verify eligibility and escalate to human agent.",
   },
   // Protection object
@@ -103,11 +91,7 @@ const allActions: ActionItem[] = [
     connector: "Seel API",
     enabled: true,
     object: "Protection",
-    usedIn: [
-      { skillName: "Seel Protection", scenarioIntent: "What does my Seel protection cover?" },
-      { skillName: "Seel Protection", scenarioIntent: "I want to file a claim." },
-      { skillName: "Seel Protection", scenarioIntent: "I want to cancel my protection policy." },
-    ],
+    usedIn: ["Seel Protection"],
   },
   {
     id: "claim-status",
@@ -117,9 +101,7 @@ const allActions: ActionItem[] = [
     connector: "Seel API",
     enabled: true,
     object: "Protection",
-    usedIn: [
-      { skillName: "Seel Protection", scenarioIntent: "What's the status of my claim?" },
-    ],
+    usedIn: ["Seel Protection"],
   },
   {
     id: "claim-file",
@@ -129,9 +111,7 @@ const allActions: ActionItem[] = [
     connector: "Seel API",
     enabled: true,
     object: "Protection",
-    usedIn: [
-      { skillName: "Seel Protection", scenarioIntent: "I want to file a claim." },
-    ],
+    usedIn: ["Seel Protection"],
     disabledHint: "Agent will collect claim details and escalate to human agent.",
   },
   {
@@ -142,9 +122,7 @@ const allActions: ActionItem[] = [
     connector: "Seel API",
     enabled: true,
     object: "Protection",
-    usedIn: [
-      { skillName: "Seel Protection", scenarioIntent: "I want to cancel my protection policy." },
-    ],
+    usedIn: ["Seel Protection"],
     disabledHint: "Agent will confirm eligibility and escalate to human agent.",
   },
   // Ticket object (Zendesk — not connected demo)
@@ -462,20 +440,20 @@ function ActionCard({
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <p className="text-[10px] text-muted-foreground mt-1 cursor-help">
-                Used in {action.usedIn.length} scenario{action.usedIn.length > 1 ? "s" : ""}
+                Used in {action.usedIn.length} skill{action.usedIn.length > 1 ? "s" : ""}
               </p>
             </TooltipTrigger>
             <TooltipContent className="text-xs max-w-[260px]">
               <div className="space-y-0.5">
-                {action.usedIn.map((u, i) => (
-                  <p key={i}>{u.skillName} → "{u.scenarioIntent}"</p>
+                {action.usedIn.map((skillName, i) => (
+                  <p key={i}>{skillName}</p>
                 ))}
               </div>
             </TooltipContent>
           </Tooltip>
         )}
         {connected && action.usedIn.length === 0 && (
-          <p className="text-[10px] text-muted-foreground/60 mt-1">Not used in any scenario yet</p>
+          <p className="text-[10px] text-muted-foreground/60 mt-1">Not used in any skill yet</p>
         )}
       </div>
     </div>
