@@ -13,7 +13,7 @@ import {
   Send, Zap, BookOpen, Mail, MessageCircle, Bot,
   Target, Power, Eye, Play, Instagram,
   ExternalLink, Pencil, Globe, Plus, X,
-  Loader2, ArrowRight,
+  Loader2, ArrowRight, Package, Shield, ShoppingCart,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -570,26 +570,41 @@ function LiveView({ agent }: { agent: AgentData }) {
         <TabsContent value="skills" className="mt-3 space-y-3">
           <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/15 flex items-center gap-2">
             <Target className="w-3.5 h-3.5 text-primary shrink-0" />
-            <p className="text-[11px] text-primary">Skills are globally shared. Manage in <Link href="/knowledge"><span className="underline font-medium cursor-pointer">Knowledge</span></Link>.</p>
+            <p className="text-[11px] text-primary">Skills are globally configured in <Link href="/playbook/skills"><span className="underline font-medium cursor-pointer">Playbook &gt; Skills</span></Link>. Toggle which skills this agent can use below.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            {agent.skills.filter(s => s.enabled).map(skill => (
-              <Card key={skill.id}>
-                <CardContent className="p-3">
-                  <p className="text-xs font-semibold mb-2">{skill.name}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="p-1.5 rounded bg-muted/30 text-center">
-                      <p className="text-xs font-bold">{skill.conversations || 0}</p>
-                      <p className="text-[9px] text-muted-foreground">Convos</p>
-                    </div>
-                    <div className="p-1.5 rounded bg-muted/30 text-center">
-                      <p className="text-xs font-bold">{skill.successRate || 0}%</p>
-                      <p className="text-[9px] text-muted-foreground">Success</p>
-                    </div>
+          <div className="space-y-2">
+            {agent.skills.map(skill => (
+              <div key={skill.id} className={cn(
+                "flex items-center gap-3 p-3 rounded-lg border transition-all",
+                skill.enabled ? "border-border bg-card" : "border-border/50 bg-muted/10 opacity-60"
+              )}>
+                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                  skill.id === "order-tracking" ? "bg-blue-50" : skill.id === "seel-protection" ? "bg-primary/10" : "bg-amber-50"
+                )}>
+                  {skill.id === "order-tracking" ? <Package className="w-4 h-4 text-blue-600" /> :
+                   skill.id === "seel-protection" ? <Shield className="w-4 h-4 text-primary" /> :
+                   <ShoppingCart className="w-4 h-4 text-amber-600" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium">{skill.name}</p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-[10px] text-muted-foreground">{skill.conversations || 0} conversations</span>
+                    <span className="text-[10px] text-muted-foreground">{skill.successRate || 0}% success</span>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+                <Switch
+                  checked={skill.enabled}
+                  onCheckedChange={() => {
+                    toast.success(skill.enabled ? `${skill.name} disabled for this agent` : `${skill.name} enabled for this agent`);
+                  }}
+                />
+              </div>
             ))}
+          </div>
+          <div className="pt-2">
+            <Link href="/playbook/skills">
+              <span className="text-xs text-primary hover:underline cursor-pointer">Manage all skills in Playbook →</span>
+            </Link>
           </div>
         </TabsContent>
 

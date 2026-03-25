@@ -9,12 +9,15 @@ import { motion } from "framer-motion";
 import {
   Target, ChevronLeft, ChevronRight, ChevronDown, Package, Shield, ShoppingCart,
   Pencil, Check, X, Info, AlertTriangle, Eye, Zap, MessageSquare,
+  FileText, Upload, Sparkles, Bell, ArrowRight, Play,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -225,12 +228,14 @@ function ScenarioCard({
   defaultOpen,
   onToggleAction,
   onSaveRules,
+  onTestScenario,
 }: {
   scenario: Scenario;
   skillId: string;
   defaultOpen: boolean;
   onToggleAction: (skillId: string, scenarioId: string, actionId: string) => void;
   onSaveRules: (skillId: string, scenarioId: string, rules: string) => void;
+  onTestScenario: (intent: string) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [editingRules, setEditingRules] = useState(false);
@@ -370,6 +375,16 @@ function ScenarioCard({
               </div>
             </div>
           )}
+
+          {/* Test this scenario */}
+          <div className="pt-2 border-t border-border/40">
+            <button
+              onClick={() => onTestScenario(scenario.intent)}
+              className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              <Play className="w-3 h-3" /> Test this scenario
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -380,8 +395,17 @@ function ScenarioCard({
 export default function Skills() {
   const [skills, setSkills] = useState(initialSkills);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [addSkillOpen, setAddSkillOpen] = useState(false);
+  const [sopBannerDismissed, setSopBannerDismissed] = useState(false);
+  const [notified, setNotified] = useState(false);
 
+  const [, navigate] = useLocation();
   const detailSkill = skills.find(s => s.id === detailId);
+
+  const handleTestScenario = (intent: string) => {
+    // Navigate to Performance > Conversations with test intent pre-filled
+    navigate(`/performance?test=${encodeURIComponent(intent)}`);
+  };
 
   const toggleSkill = (id: string) => {
     setSkills(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
@@ -484,8 +508,16 @@ export default function Skills() {
                 defaultOpen={idx === 0}
                 onToggleAction={toggleAction}
                 onSaveRules={saveRules}
+                onTestScenario={handleTestScenario}
               />
             ))}
+          </div>
+        </div>
+        {/* SOP hint at bottom of detail */}
+        <div className="mt-6 pt-4 border-t border-border/50">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Sparkles className="w-3.5 h-3.5 text-primary/60" />
+            <span>Want to auto-generate skills from your SOP? <button onClick={() => { setDetailId(null); setAddSkillOpen(true); }} className="text-primary hover:underline">Learn more</button></span>
           </div>
         </div>
       </motion.div>
@@ -497,6 +529,22 @@ export default function Skills() {
 
   return (
     <motion.div variants={cV} initial="hidden" animate="visible" className="p-6 max-w-[800px] space-y-4">
+      {/* SOP Coming Soon Banner */}
+      {!sopBannerDismissed && (
+        <motion.div variants={iV} className="flex items-center gap-3 p-3.5 rounded-lg bg-gradient-to-r from-primary/5 to-violet-50 border border-primary/15">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Sparkles className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-medium text-foreground">Coming soon: Import skills from your SOP</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Upload your team's standard operating procedures and let AI create skills automatically.</p>
+          </div>
+          <button onClick={() => setSopBannerDismissed(true)} className="text-muted-foreground hover:text-foreground shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </motion.div>
+      )}
+
       {/* Global hint */}
       <motion.div variants={iV} className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
         <Target className="w-4 h-4 text-primary shrink-0" />
@@ -506,15 +554,71 @@ export default function Skills() {
       {/* Summary */}
       <motion.div variants={iV} className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{enabledCount} of {skills.length} skills enabled</p>
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5 opacity-50 cursor-not-allowed">
-              <Target className="w-3.5 h-3.5" /> Add Skill
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="text-xs">Custom skills will be available in a future release.</TooltipContent>
-        </Tooltip>
+        <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5" onClick={() => setAddSkillOpen(true)}>
+          <Target className="w-3.5 h-3.5" /> Add Skill
+        </Button>
       </motion.div>
+
+      {/* Add Skill Dialog */}
+      <Dialog open={addSkillOpen} onOpenChange={setAddSkillOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="text-base">Add Skill</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            {/* Option 1: Choose from templates */}
+            <button
+              onClick={() => { setAddSkillOpen(false); toast.info("All available template skills are already shown in your list."); }}
+              className="w-full flex items-start gap-3 p-4 rounded-lg border border-border hover:border-primary/30 hover:bg-muted/20 transition-all text-left group"
+            >
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Target className="w-4.5 h-4.5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium group-hover:text-primary transition-colors">Choose from templates</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Select from pre-built skills designed for common support scenarios.</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground mt-2.5 shrink-0 group-hover:text-primary transition-colors" />
+            </button>
+
+            {/* Option 2: Import from SOP */}
+            <div className="w-full flex items-start gap-3 p-4 rounded-lg border border-dashed border-primary/30 bg-gradient-to-r from-primary/[0.03] to-violet-50/50 text-left relative overflow-hidden">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileText className="w-4.5 h-4.5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">Import from SOP</p>
+                  <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary border-primary/20">Coming Soon</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">Upload your team's standard operating procedures and let AI automatically generate skills, business rules, and actions.</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Upload className="w-3 h-3" /> Upload SOP documents
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Sparkles className="w-3 h-3" /> AI-powered extraction
+                  </div>
+                </div>
+                {!notified ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 text-xs h-7 gap-1.5"
+                    onClick={() => { setNotified(true); toast.success("We'll notify you when this feature is available."); }}
+                  >
+                    <Bell className="w-3 h-3" /> Notify me when available
+                  </Button>
+                ) : (
+                  <p className="mt-3 text-xs text-primary flex items-center gap-1.5">
+                    <Check className="w-3 h-3" /> You'll be notified when this feature launches.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Skill Cards */}
       <motion.div variants={iV} className="space-y-3">
