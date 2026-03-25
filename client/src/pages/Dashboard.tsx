@@ -1,21 +1,18 @@
 /**
- * Dashboard — V8 Production MVP
- * Changes from V7:
- * - Analytics link moved from What's Next header to below Core Metrics
- * - Removed "Configure guardrails" and "Fine-tune personality" from Improve
- * - Improve items: no icons, status + title on same line, compact
+ * Dashboard — V9 Production MVP
+ * Changes from V8:
+ * - Cold Start: merged welcome + checklist into one card. "Hire first Agent" is a checklist item, not a separate hero.
+ * - Has Agent: What's Next uses same CheckItem component as Cold Start (unified checklist style).
+ * - Scale item also rendered as a CheckItem for visual consistency.
  */
 import { useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
-  Bot, Plus, ArrowRight, CheckCircle2,
-  Mail, Instagram, MessageCircle,
-  Users, Gauge, SmilePlus,
+  Bot, ArrowRight, CheckCircle2,
+  MessageCircle, Users, Gauge, SmilePlus,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 const cV = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.03 } } };
@@ -48,30 +45,25 @@ function ColdStartState() {
     <motion.div variants={cV} initial="hidden" animate="visible" className="space-y-4">
       <motion.div variants={iV}>
         <Card className="shadow-sm">
-          <CardContent className="p-6 text-center">
-            <div className="w-11 h-11 rounded-xl bg-teal-50 flex items-center justify-center mx-auto mb-3">
-              <Bot className="w-5.5 h-5.5 text-teal-600" />
+          <CardContent className="p-5">
+            {/* Header: icon + welcome text */}
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+                <Bot className="w-4.5 h-4.5 text-teal-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold mb-0.5">Get started with your AI Agent</h2>
+                <p className="text-sm text-muted-foreground">Complete these steps to deploy your first agent. Takes less than 5 minutes.</p>
+              </div>
             </div>
-            <h2 className="text-base font-semibold mb-1">Deploy your first AI Agent</h2>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-              Set up an AI agent to handle customer conversations. Takes less than 5 minutes.
-            </p>
-            <Link href="/agents/new">
-              <Button className="bg-teal-600 hover:bg-teal-700 gap-1.5 text-sm">
-                <Plus className="w-4 h-4" /> Hire Agent
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </motion.div>
-      <motion.div variants={iV}>
-        <Card className="shadow-sm">
-          <CardContent className="p-4 space-y-0.5">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Setup checklist</p>
-            <CheckItem done label="Account created" />
-            <CheckItem done label="Order system connected" note="Partial sync — full sync recommended" noteHref="/settings" />
-            <CheckItem label="Hire your first AI Agent" href="/agents/new" />
-            <CheckItem label="Add knowledge base articles" href="/knowledge" />
+
+            {/* Unified checklist */}
+            <div className="space-y-0.5">
+              <CheckItem done label="Account created" />
+              <CheckItem done label="Order system connected" note="Partial sync — full sync recommended" noteHref="/settings" />
+              <CheckItem label="Hire your first AI Agent" href="/agents/new" />
+              <CheckItem label="Add knowledge articles" href="/knowledge" note="0 of 5 articles" />
+            </div>
           </CardContent>
         </Card>
       </motion.div>
@@ -85,9 +77,8 @@ function ColdStartState() {
 function HasAgentState() {
   return (
     <motion.div variants={cV} initial="hidden" animate="visible" className="space-y-5">
-      {/* ── Metrics Row: 3 metrics + Active Agents card ── */}
+      {/* ── Metrics Row ── */}
       <motion.div variants={iV} className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Active Agents — first card */}
         <Link href="/agents">
           <Card className="shadow-sm hover:shadow-md hover:border-teal-200 transition-all cursor-pointer h-full">
             <CardContent className="p-3 flex flex-col justify-between h-full">
@@ -114,7 +105,7 @@ function HasAgentState() {
         <MetricCard icon={SmilePlus} label="Sentiment" value="+0.3" sub="CSAT change (30d)" />
       </motion.div>
 
-      {/* ── Analytics link — directly below Core Metrics ── */}
+      {/* ── Analytics link ── */}
       <motion.div variants={iV} className="flex justify-end -mt-2">
         <Link href="/analytics">
           <span className="text-[11px] text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 cursor-pointer">
@@ -123,59 +114,15 @@ function HasAgentState() {
         </Link>
       </motion.div>
 
-      {/* ── What's Next — single section combining Improve + Scale ── */}
+      {/* ── What's Next — unified checklist style ── */}
       <motion.div variants={iV}>
         <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase mb-2">What's next</p>
         <Card className="shadow-sm">
-          <CardContent className="p-2">
-            {/* Improve items */}
-            <div className="px-2 pt-1.5 pb-1">
-              <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-0.5">Improve</p>
-            </div>
-            <ImproveItem
-              title="Sync all orders"
-              status="Partial sync"
-              progress={40}
-              href="/settings"
-            />
-            <ImproveItem
-              title="Enrich knowledge base"
-              status="3 of 20+ articles"
-              progress={15}
-              href="/knowledge"
-            />
-            <ImproveItem
-              title="Activate skills"
-              status="2 of 8 enabled"
-              progress={25}
-              href="/knowledge"
-            />
-
-            {/* Divider */}
-            <div className="mx-2 my-1 border-t border-border/50" />
-
-            {/* Scale item */}
-            <div className="px-2 pt-1.5 pb-1">
-              <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-0.5">Scale</p>
-            </div>
-            <Link href="/agents/new">
-              <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-muted/40 transition-colors cursor-pointer group">
-                <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center shrink-0 group-hover:bg-teal-50 transition-colors">
-                  <Plus className="w-3.5 h-3.5 text-muted-foreground group-hover:text-teal-600 transition-colors" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium group-hover:text-teal-700 transition-colors">Hire another agent</p>
-                  <p className="text-[11px] text-muted-foreground">Email, Social Messaging, or Live Chat</p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="flex -space-x-1">
-                    <div className="w-4.5 h-4.5 rounded-full bg-blue-50 flex items-center justify-center border border-white"><Mail className="w-2.5 h-2.5 text-blue-500" /></div>
-                    <div className="w-4.5 h-4.5 rounded-full bg-pink-50 flex items-center justify-center border border-white"><Instagram className="w-2.5 h-2.5 text-pink-500" /></div>
-                  </div>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground/20 group-hover:text-teal-500 transition-colors" />
-                </div>
-              </div>
-            </Link>
+          <CardContent className="p-4 space-y-0.5">
+            <CheckItem label="Sync all orders" href="/settings" note="Partial sync" />
+            <CheckItem label="Enrich knowledge base" href="/knowledge" note="3 of 20+ articles" />
+            <CheckItem label="Activate skills" href="/knowledge" note="2 of 8 enabled" />
+            <CheckItem label="Hire another agent" href="/agents/new" note="Email, Social Messaging, or Live Chat" />
           </CardContent>
         </Card>
       </motion.div>
@@ -205,27 +152,6 @@ function MetricCard({ icon: Icon, label, value, sub, change }: {
   );
 }
 
-function ImproveItem({ title, status, progress, href }: {
-  title: string; status: string; progress: number; href: string;
-}) {
-  return (
-    <Link href={href}>
-      <div className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-muted/40 transition-colors cursor-pointer group">
-        <div className="flex-1 min-w-0 flex items-baseline gap-2">
-          <p className="text-sm font-medium group-hover:text-teal-700 transition-colors leading-tight">{title}</p>
-          <span className="text-[11px] text-muted-foreground leading-tight shrink-0">{status}</span>
-        </div>
-        {progress > 0 && progress < 100 && (
-          <div className="w-14 shrink-0">
-            <Progress value={progress} className="h-1" />
-          </div>
-        )}
-        <ArrowRight className="w-3 h-3 text-muted-foreground/20 group-hover:text-teal-500 transition-colors shrink-0" />
-      </div>
-    </Link>
-  );
-}
-
 function CheckItem({ done, label, note, noteHref, href }: {
   done?: boolean; label: string; note?: string; noteHref?: string; href?: string;
 }) {
@@ -241,15 +167,16 @@ function CheckItem({ done, label, note, noteHref, href }: {
         {done && <CheckCircle2 className="w-3 h-3 text-white" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={cn("text-sm", done ? "text-muted-foreground" : "font-medium")}>{label}</p>
-        {note && (
-          noteHref ? (
-            <Link href={noteHref}>
-              <span className="text-[11px] text-amber-600 hover:underline">{note}</span>
-            </Link>
-          ) : (
-            <p className="text-[11px] text-muted-foreground">{note}</p>
-          )
+        <div className="flex items-baseline gap-2">
+          <p className={cn("text-sm leading-tight", done ? "text-muted-foreground" : "font-medium")}>{label}</p>
+          {note && !noteHref && (
+            <span className="text-[11px] text-muted-foreground leading-tight shrink-0">{note}</span>
+          )}
+        </div>
+        {note && noteHref && (
+          <Link href={noteHref}>
+            <span className="text-[11px] text-amber-600 hover:underline">{note}</span>
+          </Link>
         )}
       </div>
       {!done && href && <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/20 shrink-0" />}
