@@ -197,8 +197,8 @@ export default function Conversations() {
           <p className="text-xs text-muted-foreground mt-0.5">Monitor live conversations and review completed interactions</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 gap-1.5 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 gap-1.5 text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary/100 animate-pulse" />
             {liveConversations.length} Live
           </Badge>
         </div>
@@ -228,7 +228,7 @@ export default function Conversations() {
               onClick={() => setSelectedConv(conv)}
               className={cn(
                 "w-full text-left px-4 py-3.5 border-b border-border hover:bg-muted/50 transition-colors",
-                selectedConv.id === conv.id && "bg-teal-50/50 border-l-2 border-l-teal-500"
+                selectedConv.id === conv.id && "bg-primary/5 border-l-2 border-l-primary"
               )}
             >
               <div className="flex items-center justify-between mb-1">
@@ -293,10 +293,10 @@ export default function Conversations() {
                   "max-w-[70%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed",
                   msg.role === "customer"
                     ? "bg-muted text-foreground rounded-bl-md"
-                    : "bg-teal-600 text-white rounded-br-md"
+                    : "bg-primary text-white rounded-br-md"
                 )}>
                   {"action" in msg && (msg as any).action && (
-                    <div className="flex items-center gap-1.5 text-[10px] mb-1.5 pb-1.5 border-b border-teal-500 text-teal-200">
+                    <div className="flex items-center gap-1.5 text-[10px] mb-1.5 pb-1.5 border-b border-primary text-primary-foreground/70">
                       <CheckCircle2 className="w-3 h-3" />
                       Action: {(msg as any).action}
                     </div>
@@ -304,7 +304,7 @@ export default function Conversations() {
                   <p>{msg.text}</p>
                   <p className={cn(
                     "text-[10px] mt-1",
-                    msg.role === "customer" ? "text-muted-foreground" : "text-teal-200"
+                    msg.role === "customer" ? "text-muted-foreground" : "text-primary-foreground/70"
                   )}>
                     {msg.role === "customer" ? selectedConv.customer : selectedConv.agent} · {msg.time}
                   </p>
@@ -349,7 +349,7 @@ export default function Conversations() {
 function ChannelIcon({ channel }: { channel: string }) {
   const icons: Record<string, { icon: typeof Mail; label: string; className: string }> = {
     email: { icon: Mail, label: "Email", className: "text-blue-500" },
-    live_chat: { icon: MessageCircle, label: "Live Chat", className: "text-teal-500" },
+    live_chat: { icon: MessageCircle, label: "Live Chat", className: "text-primary" },
     social: { icon: Instagram, label: "Social", className: "text-pink-500" },
   };
   const c = icons[channel] || icons.live_chat;
@@ -363,9 +363,9 @@ function ChannelIcon({ channel }: { channel: string }) {
 
 function ConvStatusBadge({ status }: { status: string }) {
   const config: Record<string, { label: string; className: string }> = {
-    active: { label: "Active", className: "bg-teal-50 text-teal-700 border-teal-200" },
+    active: { label: "Active", className: "bg-primary/10 text-primary border-primary/20" },
     warning: { label: "Warning", className: "bg-amber-50 text-amber-700 border-amber-200" },
-    resolved: { label: "Resolved", className: "bg-teal-50 text-teal-700 border-teal-200" },
+    resolved: { label: "Resolved", className: "bg-primary/10 text-primary border-primary/20" },
     escalated: { label: "Escalated", className: "bg-red-50 text-red-700 border-red-200" },
   };
   const c = config[status] || config.active;
@@ -373,7 +373,7 @@ function ConvStatusBadge({ status }: { status: string }) {
 }
 
 function SentimentDot({ score, showLabel = false }: { score: number; showLabel?: boolean }) {
-  const color = score > 0.5 ? "bg-teal-500" : score > 0 ? "bg-amber-400" : "bg-red-400";
+  const color = score > 0.5 ? "bg-primary/100" : score > 0 ? "bg-amber-400" : "bg-red-400";
   const label = score > 0.5 ? "Positive" : score > 0 ? "Neutral" : "Negative";
   return (
     <div className="flex items-center gap-1">

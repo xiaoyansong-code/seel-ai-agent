@@ -11,8 +11,8 @@ export default function NotFound() {
       <Card className="w-full max-w-md shadow-sm">
         <CardContent className="pt-8 pb-8 text-center">
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center">
-              <AlertCircle className="h-8 w-8 text-teal-600" />
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <AlertCircle className="h-8 w-8 text-primary" />
             </div>
           </div>
 
@@ -26,7 +26,7 @@ export default function NotFound() {
 
           <Button
             onClick={() => setLocation("/")}
-            className="bg-teal-600 hover:bg-teal-700 gap-2"
+            className="bg-primary hover:bg-primary/90 gap-2"
           >
             <Home className="w-4 h-4" />
             Back to Dashboard

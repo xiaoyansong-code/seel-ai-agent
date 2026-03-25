@@ -59,7 +59,7 @@ const typeColors: Record<string, string> = {
   escalation: "bg-amber-50 text-amber-600",
   tone: "bg-violet-50 text-violet-600",
   security: "bg-red-50 text-red-600",
-  workflow: "bg-teal-50 text-teal-600",
+  workflow: "bg-primary/10 text-primary",
 };
 
 export default function Settings() {
@@ -89,7 +89,7 @@ export default function Settings() {
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold",
-                      int.status === "connected" ? "bg-teal-500 text-white" : "bg-muted text-muted-foreground"
+                      int.status === "connected" ? "bg-primary/100 text-white" : "bg-muted text-muted-foreground"
                     )}>{int.icon}</div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export default function Settings() {
                       </div>
                       <div className="mt-2">
                         {int.status === "connected" ? (
-                          <Badge variant="outline" className="text-[9px] bg-teal-50 text-teal-700 border-teal-200 gap-1"><CheckCircle2 className="w-2.5 h-2.5" /> Connected</Badge>
+                          <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary border-primary/20 gap-1"><CheckCircle2 className="w-2.5 h-2.5" /> Connected</Badge>
                         ) : (
                           <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => toast(`Connecting to ${int.name}...`)}>Connect</Button>
                         )}
@@ -123,7 +123,7 @@ export default function Settings() {
               <Badge variant="outline" className="text-xs gap-1"><Shield className="w-3 h-3" />{globalGuardrails.filter(g => g.enabled).length} Active</Badge>
               <Badge variant="outline" className="text-xs gap-1 text-red-600 border-red-200">{globalGuardrails.filter(g => g.severity === "critical").length} Critical</Badge>
             </div>
-            <Button size="sm" className="gap-1 bg-teal-600 hover:bg-teal-700 text-xs h-8" onClick={() => setGuardrailDialogOpen(true)}>
+            <Button size="sm" className="gap-1 bg-primary hover:bg-primary/90 text-xs h-8" onClick={() => setGuardrailDialogOpen(true)}>
               <Plus className="w-3.5 h-3.5" /> Add Guardrail
             </Button>
           </div>
@@ -173,7 +173,7 @@ export default function Settings() {
                 <div className="divide-y divide-border">
                   {teamMembers.map((member) => (
                     <div key={member.email} className="flex items-center gap-4 px-6 py-3.5">
-                      <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center"><span className="text-xs font-semibold text-teal-700">{member.name.charAt(0)}</span></div>
+                      <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center"><span className="text-xs font-semibold text-primary">{member.name.charAt(0)}</span></div>
                       <div className="flex-1"><p className="text-sm font-medium">{member.name}</p><p className="text-xs text-muted-foreground">{member.email}</p></div>
                       <Badge variant="outline" className="text-[10px]">{member.role}</Badge>
                     </div>
@@ -225,7 +225,7 @@ export default function Settings() {
                   <Label className="text-sm">Timezone</Label>
                   <Select defaultValue="utc-8"><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="utc-8">Pacific Time (UTC-8)</SelectItem><SelectItem value="utc-5">Eastern Time (UTC-5)</SelectItem><SelectItem value="utc+8">China Standard Time (UTC+8)</SelectItem></SelectContent></Select>
                 </div>
-                <div className="pt-2"><Button className="bg-teal-600 hover:bg-teal-700" onClick={() => toast("Settings saved!")}>Save Changes</Button></div>
+                <div className="pt-2"><Button className="bg-primary hover:bg-primary/90" onClick={() => toast("Settings saved!")}>Save Changes</Button></div>
               </CardContent>
             </Card>
             <Card className="shadow-sm">
@@ -260,7 +260,7 @@ export default function Settings() {
             <div><Label className="text-sm">Trigger Keywords (comma-separated)</Label><Input className="mt-1.5" placeholder="e.g. lawsuit, attorney, BBB" /></div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setGuardrailDialogOpen(false)}>Cancel</Button>
-              <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => { toast.success("Guardrail created"); setGuardrailDialogOpen(false); }}>Create Guardrail</Button>
+              <Button className="bg-primary hover:bg-primary/90" onClick={() => { toast.success("Guardrail created"); setGuardrailDialogOpen(false); }}>Create Guardrail</Button>
             </div>
           </div>
         </DialogContent>

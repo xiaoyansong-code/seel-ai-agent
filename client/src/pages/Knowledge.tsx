@@ -59,7 +59,7 @@ const itemV = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, tran
 
 function TypeIcon({ type }: { type: string }) {
   if (type === "policy") return <FileText className="w-4 h-4 text-blue-500" />;
-  if (type === "faq") return <Globe className="w-4 h-4 text-teal-500" />;
+  if (type === "faq") return <Globe className="w-4 h-4 text-primary" />;
   return <Tag className="w-4 h-4 text-violet-500" />;
 }
 
@@ -102,7 +102,7 @@ export default function Knowledge() {
                 <Input placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 h-8 text-xs w-48" />
               </div>
               {activeTab === "knowledge" && (
-                <Button size="sm" className="gap-1 bg-teal-600 hover:bg-teal-700 text-xs h-8" onClick={() => setUploadOpen(true)}>
+                <Button size="sm" className="gap-1 bg-primary hover:bg-primary/90 text-xs h-8" onClick={() => setUploadOpen(true)}>
                   <Upload className="w-3.5 h-3.5" /> Add Source
                 </Button>
               )}
@@ -112,24 +112,24 @@ export default function Knowledge() {
           {/* ── Knowledge Articles ── */}
           <TabsContent value="knowledge" className="space-y-4">
             <div className="grid grid-cols-4 gap-3">
-              <StatCard label="Total Articles" value={String(knowledgeArticles.length)} icon={<BookOpen className="w-4 h-4 text-teal-600" />} />
-              <StatCard label="Active" value={String(knowledgeArticles.filter(a => a.status === "active").length)} icon={<CheckCircle2 className="w-4 h-4 text-teal-600" />} />
+              <StatCard label="Total Articles" value={String(knowledgeArticles.length)} icon={<BookOpen className="w-4 h-4 text-primary" />} />
+              <StatCard label="Active" value={String(knowledgeArticles.filter(a => a.status === "active").length)} icon={<CheckCircle2 className="w-4 h-4 text-primary" />} />
               <StatCard label="Total References" value={String(knowledgeArticles.reduce((s, a) => s + a.usageCount, 0))} icon={<Eye className="w-4 h-4 text-blue-600" />} />
               <StatCard label="Sources" value="4 types" icon={<Link2 className="w-4 h-4 text-violet-600" />} />
             </div>
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-teal-50/50 border border-teal-200/60">
-              <BookOpen className="w-4 h-4 text-teal-600 shrink-0" />
-              <p className="text-xs text-teal-700">Knowledge articles are <strong>globally shared</strong> across all agents. They provide reference information for answering customer questions.</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
+              <BookOpen className="w-4 h-4 text-primary shrink-0" />
+              <p className="text-xs text-primary">Knowledge articles are <strong>globally shared</strong> across all agents. They provide reference information for answering customer questions.</p>
             </div>
             <div className="space-y-2">
               {filteredArticles.map((article) => (
-                <Card key={article.id} className="shadow-sm hover:shadow-md transition-all hover:border-teal-200 cursor-pointer" onClick={() => toast.info("Article detail coming soon")}>
+                <Card key={article.id} className="shadow-sm hover:shadow-md transition-all hover:border-primary/20 cursor-pointer" onClick={() => toast.info("Article detail coming soon")}>
                   <CardContent className="p-4 flex items-center gap-4">
                     <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0"><TypeIcon type={article.type} /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium truncate">{article.title}</p>
-                        <Badge variant={article.status === "active" ? "default" : "secondary"} className={cn("text-[9px]", article.status === "active" ? "bg-teal-100 text-teal-700" : "")}>{article.status}</Badge>
+                        <Badge variant={article.status === "active" ? "default" : "secondary"} className={cn("text-[9px]", article.status === "active" ? "bg-primary/15 text-primary" : "")}>{article.status}</Badge>
                       </div>
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-[10px] text-muted-foreground">{article.source}</span>
@@ -149,9 +149,9 @@ export default function Knowledge() {
           <TabsContent value="skills" className="space-y-4">
             <div className="grid grid-cols-4 gap-3">
               <StatCard label="Total Skills" value={String(skills.length)} icon={<Target className="w-4 h-4 text-violet-600" />} />
-              <StatCard label="Active" value={String(skills.filter(s => s.status === "active").length)} icon={<CheckCircle2 className="w-4 h-4 text-teal-600" />} />
+              <StatCard label="Active" value={String(skills.filter(s => s.status === "active").length)} icon={<CheckCircle2 className="w-4 h-4 text-primary" />} />
               <StatCard label="Conversations" value={String(skills.reduce((s, sk) => s + sk.conversationsHandled, 0))} icon={<Eye className="w-4 h-4 text-blue-600" />} />
-              <StatCard label="Avg Success" value={`${(skills.filter(s => s.successRate > 0).reduce((s, sk) => s + sk.successRate, 0) / Math.max(skills.filter(s => s.successRate > 0).length, 1)).toFixed(1)}%`} icon={<CheckCircle2 className="w-4 h-4 text-teal-600" />} />
+              <StatCard label="Avg Success" value={`${(skills.filter(s => s.successRate > 0).reduce((s, sk) => s + sk.successRate, 0) / Math.max(skills.filter(s => s.successRate > 0).length, 1)).toFixed(1)}%`} icon={<CheckCircle2 className="w-4 h-4 text-primary" />} />
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-50/50 border border-violet-200/60">
               <Target className="w-4 h-4 text-violet-600 shrink-0" />
@@ -194,7 +194,7 @@ export default function Knowledge() {
           <TabsContent value="actions" className="space-y-4">
             <div className="grid grid-cols-4 gap-3">
               <StatCard label="Total Actions" value={String(actions.length)} icon={<Zap className="w-4 h-4 text-amber-600" />} />
-              <StatCard label="Enabled" value={String(actions.filter(a => a.enabled).length)} icon={<CheckCircle2 className="w-4 h-4 text-teal-600" />} />
+              <StatCard label="Enabled" value={String(actions.filter(a => a.enabled).length)} icon={<CheckCircle2 className="w-4 h-4 text-primary" />} />
               <StatCard label="Read-only" value={String(actions.filter(a => a.type === "read").length)} icon={<Eye className="w-4 h-4 text-blue-600" />} />
               <StatCard label="Write" value={String(actions.filter(a => a.type === "write").length)} icon={<Pencil className="w-4 h-4 text-amber-600" />} />
             </div>
@@ -235,7 +235,7 @@ export default function Knowledge() {
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Upload className="w-5 h-5 text-teal-600" /> Add Knowledge Source</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Upload className="w-5 h-5 text-primary" /> Add Knowledge Source</DialogTitle>
             <DialogDescription>Upload documents or connect external sources. Content will be parsed into knowledge articles.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -251,14 +251,14 @@ export default function Knowledge() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="border-2 border-dashed border-muted-foreground/20 rounded-xl p-8 text-center hover:border-teal-300 transition-colors cursor-pointer">
+            <div className="border-2 border-dashed border-muted-foreground/20 rounded-xl p-8 text-center hover:border-primary/30 transition-colors cursor-pointer">
               <Upload className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-sm font-medium text-muted-foreground">Drop files here or click to browse</p>
               <p className="text-xs text-muted-foreground/60 mt-1">PDF, DOCX, TXT up to 10MB</p>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancel</Button>
-              <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => { toast.success("Source added successfully"); setUploadOpen(false); }}>Upload & Parse</Button>
+              <Button className="bg-primary hover:bg-primary/90" onClick={() => { toast.success("Source added successfully"); setUploadOpen(false); }}>Upload & Parse</Button>
             </div>
           </div>
         </DialogContent>
@@ -292,7 +292,7 @@ export default function Knowledge() {
                     return (<div key={a} className="flex items-center gap-3 p-2.5 rounded-lg border border-border">
                       <Zap className="w-3.5 h-3.5 text-amber-500" /><span className="text-sm flex-1">{a}</span>
                       {ad && <Badge variant="outline" className="text-[9px]">via {ad.provider}</Badge>}
-                      {ad && (ad.enabled ? <CheckCircle2 className="w-3.5 h-3.5 text-teal-500" /> : <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />)}
+                      {ad && (ad.enabled ? <CheckCircle2 className="w-3.5 h-3.5 text-primary" /> : <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />)}
                     </div>);
                   }) : <p className="text-xs text-muted-foreground italic">No actions — this is a knowledge-only skill.</p>}
                 </div>

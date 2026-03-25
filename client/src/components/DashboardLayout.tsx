@@ -1,165 +1,161 @@
 /**
- * DashboardLayout: Virtual Office style sidebar navigation
- * MVP Navigation: Dashboard / Agents / Conversations / Knowledge / Settings
- * Design: Dark sidebar with teal accents, warm gray content area
+ * DashboardLayout — Seel product shell
+ * Left: Seel global sidebar (light bg, product-level nav)
+ * Right: AI Support module with top tab navigation
+ * Matches Seel product UI from reference screenshot
  */
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard,
-  Bot,
-  MessageSquare,
-  BookOpen,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Bell,
-  Search,
+  Home, BarChart3, ShoppingCart, AlertCircle, Shield,
+  Star, Bot, Puzzle, Bell, LayoutGrid, Users,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Bot, label: "Agents", path: "/agents" },
-  { icon: MessageSquare, label: "Conversations", path: "/conversations" },
-  { icon: BookOpen, label: "Knowledge", path: "/knowledge" },
-  { icon: Settings, label: "Settings", path: "/settings" },
+/* ── Seel global sidebar nav ── */
+const mainNav = [
+  { icon: Home, label: "Home", path: "/seel/home" },
+  { icon: BarChart3, label: "Analytics", path: "/seel/analytics" },
+  { icon: ShoppingCart, label: "Orders", path: "/seel/orders" },
+  { icon: AlertCircle, label: "Issues", path: "/seel/issues" },
+  { icon: Shield, label: "Protection", path: "/seel/protection" },
+  { icon: Star, label: "Reviews", path: "/seel/reviews" },
+  { icon: Bot, label: "AI support", path: "/" },
+  { icon: Puzzle, label: "Integrations", path: "/seel/integrations" },
+];
+
+const customizeNav = [
+  { icon: Bell, label: "Notification", path: "/seel/notification" },
+  { icon: LayoutGrid, label: "Widgets", path: "/seel/widgets" },
+  { icon: Users, label: "Customer portal", path: "/seel/customer-portal" },
+];
+
+/* ── AI Support top tabs ── */
+const aiTabs = [
+  { label: "Settings", path: "/settings" },
+  { label: "Agents", path: "/" },
+  { label: "Knowledges", path: "/knowledge" },
+  { label: "Test", path: "/test" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false);
   const [location] = useLocation();
 
+  // Determine if current route is within AI Support
+  const isAiSupport = !location.startsWith("/seel/");
+
+  // Determine active AI tab
+  const activeTab = (() => {
+    if (location === "/settings") return "/settings";
+    if (location === "/knowledge") return "/knowledge";
+    if (location === "/test" || location === "/conversations") return "/test";
+    // Default: Agents tab covers /, /agents, /agents/new, /agents/:id
+    return "/";
+  })();
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <motion.aside
-        initial={false}
-        animate={{ width: collapsed ? 72 : 240 }}
-        transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-        className="bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border shrink-0"
-      >
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* ── Seel Global Sidebar ── */}
+      <aside className="w-[200px] bg-sidebar border-r border-sidebar-border flex flex-col shrink-0">
         {/* Logo */}
-        <div className="h-16 flex items-center px-4 border-b border-sidebar-border">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-9 h-9 rounded-lg bg-teal-500 flex items-center justify-center shrink-0">
-              <Bot className="w-5 h-5 text-white" />
+        <div className="h-14 flex items-center px-4 border-b border-sidebar-border">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shrink-0">
+              <Shield className="w-4 h-4 text-white" />
             </div>
-            <AnimatePresence>
-              {!collapsed && (
-                <motion.div
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: "auto" }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="overflow-hidden whitespace-nowrap"
-                >
-                  <span className="font-bold text-base tracking-tight">Seel AI</span>
-                  <span className="text-xs text-sidebar-foreground/60 block -mt-0.5">Support Agent</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-muted-foreground">johndoe.myshopify.com</span>
+              <span className="text-muted-foreground/40 text-[10px]">▾</span>
+            </div>
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => {
-            const isActive = location === item.path || 
-              (item.path !== "/" && location.startsWith(item.path));
-            
-            const linkContent = (
-              <Link
-                key={item.path}
-                href={item.path}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-primary"
-                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-                )}
-              >
-                <item.icon className={cn("w-[18px] h-[18px] shrink-0", isActive && "text-teal-400")} />
-                <AnimatePresence>
-                  {!collapsed && (
-                    <motion.span
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: "auto" }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ duration: 0.15 }}
-                      className="overflow-hidden whitespace-nowrap"
-                    >
-                      {item.label}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-                {isActive && (
-                  <motion.div
-                    layoutId="activeIndicator"
-                    className="absolute left-0 w-[3px] h-6 bg-teal-400 rounded-r-full"
-                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                  />
-                )}
-              </Link>
-            );
-
-            if (collapsed) {
+        {/* Main nav */}
+        <nav className="flex-1 py-3 px-2.5 overflow-y-auto custom-scrollbar">
+          <div className="space-y-0.5">
+            {mainNav.map(item => {
+              const isActive = item.path === "/" ? isAiSupport : location.startsWith(item.path);
               return (
-                <Tooltip key={item.path} delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <div className="relative">{linkContent}</div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="font-medium">
-                    {item.label}
-                  </TooltipContent>
-                </Tooltip>
+                <Link key={item.path} href={item.path}>
+                  <div className={cn(
+                    "flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] transition-colors",
+                    isActive
+                      ? "text-primary font-semibold bg-primary/5"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent/60"
+                  )}>
+                    <item.icon className={cn("w-4 h-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} />
+                    <span>{item.label}</span>
+                  </div>
+                </Link>
               );
-            }
+            })}
+          </div>
 
-            return <div key={item.path} className="relative">{linkContent}</div>;
-          })}
-        </nav>
-
-        {/* Collapse toggle */}
-        <div className="p-2 border-t border-sidebar-border">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="w-full flex items-center justify-center py-2 rounded-lg text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
-          >
-            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
-        </div>
-      </motion.aside>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar */}
-        <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search conversations, agents, knowledge..."
-                className="pl-9 pr-4 py-2 w-80 bg-muted rounded-lg text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
-              />
+          {/* CUSTOMIZE section */}
+          <div className="mt-6">
+            <p className="px-2.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-2">Customize</p>
+            <div className="space-y-0.5">
+              {customizeNav.map(item => {
+                const isActive = location.startsWith(item.path);
+                return (
+                  <Link key={item.path} href={item.path}>
+                    <div className={cn(
+                      "flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] transition-colors",
+                      isActive
+                        ? "text-primary font-semibold bg-primary/5"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent/60"
+                    )}>
+                      <item.icon className={cn("w-4 h-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} />
+                      <span>{item.label}</span>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
-              <Bell className="w-[18px] h-[18px] text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
+        </nav>
+      </aside>
+
+      {/* ── Main Content Area ── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top header bar */}
+        <header className="h-14 bg-card border-b border-border flex items-center justify-between px-6 shrink-0">
+          <div className="flex items-center gap-6">
+            {/* Module title */}
+            <h1 className="text-lg font-semibold tracking-tight">AI support</h1>
+
+            {/* AI Support tabs */}
+            {isAiSupport && (
+              <nav className="flex items-center gap-1 -mb-[1px]">
+                {aiTabs.map(tab => {
+                  const isActive = activeTab === tab.path;
+                  return (
+                    <Link key={tab.path} href={tab.path}>
+                      <div className={cn(
+                        "px-3 py-3.5 text-[13px] transition-colors relative",
+                        isActive
+                          ? "text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}>
+                        {tab.label}
+                        {isActive && (
+                          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-t-full" />
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button className="p-2 rounded-md hover:bg-muted transition-colors">
+              <HelpCircle className="w-4 h-4 text-muted-foreground" />
             </button>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
-                <span className="text-xs font-semibold text-teal-700">CX</span>
-              </div>
-              <div className="text-sm">
-                <p className="font-medium leading-none">CX Manager</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Admin</p>
-              </div>
+            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center">
+              <span className="text-[10px] font-semibold text-white">J</span>
             </div>
           </div>
         </header>
