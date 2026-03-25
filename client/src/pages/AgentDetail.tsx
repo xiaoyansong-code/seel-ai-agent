@@ -12,7 +12,7 @@ import {
   Target, Power, Eye, Play, Instagram,
   ExternalLink, Plus, X,
   Loader2, Package, Shield, ShoppingCart,
-  Lock, Copy, HelpCircle, Globe,
+  Lock, Copy, HelpCircle, Globe, RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -166,6 +167,10 @@ function SettingUpView({ agent }: { agent: AgentData }) {
   // Channel config
   const [replyMode, setReplyMode] = useState("internal_note");
   const [escalationGroup, setEscalationGroup] = useState("tier-2-support");
+  const [confidenceThreshold, setConfidenceThreshold] = useState([80]);
+
+  // Webhook status
+  const [webhookStatus, setWebhookStatus] = useState<"waiting" | "connected" | "testing">("waiting");
 
   // Skills
   const [skills, setSkills] = useState<Skill[]>(agent.skills);
@@ -271,6 +276,20 @@ function SettingUpView({ agent }: { agent: AgentData }) {
                 </div>
               </div>
             </div>
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-2">
+                <div className={cn("w-2 h-2 rounded-full", webhookStatus === "connected" ? "bg-primary" : webhookStatus === "testing" ? "bg-amber-400 animate-pulse" : "bg-muted-foreground/30")} />
+                <span className="text-[11px] text-muted-foreground">
+                  {webhookStatus === "connected" ? "Last received: 2 min ago" : webhookStatus === "testing" ? "Testing..." : "Waiting for first webhook..."}
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" className="text-xs h-7 gap-1" onClick={() => {
+                setWebhookStatus("testing");
+                setTimeout(() => { setWebhookStatus("connected"); toast.success("Webhook connection verified"); }, 1500);
+              }}>
+                <RefreshCw className="w-3 h-3" /> Test connection
+              </Button>
+            </div>
             <p className="text-[11px] text-muted-foreground">
               Create a Trigger in Zendesk to send new tickets to this webhook.{" "}
               <button className="text-primary hover:underline" onClick={() => setTriggerGuideOpen(true)}>View guide</button>
@@ -316,6 +335,14 @@ function SettingUpView({ agent }: { agent: AgentData }) {
                 </Select>
                 <p className="text-[11px] text-muted-foreground mt-1">Unresolved tickets are reassigned to this group.</p>
               </div>
+            </div>
+            <div className="pt-3 border-t">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs">Confidence threshold</Label>
+                <span className="text-xs font-mono font-medium">{confidenceThreshold[0]}%</span>
+              </div>
+              <Slider value={confidenceThreshold} onValueChange={setConfidenceThreshold} min={50} max={99} step={1} className="w-full" />
+              <p className="text-[11px] text-muted-foreground mt-1.5">Below this confidence level, the agent escalates to the human group instead of replying.</p>
             </div>
           </CardContent>
         </Card>
