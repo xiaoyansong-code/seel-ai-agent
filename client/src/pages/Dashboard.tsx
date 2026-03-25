@@ -1,7 +1,9 @@
 /**
- * Dashboard — V7 Production MVP
- * Design: Active Agents merged into metrics row. Improve + Scale combined into "What's Next".
- * Improve items: short title + muted status, visually distinct.
+ * Dashboard — V8 Production MVP
+ * Changes from V7:
+ * - Analytics link moved from What's Next header to below Core Metrics
+ * - Removed "Configure guardrails" and "Fine-tune personality" from Improve
+ * - Improve items: no icons, status + title on same line, compact
  */
 import { useState } from "react";
 import { Link } from "wouter";
@@ -9,8 +11,7 @@ import { motion } from "framer-motion";
 import {
   Bot, Plus, ArrowRight, CheckCircle2,
   Mail, Instagram, MessageCircle,
-  BookOpen, Target, Shield, Package, Settings2,
-  BarChart3, Users, Gauge, SmilePlus,
+  Users, Gauge, SmilePlus,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,16 +114,18 @@ function HasAgentState() {
         <MetricCard icon={SmilePlus} label="Sentiment" value="+0.3" sub="CSAT change (30d)" />
       </motion.div>
 
+      {/* ── Analytics link — directly below Core Metrics ── */}
+      <motion.div variants={iV} className="flex justify-end -mt-2">
+        <Link href="/analytics">
+          <span className="text-[11px] text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 cursor-pointer">
+            View Agent Performance <ArrowRight className="w-2.5 h-2.5" />
+          </span>
+        </Link>
+      </motion.div>
+
       {/* ── What's Next — single section combining Improve + Scale ── */}
       <motion.div variants={iV}>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">What's next</p>
-          <Link href="/analytics">
-            <span className="text-[11px] text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 cursor-pointer">
-              <BarChart3 className="w-3 h-3" /> Analytics <ArrowRight className="w-2.5 h-2.5" />
-            </span>
-          </Link>
-        </div>
+        <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase mb-2">What's next</p>
         <Card className="shadow-sm">
           <CardContent className="p-2">
             {/* Improve items */}
@@ -130,39 +133,22 @@ function HasAgentState() {
               <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-0.5">Improve</p>
             </div>
             <ImproveItem
-              icon={Package}
               title="Sync all orders"
               status="Partial sync"
               progress={40}
               href="/settings"
             />
             <ImproveItem
-              icon={BookOpen}
               title="Enrich knowledge base"
               status="3 of 20+ articles"
               progress={15}
               href="/knowledge"
             />
             <ImproveItem
-              icon={Target}
               title="Activate skills"
               status="2 of 8 enabled"
               progress={25}
               href="/knowledge"
-            />
-            <ImproveItem
-              icon={Shield}
-              title="Configure guardrails"
-              status="Not configured"
-              progress={0}
-              href="/settings"
-            />
-            <ImproveItem
-              icon={Settings2}
-              title="Fine-tune personality"
-              status="Default"
-              progress={0}
-              href="/agents/rc-chat"
             />
 
             {/* Divider */}
@@ -219,18 +205,15 @@ function MetricCard({ icon: Icon, label, value, sub, change }: {
   );
 }
 
-function ImproveItem({ icon: Icon, title, status, progress, href }: {
-  icon: React.ElementType; title: string; status: string; progress: number; href: string;
+function ImproveItem({ title, status, progress, href }: {
+  title: string; status: string; progress: number; href: string;
 }) {
   return (
     <Link href={href}>
       <div className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-muted/40 transition-colors cursor-pointer group">
-        <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center shrink-0">
-          <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex items-baseline gap-2">
           <p className="text-sm font-medium group-hover:text-teal-700 transition-colors leading-tight">{title}</p>
-          <p className="text-[11px] text-muted-foreground leading-tight">{status}</p>
+          <span className="text-[11px] text-muted-foreground leading-tight shrink-0">{status}</span>
         </div>
         {progress > 0 && progress < 100 && (
           <div className="w-14 shrink-0">
