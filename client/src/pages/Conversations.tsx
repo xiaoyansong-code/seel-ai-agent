@@ -1,37 +1,46 @@
 /**
  * Performance > Conversations
- * Standard data list (not chat bubbles) with:
- * - Columns: Order, Session Subject, Intent, Result, Approach, Turns, Sentiment Flow
- * - Plus: Agent, Duration, Actions executed
- * - Click row → Conversation Detail Page with Meta Info + Chat History + Reasoning Trace
+ *
+ * Redesign notes:
+ * - Added "By Agent" filter (reads ?agent= from URL for deep-link from Agent Detail)
+ * - Sentiment: replaced opaque dots with a mini line-chart showing sentiment arc (labeled)
+ * - Reasoning Trace: restructured per agent-reply turn, each turn shows Agent Thinking
+ *   (natural language reasoning) + Actions + Knowledge used. No overly technical metrics.
+ * - Bad Case feedback: inline comment box next to each agent reply in detail view
  */
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSearch } from "wouter";
 import {
-  Search, ArrowLeft, ChevronDown,
+  Search, ArrowLeft, ChevronDown, ChevronRight,
   MessageSquare, CheckCircle2, ArrowUpRight,
-  Clock, Bot, User, Zap, Brain, BookOpen, Target,
-  Send, Eye,
+  Clock, Bot, User, Zap, Brain, BookOpen,
+  Send, Eye, Flag, MessageCircleWarning,
   Mail, MessageCircle, Instagram,
-  ThumbsUp, ThumbsDown,
+  ThumbsUp, ThumbsDown, X,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 /* ── Types ── */
+interface AgentReply {
+  replyText: string;
+  replyTime: string;
+  thinking: string;          // Natural language reasoning — what the agent "thought"
+  actions: string[];         // Actions executed for this reply
+  knowledgeUsed?: string;    // Knowledge article referenced (if any)
+}
+
 interface ConversationRow {
   id: string;
   orderId: string;
@@ -41,200 +50,180 @@ interface ConversationRow {
   result: "Resolved" | "Escalated" | "Pending";
   approach: string;
   turns: number;
-  sentimentFlow: ("positive" | "neutral" | "negative")[];
+  sentimentStart: "positive" | "neutral" | "negative";
+  sentimentEnd: "positive" | "neutral" | "negative";
   agent: string;
   duration: string;
   actionsExecuted: string[];
   channel: "email" | "live_chat" | "social";
   timestamp: string;
-  messages: { role: "customer" | "agent"; text: string; time: string; action?: string }[];
-  reasoningTrace: ReasoningStep[];
-}
-
-interface ReasoningStep {
-  type: "intent" | "skill" | "knowledge" | "action" | "response" | "escalation";
-  label: string;
-  detail: string;
-  timestamp: string;
-  metadata?: Record<string, string>;
+  messages: { role: "customer" | "agent"; text: string; time: string }[];
+  agentReplies: AgentReply[];  // One per agent turn — maps to reasoning trace
 }
 
 /* ── Mock Data ── */
 const conversations: ConversationRow[] = [
   {
-    id: "C-1001",
-    orderId: "#ORD-8834",
-    subject: "Where is my order?",
-    customer: "Sarah Johnson",
-    intent: "Order Tracking",
-    result: "Resolved",
-    approach: "Autopilot",
-    turns: 3,
-    sentimentFlow: ["neutral", "neutral", "positive"],
-    agent: "RC Live Chat Agent",
-    duration: "1m 12s",
-    actionsExecuted: ["get_order_status", "send_tracking_link"],
-    channel: "live_chat",
-    timestamp: "Today 14:33",
+    id: "C-1001", orderId: "#ORD-8834", subject: "Where is my order?", customer: "Sarah Johnson",
+    intent: "Order Tracking", result: "Resolved", approach: "Autopilot", turns: 3,
+    sentimentStart: "neutral", sentimentEnd: "positive",
+    agent: "RC Live Chat Agent", duration: "1m 12s",
+    actionsExecuted: ["get_order_status", "send_tracking_link"], channel: "live_chat", timestamp: "Today 14:33",
     messages: [
       { role: "customer", text: "Hi, I placed an order 3 days ago and haven't received any shipping updates. Order #8834.", time: "14:32" },
-      { role: "agent", text: "Hello Sarah! Let me check the status of your order #8834 right away.", time: "14:32", action: "get_order_status" },
-      { role: "agent", text: "I found your order. It's currently in transit with FedEx. Tracking number: FX-2847391. The estimated delivery is March 27th. Here's your tracking link: https://track.fedex.com/FX-2847391", time: "14:33", action: "send_tracking_link" },
+      { role: "agent", text: "Hello Sarah! Let me check the status of your order #8834 right away.", time: "14:32" },
+      { role: "agent", text: "I found your order. It's currently in transit with FedEx. Tracking number: FX-2847391. The estimated delivery is March 27th. Here's your tracking link: https://track.fedex.com/FX-2847391", time: "14:33" },
       { role: "customer", text: "Oh great, thank you! That's very helpful.", time: "14:33" },
     ],
-    reasoningTrace: [
-      { type: "intent", label: "Intent Detected", detail: "Order Tracking (WISMO) — confidence 0.96", timestamp: "14:32:01", metadata: { "Raw input": "Where is my order #8834", "Top 3 intents": "WISMO (0.96), Order Status (0.82), Shipping Issue (0.34)" } },
-      { type: "skill", label: "Skill Selected", detail: "Order Tracking (WISMO)", timestamp: "14:32:01", metadata: { "Skill ID": "s1", "Enabled": "Yes", "Priority": "1" } },
-      { type: "knowledge", label: "Knowledge Retrieved", detail: "Shipping FAQ — 'How to track your order' (relevance: 0.91)", timestamp: "14:32:02", metadata: { "Source": "Knowledge Base", "Article": "Shipping FAQ", "Chunk": "Section 2: Tracking" } },
-      { type: "action", label: "Action Called", detail: "get_order_status(order_id='8834') → Status: In Transit, Carrier: FedEx, ETA: Mar 27", timestamp: "14:32:03", metadata: { "API": "Shopify Orders API", "Response time": "340ms", "Order total": "$67.50" } },
-      { type: "action", label: "Action Called", detail: "send_tracking_link(tracking='FX-2847391') → Link generated", timestamp: "14:32:04", metadata: { "Carrier": "FedEx", "Tracking URL": "https://track.fedex.com/FX-2847391" } },
-      { type: "response", label: "Response Generated", detail: "Composed reply with order status, tracking number, ETA, and tracking link", timestamp: "14:32:05", metadata: { "Tone": "Friendly, informative", "Length": "42 words" } },
+    agentReplies: [
+      {
+        replyText: "Hello Sarah! Let me check the status of your order #8834 right away.",
+        replyTime: "14:32",
+        thinking: "The customer is asking about their order status — this is a standard WISMO (Where Is My Order) request. I'll look up order #8834 in the system to get the current shipping status before responding.",
+        actions: ["get_order_status → Order #8834: In Transit, FedEx, ETA Mar 27"],
+        knowledgeUsed: "Shipping FAQ — How to track your order",
+      },
+      {
+        replyText: "I found your order. It's currently in transit with FedEx. Tracking number: FX-2847391. The estimated delivery is March 27th.",
+        replyTime: "14:33",
+        thinking: "I have the order details now. The order is in transit and on schedule. I should provide the tracking number and a direct tracking link so the customer can monitor it themselves. This should fully resolve their question.",
+        actions: ["send_tracking_link → Generated FedEx tracking URL"],
+      },
     ],
   },
   {
-    id: "C-1002",
-    orderId: "#ORD-7721",
-    subject: "Damaged item — want refund",
-    customer: "Mike Chen",
-    intent: "Seel Protection Claim",
-    result: "Resolved",
-    approach: "Autopilot",
-    turns: 4,
-    sentimentFlow: ["negative", "negative", "neutral", "positive"],
-    agent: "RC Live Chat Agent",
-    duration: "2m 45s",
-    actionsExecuted: ["get_order_status", "check_protection_eligibility", "process_refund"],
-    channel: "live_chat",
-    timestamp: "Today 14:30",
+    id: "C-1002", orderId: "#ORD-7721", subject: "Damaged item — want refund", customer: "Mike Chen",
+    intent: "Seel Protection Claim", result: "Resolved", approach: "Autopilot", turns: 4,
+    sentimentStart: "negative", sentimentEnd: "positive",
+    agent: "RC Live Chat Agent", duration: "2m 45s",
+    actionsExecuted: ["get_order_status", "check_protection_eligibility", "process_refund"], channel: "live_chat", timestamp: "Today 14:30",
     messages: [
       { role: "customer", text: "I want a refund for order #7721. The product arrived damaged.", time: "14:28" },
-      { role: "agent", text: "I'm sorry to hear about the damage, Mike. Let me look into this for you right away.", time: "14:28", action: "get_order_status" },
-      { role: "agent", text: "I can see your order #7721 is covered by Seel Protection. Since the item arrived damaged, I've initiated a full refund of $45.99 to your original payment method. You should see it within 3-5 business days.", time: "14:30", action: "process_refund" },
+      { role: "agent", text: "I'm sorry to hear about the damage, Mike. Let me look into this for you right away.", time: "14:28" },
+      { role: "agent", text: "I can see your order #7721 is covered by Seel Protection. Since the item arrived damaged, I've initiated a full refund of $45.99 to your original payment method. You should see it within 3-5 business days.", time: "14:30" },
       { role: "customer", text: "That was fast! Thank you so much.", time: "14:30" },
     ],
-    reasoningTrace: [
-      { type: "intent", label: "Intent Detected", detail: "Seel Protection Claim — confidence 0.93", timestamp: "14:28:01", metadata: { "Raw input": "Damaged item, want refund", "Keywords": "damaged, refund" } },
-      { type: "skill", label: "Skill Selected", detail: "Seel Protection Claims", timestamp: "14:28:01" },
-      { type: "action", label: "Action Called", detail: "get_order_status(order_id='7721') → Delivered, Seel Protected", timestamp: "14:28:02", metadata: { "Protection": "Active", "Order total": "$45.99" } },
-      { type: "action", label: "Action Called", detail: "check_protection_eligibility(order_id='7721') → Eligible (within 30-day window)", timestamp: "14:28:03", metadata: { "Delivery date": "Mar 20", "Claim window": "30 days", "Remaining": "27 days" } },
-      { type: "action", label: "Action Called", detail: "process_refund(order_id='7721', amount=$45.99, reason='damaged') → Refund initiated", timestamp: "14:29:01", metadata: { "Refund method": "Original payment", "Processing time": "3-5 business days" } },
-      { type: "response", label: "Response Generated", detail: "Confirmed protection eligibility and refund processing with timeline", timestamp: "14:29:02" },
+    agentReplies: [
+      {
+        replyText: "I'm sorry to hear about the damage, Mike. Let me look into this for you right away.",
+        replyTime: "14:28",
+        thinking: "The customer reports a damaged item and wants a refund. I need to first check the order details and whether it's covered by Seel Protection, which would allow me to process the refund automatically.",
+        actions: ["get_order_status → Order #7721: Delivered, Seel Protected"],
+      },
+      {
+        replyText: "I can see your order #7721 is covered by Seel Protection. Since the item arrived damaged, I've initiated a full refund of $45.99.",
+        replyTime: "14:30",
+        thinking: "Good news — this order has Seel Protection and is within the 30-day claim window (delivered Mar 20, 27 days remaining). Per our policy, damaged items with active protection qualify for an automatic full refund. I'll process it now and let the customer know the timeline.",
+        actions: [
+          "check_protection_eligibility → Eligible (within 30-day window)",
+          "process_refund → $45.99 refund initiated to original payment",
+        ],
+      },
     ],
   },
   {
-    id: "C-1003",
-    orderId: "#ORD-6655",
-    subject: "Return not processed after 2 weeks",
-    customer: "Emily Davis",
-    intent: "Return Inquiry",
-    result: "Escalated",
-    approach: "Autopilot",
-    turns: 3,
-    sentimentFlow: ["negative", "negative", "negative"],
-    agent: "RC Live Chat Agent",
-    duration: "3m 20s",
-    actionsExecuted: ["get_order_status", "escalate_to_human"],
-    channel: "social",
-    timestamp: "Today 14:22",
+    id: "C-1003", orderId: "#ORD-6655", subject: "Return not processed after 2 weeks", customer: "Emily Davis",
+    intent: "Return Inquiry", result: "Escalated", approach: "Autopilot", turns: 3,
+    sentimentStart: "negative", sentimentEnd: "negative",
+    agent: "RC Live Chat Agent", duration: "3m 20s",
+    actionsExecuted: ["get_order_status", "escalate_to_human"], channel: "social", timestamp: "Today 14:22",
     messages: [
       { role: "customer", text: "This is the THIRD time I'm asking about my return. Nobody is helping me!", time: "14:20" },
       { role: "agent", text: "I sincerely apologize for the inconvenience, Emily. Let me review your return request right away.", time: "14:20" },
-      { role: "agent", text: "I can see your return for order #6655 was initiated but not yet processed. I understand your frustration. I'm escalating this to our team lead for immediate resolution.", time: "14:22", action: "escalate_to_human" },
+      { role: "agent", text: "I can see your return for order #6655 was initiated but not yet processed. I understand your frustration. I'm escalating this to our team lead for immediate resolution.", time: "14:22" },
     ],
-    reasoningTrace: [
-      { type: "intent", label: "Intent Detected", detail: "Return Inquiry — confidence 0.89", timestamp: "14:20:01" },
-      { type: "skill", label: "Skill Selected", detail: "Order Cancellation (closest match)", timestamp: "14:20:01" },
-      { type: "knowledge", label: "Knowledge Retrieved", detail: "Returns Policy — 'Processing times and escalation procedures'", timestamp: "14:20:02" },
-      { type: "action", label: "Action Called", detail: "get_order_status(order_id='6655') → Return initiated Mar 8, not yet processed", timestamp: "14:20:03", metadata: { "Return initiated": "Mar 8", "Days pending": "18", "SLA": "7 days" } },
-      { type: "escalation", label: "Escalation Triggered", detail: "Reason: Return SLA exceeded (18 days > 7 day SLA) + negative sentiment + repeat contact", timestamp: "14:21:01", metadata: { "Escalation group": "Tier 2 Support", "Priority": "High", "Reason codes": "SLA breach, repeat contact, negative sentiment" } },
+    agentReplies: [
+      {
+        replyText: "I sincerely apologize for the inconvenience, Emily. Let me review your return request right away.",
+        replyTime: "14:20",
+        thinking: "The customer is clearly frustrated — this is their third contact about the same issue. I need to acknowledge their frustration first, then quickly look up the return status to understand what went wrong.",
+        actions: ["get_order_status → Return initiated Mar 8, not yet processed (18 days pending, SLA is 7 days)"],
+        knowledgeUsed: "Returns Policy — Processing times and escalation procedures",
+      },
+      {
+        replyText: "I can see your return for order #6655 was initiated but not yet processed. I'm escalating this to our team lead for immediate resolution.",
+        replyTime: "14:22",
+        thinking: "The return has been pending for 18 days, which far exceeds our 7-day SLA. Combined with the customer's negative sentiment and this being a repeat contact, I should escalate this immediately rather than try to handle it myself. This needs human intervention from a team lead.",
+        actions: ["escalate_to_human → Escalated to Tier 2 Support (Priority: High)"],
+      },
     ],
   },
   {
-    id: "C-1004",
-    orderId: "#ORD-9012",
-    subject: "Change shipping address",
-    customer: "James Wilson",
-    intent: "Order Changes",
-    result: "Resolved",
-    approach: "Shadow",
-    turns: 3,
-    sentimentFlow: ["neutral", "positive"],
-    agent: "Email Support Agent",
-    duration: "4m 10s",
-    actionsExecuted: ["get_order_status", "update_shipping_address"],
-    channel: "email",
-    timestamp: "Today 13:45",
+    id: "C-1004", orderId: "#ORD-9012", subject: "Change shipping address", customer: "James Wilson",
+    intent: "Order Changes", result: "Resolved", approach: "Shadow", turns: 3,
+    sentimentStart: "neutral", sentimentEnd: "positive",
+    agent: "Email Support Agent", duration: "4m 10s",
+    actionsExecuted: ["get_order_status", "update_shipping_address"], channel: "email", timestamp: "Today 13:45",
     messages: [
       { role: "customer", text: "Can I change my shipping address for order #9012? I moved to 456 Oak Ave, Portland OR 97201.", time: "13:40" },
-      { role: "agent", text: "Of course, James! I've updated the shipping address for order #9012 to 456 Oak Ave, Portland OR 97201. The package hasn't shipped yet, so the change will apply.", time: "13:44", action: "update_shipping_address" },
+      { role: "agent", text: "Of course, James! I've updated the shipping address for order #9012 to 456 Oak Ave, Portland OR 97201. The package hasn't shipped yet, so the change will apply.", time: "13:44" },
       { role: "customer", text: "Perfect, thanks!", time: "13:45" },
     ],
-    reasoningTrace: [
-      { type: "intent", label: "Intent Detected", detail: "Order Changes — Address Update — confidence 0.94", timestamp: "13:40:01" },
-      { type: "skill", label: "Skill Selected", detail: "Order Cancellation (Order Changes)", timestamp: "13:40:01" },
-      { type: "action", label: "Action Called", detail: "get_order_status(order_id='9012') → Processing, not yet shipped", timestamp: "13:40:02", metadata: { "Status": "Processing", "Shipped": "No" } },
-      { type: "action", label: "Action Called", detail: "update_shipping_address(order_id='9012', address='456 Oak Ave, Portland OR 97201') → Success", timestamp: "13:43:01", metadata: { "Previous address": "123 Main St, Seattle WA 98101", "New address": "456 Oak Ave, Portland OR 97201" } },
-      { type: "response", label: "Response Generated", detail: "Confirmed address update with details", timestamp: "13:43:02" },
+    agentReplies: [
+      {
+        replyText: "Of course, James! I've updated the shipping address for order #9012 to 456 Oak Ave, Portland OR 97201.",
+        replyTime: "13:44",
+        thinking: "The customer wants to update their shipping address. I need to first check if the order has already shipped — if it has, I can't change the address. Let me look up the order status. The order is still in Processing and hasn't shipped yet, so I can safely update the address.",
+        actions: [
+          "get_order_status → Order #9012: Processing, not yet shipped",
+          "update_shipping_address → Updated from 123 Main St, Seattle WA to 456 Oak Ave, Portland OR 97201",
+        ],
+      },
     ],
   },
   {
-    id: "C-1005",
-    orderId: "#ORD-8890",
-    subject: "Cancel my order",
-    customer: "Lisa Park",
-    intent: "Order Cancellation",
-    result: "Resolved",
-    approach: "Autopilot",
-    turns: 3,
-    sentimentFlow: ["neutral", "neutral", "positive"],
-    agent: "RC Live Chat Agent",
-    duration: "1m 30s",
-    actionsExecuted: ["get_order_status", "cancel_order", "process_refund"],
-    channel: "live_chat",
-    timestamp: "Today 12:50",
+    id: "C-1005", orderId: "#ORD-8890", subject: "Cancel my order", customer: "Lisa Park",
+    intent: "Order Cancellation", result: "Resolved", approach: "Autopilot", turns: 3,
+    sentimentStart: "neutral", sentimentEnd: "positive",
+    agent: "RC Live Chat Agent", duration: "1m 30s",
+    actionsExecuted: ["get_order_status", "cancel_order", "process_refund"], channel: "live_chat", timestamp: "Today 12:50",
     messages: [
       { role: "customer", text: "Please cancel my order #8890. I found a better deal elsewhere.", time: "12:48" },
-      { role: "agent", text: "I understand, Lisa. Let me process the cancellation for order #8890.", time: "12:48", action: "cancel_order" },
-      { role: "agent", text: "Your order #8890 has been cancelled and a full refund of $78.00 has been initiated. You'll see it in 3-5 business days.", time: "12:50", action: "process_refund" },
+      { role: "agent", text: "I understand, Lisa. Let me process the cancellation for order #8890.", time: "12:48" },
+      { role: "agent", text: "Your order #8890 has been cancelled and a full refund of $78.00 has been initiated. You'll see it in 3-5 business days.", time: "12:50" },
       { role: "customer", text: "Thanks for the quick help!", time: "12:50" },
     ],
-    reasoningTrace: [
-      { type: "intent", label: "Intent Detected", detail: "Order Cancellation — confidence 0.97", timestamp: "12:48:01" },
-      { type: "skill", label: "Skill Selected", detail: "Order Cancellation", timestamp: "12:48:01" },
-      { type: "action", label: "Action Called", detail: "get_order_status(order_id='8890') → Processing, not shipped", timestamp: "12:48:02" },
-      { type: "action", label: "Action Called", detail: "cancel_order(order_id='8890') → Cancelled", timestamp: "12:48:03" },
-      { type: "action", label: "Action Called", detail: "process_refund(order_id='8890', amount=$78.00) → Refund initiated", timestamp: "12:49:01" },
-      { type: "response", label: "Response Generated", detail: "Confirmed cancellation and refund with timeline", timestamp: "12:49:02" },
+    agentReplies: [
+      {
+        replyText: "I understand, Lisa. Let me process the cancellation for order #8890.",
+        replyTime: "12:48",
+        thinking: "The customer wants to cancel their order. I need to check if it's still in a cancellable state (not yet shipped). Let me look up the order first.",
+        actions: ["get_order_status → Order #8890: Processing, not shipped"],
+      },
+      {
+        replyText: "Your order #8890 has been cancelled and a full refund of $78.00 has been initiated.",
+        replyTime: "12:50",
+        thinking: "The order hasn't shipped yet, so cancellation is straightforward. Per our policy, cancelled orders receive an automatic full refund. I'll process both the cancellation and refund together and confirm the timeline.",
+        actions: [
+          "cancel_order → Order #8890 cancelled",
+          "process_refund → $78.00 refund initiated (3-5 business days)",
+        ],
+      },
     ],
   },
   {
-    id: "C-1006",
-    orderId: "#ORD-7788",
-    subject: "Order delivery status",
-    customer: "Tom Baker",
-    intent: "Order Tracking",
-    result: "Resolved",
-    approach: "Autopilot",
-    turns: 2,
-    sentimentFlow: ["neutral", "positive"],
-    agent: "RC Live Chat Agent",
-    duration: "0m 45s",
-    actionsExecuted: ["get_order_status"],
-    channel: "live_chat",
-    timestamp: "Today 11:20",
+    id: "C-1006", orderId: "#ORD-7788", subject: "Order delivery status", customer: "Tom Baker",
+    intent: "Order Tracking", result: "Resolved", approach: "Autopilot", turns: 2,
+    sentimentStart: "neutral", sentimentEnd: "positive",
+    agent: "RC Live Chat Agent", duration: "0m 45s",
+    actionsExecuted: ["get_order_status"], channel: "live_chat", timestamp: "Today 11:20",
     messages: [
       { role: "customer", text: "Where is my order #7788?", time: "11:18" },
-      { role: "agent", text: "Your order is out for delivery today! Tracking: FX-1234567. You should receive it by end of day.", time: "11:19", action: "get_order_status" },
+      { role: "agent", text: "Your order is out for delivery today! Tracking: FX-1234567. You should receive it by end of day.", time: "11:19" },
       { role: "customer", text: "Perfect, thanks!", time: "11:20" },
     ],
-    reasoningTrace: [
-      { type: "intent", label: "Intent Detected", detail: "Order Tracking (WISMO) — confidence 0.98", timestamp: "11:18:01" },
-      { type: "skill", label: "Skill Selected", detail: "Order Tracking (WISMO)", timestamp: "11:18:01" },
-      { type: "action", label: "Action Called", detail: "get_order_status(order_id='7788') → Out for delivery", timestamp: "11:18:02" },
-      { type: "response", label: "Response Generated", detail: "Provided delivery status and tracking number", timestamp: "11:18:03" },
+    agentReplies: [
+      {
+        replyText: "Your order is out for delivery today! Tracking: FX-1234567. You should receive it by end of day.",
+        replyTime: "11:19",
+        thinking: "Simple WISMO request. The order is already out for delivery today, which is great news. I'll share the tracking number and the expected delivery window right away — no need for additional steps.",
+        actions: ["get_order_status → Order #7788: Out for delivery today, FedEx FX-1234567"],
+      },
     ],
   },
 ];
+
+const agentList = Array.from(new Set(conversations.map(c => c.agent)));
 
 /* ── Helpers ── */
 const resultConfig: Record<string, { color: string; icon: typeof CheckCircle2 }> = {
@@ -249,44 +238,65 @@ const channelIcons: Record<string, { icon: typeof Mail; color: string }> = {
   social: { icon: Instagram, color: "text-pink-500" },
 };
 
-function SentimentDots({ flow }: { flow: ("positive" | "neutral" | "negative")[] }) {
-  const colors = { positive: "bg-primary", neutral: "bg-amber-400", negative: "bg-red-400" };
+/* Sentiment arc: shows start → end with arrow and color-coded labels */
+function SentimentArc({ start, end }: { start: string; end: string }) {
+  const colorMap: Record<string, { text: string; bg: string; label: string }> = {
+    positive: { text: "text-primary", bg: "bg-primary", label: "Positive" },
+    neutral: { text: "text-amber-600", bg: "bg-amber-400", label: "Neutral" },
+    negative: { text: "text-red-500", bg: "bg-red-400", label: "Negative" },
+  };
+  const s = colorMap[start] || colorMap.neutral;
+  const e = colorMap[end] || colorMap.neutral;
+  const improved = (start === "negative" && end !== "negative") || (start === "neutral" && end === "positive");
+  const worsened = (start === "positive" && end !== "positive") || (start === "neutral" && end === "negative");
+
   return (
-    <div className="flex items-center gap-0.5">
-      {flow.map((s, i) => (
-        <div key={i} className={cn("w-1.5 h-1.5 rounded-full", colors[s])} title={s} />
-      ))}
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-1 cursor-default">
+          <div className={cn("w-2 h-2 rounded-full", s.bg)} />
+          <svg width="12" height="8" viewBox="0 0 12 8" className={cn(improved ? "text-primary" : worsened ? "text-red-400" : "text-muted-foreground/40")}>
+            <path d="M0 4h8m0 0L6 2m2 2L6 6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div className={cn("w-2 h-2 rounded-full", e.bg)} />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-[10px]">
+        <span className={s.text}>{s.label}</span> → <span className={e.text}>{e.label}</span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
-
-const traceTypeConfig: Record<string, { icon: typeof Brain; color: string; bgColor: string }> = {
-  intent: { icon: Brain, color: "text-blue-600", bgColor: "bg-blue-50" },
-  skill: { icon: Target, color: "text-primary", bgColor: "bg-primary/10" },
-  knowledge: { icon: BookOpen, color: "text-amber-600", bgColor: "bg-amber-50" },
-  action: { icon: Zap, color: "text-orange-600", bgColor: "bg-orange-50" },
-  response: { icon: Send, color: "text-primary", bgColor: "bg-primary/10" },
-  escalation: { icon: ArrowUpRight, color: "text-red-600", bgColor: "bg-red-50" },
-};
 
 const cV = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.03 } } };
 const iV = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.2 } } };
 
 export default function Conversations() {
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const agentFromUrl = urlParams.get("agent") || "all";
+
   const [selectedConv, setSelectedConv] = useState<ConversationRow | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [resultFilter, setResultFilter] = useState("all");
   const [intentFilter, setIntentFilter] = useState("all");
+  const [agentFilter, setAgentFilter] = useState(agentFromUrl);
 
-  const filtered = conversations.filter(c => {
+  // Sync URL param on mount
+  useEffect(() => {
+    if (agentFromUrl !== "all") setAgentFilter(agentFromUrl);
+  }, [agentFromUrl]);
+
+  const filtered = useMemo(() => conversations.filter(c => {
     if (resultFilter !== "all" && c.result !== resultFilter) return false;
     if (intentFilter !== "all" && c.intent !== intentFilter) return false;
+    if (agentFilter !== "all" && c.agent !== agentFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return c.customer.toLowerCase().includes(q) || c.orderId.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q);
     }
     return true;
-  });
+  }), [resultFilter, intentFilter, agentFilter, searchQuery]);
 
   if (selectedConv) {
     return <ConversationDetail conv={selectedConv} onBack={() => setSelectedConv(null)} />;
@@ -300,24 +310,28 @@ export default function Conversations() {
           <h1 className="text-xl font-bold tracking-tight">Conversations</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Review individual conversations, agent decisions, and reasoning traces</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-            {conversations.length} total
-          </Badge>
-        </div>
+        <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+          {filtered.length} of {conversations.length}
+        </Badge>
       </motion.div>
 
       {/* Filters */}
-      <motion.div variants={iV} className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-[280px]">
+      <motion.div variants={iV} className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-[260px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Search by customer, order, or subject..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-8 h-8 text-xs"
-          />
+          <Input placeholder="Search customer, order, subject..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-8 h-8 text-xs" />
         </div>
+        {agentList.length > 1 && (
+          <Select value={agentFilter} onValueChange={setAgentFilter}>
+            <SelectTrigger className="w-[170px] h-8 text-xs">
+              <SelectValue placeholder="Agent" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Agents</SelectItem>
+              {agentList.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={resultFilter} onValueChange={setResultFilter}>
           <SelectTrigger className="w-[120px] h-8 text-xs">
             <SelectValue placeholder="Result" />
@@ -342,6 +356,11 @@ export default function Conversations() {
             <SelectItem value="Return Inquiry">Return Inquiry</SelectItem>
           </SelectContent>
         </Select>
+        {(agentFilter !== "all" || resultFilter !== "all" || intentFilter !== "all") && (
+          <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={() => { setAgentFilter("all"); setResultFilter("all"); setIntentFilter("all"); }}>
+            Clear filters
+          </Button>
+        )}
       </motion.div>
 
       {/* Data Table */}
@@ -355,12 +374,10 @@ export default function Conversations() {
                   <TableHead className="text-[11px] font-semibold text-muted-foreground">Subject</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground">Intent</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground">Result</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground">Approach</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground text-center">Turns</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground">Sentiment</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground">Agent</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground text-right">Duration</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-muted-foreground text-right pr-4">Actions</TableHead>
+                  <TableHead className="text-[11px] font-semibold text-muted-foreground text-right pr-4">Duration</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -369,11 +386,7 @@ export default function Conversations() {
                   const ch = channelIcons[conv.channel];
                   const ChIcon = ch.icon;
                   return (
-                    <TableRow
-                      key={conv.id}
-                      className="cursor-pointer group"
-                      onClick={() => setSelectedConv(conv)}
-                    >
+                    <TableRow key={conv.id} className="cursor-pointer group" onClick={() => setSelectedConv(conv)}>
                       <TableCell className="py-2.5 pl-4">
                         <div className="flex items-center gap-1.5">
                           <ChIcon className={cn("w-3 h-3", ch.color)} />
@@ -395,27 +408,28 @@ export default function Conversations() {
                           {conv.result}
                         </Badge>
                       </TableCell>
-                      <TableCell className="py-2.5">
-                        <span className="text-[11px] text-muted-foreground">{conv.approach}</span>
-                      </TableCell>
                       <TableCell className="py-2.5 text-center">
                         <span className="text-[11px] font-medium">{conv.turns}</span>
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <SentimentDots flow={conv.sentimentFlow} />
+                        <SentimentArc start={conv.sentimentStart} end={conv.sentimentEnd} />
                       </TableCell>
                       <TableCell className="py-2.5">
                         <span className="text-[10px] text-muted-foreground truncate max-w-[100px] block">{conv.agent}</span>
                       </TableCell>
-                      <TableCell className="py-2.5 text-right">
-                        <span className="text-[11px] text-muted-foreground">{conv.duration}</span>
-                      </TableCell>
                       <TableCell className="py-2.5 text-right pr-4">
-                        <span className="text-[11px] font-medium">{conv.actionsExecuted.length}</span>
+                        <span className="text-[11px] text-muted-foreground">{conv.duration}</span>
                       </TableCell>
                     </TableRow>
                   );
                 })}
+                {filtered.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">
+                      <p className="text-xs text-muted-foreground">No conversations match the current filters</p>
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -426,14 +440,30 @@ export default function Conversations() {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/* ── Conversation Detail Page ──                             */
-/* Meta Info + Chat History + Reasoning Trace                 */
+/* ── Conversation Detail Page                                */
+/* Chat History (left) + Per-Turn Reasoning Trace (right)     */
+/* Bad Case feedback inline on each agent reply               */
 /* ═══════════════════════════════════════════════════════════ */
 function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: () => void }) {
-  const [expandedTrace, setExpandedTrace] = useState<number | null>(null);
+  const [expandedTurn, setExpandedTurn] = useState<number | null>(0); // first turn expanded by default
+  const [feedbackTurn, setFeedbackTurn] = useState<number | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
   const rc = resultConfig[conv.result];
   const ch = channelIcons[conv.channel];
   const ChIcon = ch.icon;
+
+  const handleSubmitFeedback = (turnIndex: number) => {
+    if (!feedbackText.trim()) return;
+    toast.success(`Feedback submitted for Turn ${turnIndex + 1}`);
+    setFeedbackText("");
+    setFeedbackTurn(null);
+  };
+
+  // Map agent replies to the chat messages for highlighting
+  const agentMsgIndices = conv.messages.reduce<number[]>((acc, msg, i) => {
+    if (msg.role === "agent") acc.push(i);
+    return acc;
+  }, []);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-6 max-w-[1100px] space-y-5">
@@ -452,14 +482,6 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{conv.id} · {conv.customer} · {conv.timestamp}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="gap-1 text-xs h-7" onClick={() => toast.success("Marked as good example")}>
-            <ThumbsUp className="w-3 h-3" /> Good
-          </Button>
-          <Button variant="ghost" size="sm" className="gap-1 text-xs h-7" onClick={() => toast("Flagged for coaching")}>
-            <ThumbsDown className="w-3 h-3" /> Needs Review
-          </Button>
-        </div>
       </div>
 
       {/* Meta Info Cards */}
@@ -469,7 +491,7 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
         <MetaCard label="Agent" value={conv.agent} />
         <MetaCard label="Approach" value={conv.approach} />
         <MetaCard label="Duration" value={conv.duration} />
-        <MetaCard label="Turns" value={String(conv.turns)} />
+        <MetaCard label="Sentiment" value={`${capitalize(conv.sentimentStart)} → ${capitalize(conv.sentimentEnd)}`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -487,127 +509,163 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
               </div>
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-3">
-              {conv.messages.map((msg, i) => (
-                <div key={i} className="flex gap-2.5">
-                  <div className={cn(
-                    "w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-                    msg.role === "customer" ? "bg-muted" : "bg-primary/10"
+              {conv.messages.map((msg, i) => {
+                // Determine which agent turn this message belongs to (for highlighting)
+                const agentTurnIndex = msg.role === "agent" ? agentMsgIndices.indexOf(i) : -1;
+                const isHighlightedTurn = agentTurnIndex >= 0 && expandedTurn !== null && agentTurnIndex === expandedTurn;
+
+                return (
+                  <div key={i} className={cn(
+                    "flex gap-2.5 rounded-lg transition-colors px-2 py-1.5 -mx-2",
+                    isHighlightedTurn && "bg-primary/[0.04] ring-1 ring-primary/10"
                   )}>
-                    {msg.role === "customer" ? <User className="w-3 h-3 text-muted-foreground" /> : <Bot className="w-3 h-3 text-primary" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[11px] font-medium">{msg.role === "customer" ? conv.customer : conv.agent}</span>
-                      <span className="text-[9px] text-muted-foreground">{msg.time}</span>
+                    <div className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+                      msg.role === "customer" ? "bg-muted" : "bg-primary/10"
+                    )}>
+                      {msg.role === "customer" ? <User className="w-3 h-3 text-muted-foreground" /> : <Bot className="w-3 h-3 text-primary" />}
                     </div>
-                    {msg.action && (
-                      <div className="flex items-center gap-1 mb-1">
-                        <Badge variant="secondary" className="text-[8px] gap-0.5 font-mono px-1.5 py-0">
-                          <Zap className="w-2 h-2" />
-                          {msg.action}
-                        </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[11px] font-medium">{msg.role === "customer" ? conv.customer : conv.agent}</span>
+                        <span className="text-[9px] text-muted-foreground">{msg.time}</span>
+                        {msg.role === "agent" && agentTurnIndex >= 0 && (
+                          <span className="text-[8px] text-muted-foreground/50 ml-auto">Turn {agentTurnIndex + 1}</span>
+                        )}
                       </div>
-                    )}
-                    <p className="text-xs leading-relaxed text-foreground/80">{msg.text}</p>
+                      <p className="text-xs leading-relaxed text-foreground/80">{msg.text}</p>
+
+                      {/* Bad Case Feedback Button — on agent messages */}
+                      {msg.role === "agent" && agentTurnIndex >= 0 && (
+                        <div className="mt-1.5">
+                          {feedbackTurn === agentTurnIndex ? (
+                            <div className="space-y-1.5 mt-2 p-2.5 rounded-md bg-amber-50/50 border border-amber-200/50">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <MessageCircleWarning className="w-3 h-3 text-amber-600" />
+                                <span className="text-[10px] font-medium text-amber-800">What could be improved in this reply?</span>
+                                <button onClick={() => setFeedbackTurn(null)} className="ml-auto"><X className="w-3 h-3 text-muted-foreground" /></button>
+                              </div>
+                              <Textarea
+                                placeholder="e.g., Should have asked for photo evidence before processing refund..."
+                                value={feedbackText}
+                                onChange={e => setFeedbackText(e.target.value)}
+                                rows={2}
+                                className="text-xs resize-none bg-white"
+                              />
+                              <div className="flex justify-end gap-1.5">
+                                <Button variant="ghost" size="sm" className="text-[10px] h-6" onClick={() => setFeedbackTurn(null)}>Cancel</Button>
+                                <Button size="sm" className="text-[10px] h-6" onClick={() => handleSubmitFeedback(agentTurnIndex)}>Submit Feedback</Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setFeedbackTurn(agentTurnIndex); setFeedbackText(""); }}
+                              className="flex items-center gap-1 text-[9px] text-muted-foreground/50 hover:text-amber-600 transition-colors mt-0.5"
+                            >
+                              <Flag className="w-2.5 h-2.5" />
+                              <span>Leave feedback</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         </div>
 
-        {/* ── Reasoning Trace (right, 2 cols) ── */}
+        {/* ── Per-Turn Reasoning Trace (right, 2 cols) ── */}
         <div className="lg:col-span-2">
           <Card className="shadow-sm">
             <CardHeader className="pb-2 px-4 pt-3">
               <div className="flex items-center gap-2">
                 <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                <CardTitle className="text-xs font-semibold">Reasoning Trace</CardTitle>
+                <CardTitle className="text-xs font-semibold">Agent Reasoning</CardTitle>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Step-by-step agent decision process</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">What the agent thought and did for each reply</p>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <div className="relative">
-                {/* Timeline line */}
-                <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border" />
-
-                <div className="space-y-0">
-                  {conv.reasoningTrace.map((step, i) => {
-                    const cfg = traceTypeConfig[step.type];
-                    const StepIcon = cfg.icon;
-                    const isExpanded = expandedTrace === i;
-
-                    return (
-                      <div key={i} className="relative">
-                        <button
-                          onClick={() => setExpandedTrace(isExpanded ? null : i)}
-                          className="w-full text-left flex items-start gap-2.5 py-2 px-1 rounded-md hover:bg-muted/30 transition-colors group"
-                        >
-                          {/* Icon */}
-                          <div className={cn("w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 z-10", cfg.bgColor)}>
-                            <StepIcon className={cn("w-3 h-3", cfg.color)} />
-                          </div>
-
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] font-semibold">{step.label}</span>
-                              <span className="text-[9px] text-muted-foreground">{step.timestamp}</span>
-                              {step.metadata && (
-                                <ChevronDown className={cn("w-2.5 h-2.5 text-muted-foreground/50 transition-transform ml-auto", isExpanded && "rotate-180")} />
-                              )}
-                            </div>
-                            <p className="text-[10px] text-muted-foreground leading-relaxed mt-0.5">{step.detail}</p>
-                          </div>
-                        </button>
-
-                        {/* Expanded metadata */}
-                        <AnimatePresence>
-                          {isExpanded && step.metadata && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.15 }}
-                              className="overflow-hidden"
-                            >
-                              <div className="ml-[34px] mb-2 p-2.5 rounded-md bg-muted/40 border border-border/50">
-                                {Object.entries(step.metadata).map(([key, value]) => (
-                                  <div key={key} className="flex items-start gap-2 py-0.5">
-                                    <span className="text-[9px] font-medium text-muted-foreground shrink-0 w-[80px]">{key}</span>
-                                    <span className="text-[9px] text-foreground/70 font-mono break-all">{value}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+            <CardContent className="px-4 pb-4 space-y-1">
+              {conv.agentReplies.map((reply, turnIdx) => {
+                const isExpanded = expandedTurn === turnIdx;
+                return (
+                  <div key={turnIdx} className="border border-border/50 rounded-lg overflow-hidden">
+                    {/* Turn header — always visible */}
+                    <button
+                      onClick={() => setExpandedTurn(isExpanded ? null : turnIdx)}
+                      className={cn(
+                        "w-full text-left px-3 py-2.5 flex items-start gap-2 transition-colors",
+                        isExpanded ? "bg-primary/[0.04]" : "hover:bg-muted/30"
+                      )}
+                    >
+                      <div className="w-5 h-5 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <Bot className="w-3 h-3 text-primary" />
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-semibold">Turn {turnIdx + 1}</span>
+                          <span className="text-[9px] text-muted-foreground">{reply.replyTime}</span>
+                          <ChevronDown className={cn("w-2.5 h-2.5 text-muted-foreground/50 transition-transform ml-auto", isExpanded && "rotate-180")} />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground truncate mt-0.5">{reply.replyText}</p>
+                      </div>
+                    </button>
 
-          {/* Actions Executed Summary */}
-          <Card className="shadow-sm mt-3">
-            <CardHeader className="pb-2 px-4 pt-3">
-              <div className="flex items-center gap-2">
-                <Zap className="w-3.5 h-3.5 text-muted-foreground" />
-                <CardTitle className="text-xs font-semibold">Actions Executed</CardTitle>
-                <Badge variant="secondary" className="text-[9px] ml-auto">{conv.actionsExecuted.length}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <div className="flex flex-wrap gap-1.5">
-                {conv.actionsExecuted.map((action, i) => (
-                  <Badge key={i} variant="outline" className="text-[9px] font-mono gap-1">
-                    <Zap className="w-2 h-2 text-orange-500" />
-                    {action}
-                  </Badge>
-                ))}
-              </div>
+                    {/* Expanded: Thinking + Actions + Knowledge */}
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="px-3 pb-3 space-y-2.5 border-t border-border/30 pt-2.5">
+                            {/* Agent Thinking */}
+                            <div>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <Brain className="w-3 h-3 text-blue-600" />
+                                <span className="text-[10px] font-semibold text-blue-800">Agent Thinking</span>
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-foreground/70 pl-[18px]">
+                                {reply.thinking}
+                              </p>
+                            </div>
+
+                            {/* Actions */}
+                            {reply.actions.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <Zap className="w-3 h-3 text-orange-600" />
+                                  <span className="text-[10px] font-semibold text-orange-800">Actions</span>
+                                </div>
+                                <div className="pl-[18px] space-y-0.5">
+                                  {reply.actions.map((action, ai) => (
+                                    <p key={ai} className="text-[10px] text-foreground/60 font-mono">{action}</p>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Knowledge Used */}
+                            {reply.knowledgeUsed && (
+                              <div>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <BookOpen className="w-3 h-3 text-amber-600" />
+                                  <span className="text-[10px] font-semibold text-amber-800">Knowledge Referenced</span>
+                                </div>
+                                <p className="text-[10px] text-foreground/60 pl-[18px]">{reply.knowledgeUsed}</p>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         </div>
@@ -624,3 +682,5 @@ function MetaCard({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+function capitalize(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
