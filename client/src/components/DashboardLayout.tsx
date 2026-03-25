@@ -1,7 +1,7 @@
 /**
  * DashboardLayout: Virtual Office style sidebar navigation
+ * MVP Navigation: Dashboard / Agents / Conversations / Knowledge / Settings
  * Design: Dark sidebar with teal accents, warm gray content area
- * Typography: DM Sans for headings, clean hierarchy
  */
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -9,12 +9,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   Bot,
-  Ticket,
   MessageSquare,
   BookOpen,
-  Shield,
-  Eye,
-  Rocket,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -27,12 +23,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Bot, label: "Agents", path: "/agents" },
-  { icon: Ticket, label: "Tickets", path: "/tickets" },
   { icon: MessageSquare, label: "Conversations", path: "/conversations" },
-  { icon: BookOpen, label: "Knowledge Base", path: "/knowledge" },
-  { icon: Shield, label: "Guardrails", path: "/guardrails" },
-  { icon: Eye, label: "Watchtower", path: "/watchtower" },
-  { icon: Rocket, label: "Onboarding", path: "/onboarding" },
+  { icon: BookOpen, label: "Knowledge", path: "/knowledge" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
@@ -73,7 +65,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => {
             const isActive = location === item.path || 
               (item.path !== "/" && location.startsWith(item.path));
@@ -150,7 +142,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search tickets, agents, knowledge..."
+                placeholder="Search conversations, agents, knowledge..."
                 className="pl-9 pr-4 py-2 w-80 bg-muted rounded-lg text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
               />
             </div>
