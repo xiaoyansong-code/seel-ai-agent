@@ -1,17 +1,17 @@
 /**
  * Skills — Playbook > Skills sub-tab
- * V20: Removed "How the agent handles this" section from ScenarioCard.
- * Each Scenario now shows only Business Rules (editable) and Actions (with toggles).
- * Action descriptions enhanced to convey what the agent does.
- * Disabled write actions show fallback behavior hint.
- * Business rules absorb handling context so nothing is lost.
+ * V22: Gorgias-style Markdown guidance per Scenario.
+ * Each Scenario has a single editable Markdown document (the "Guidance")
+ * that contains all rules, conditions, and handling logic.
+ * Actions are listed separately below the guidance with individual toggles.
  */
 import { useState } from "react";
 import { motion } from "framer-motion";
+import Markdown from "react-markdown";
 import {
   Target, ChevronLeft, ChevronRight, ChevronDown, Package, Shield, ShoppingCart,
   Pencil, Check, X, Info, AlertTriangle, Eye, Zap, MessageSquare,
-  FileText, Upload, Sparkles, Bell, ArrowRight, Play,
+  FileText, Upload, Sparkles, Bell, ArrowRight, Play, Clock,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,8 @@ interface SkillAction {
 interface Scenario {
   id: string;
   intent: string;
-  rules: string;
+  /** Markdown guidance document — the single source of truth for this scenario */
+  guidance: string;
   actions: SkillAction[];
   escalation?: string;
 }
@@ -69,10 +70,26 @@ const initialSkills: Skill[] = [
       {
         id: "ot-s1",
         intent: "Where is my order?",
-        rules: `- Verify customer identity before sharing order details (email or order number required).
-- Look up order by email or order number, return current fulfillment status and tracking link.
-- If tracking shows "In Transit" for more than 7 business days past estimated delivery, escalate to human agent.
-- Do not speculate on delivery dates beyond what carrier data shows.`,
+        guidance: `**WHEN:** The customer asks about their order status or tracking.
+
+### 1. Verify customer identity
+
+**IF** the customer hasn't provided an order number or email, **THEN** ask for one of the following:
+- Order number
+- Email address associated with the order
+
+### 2. Look up order and tracking
+
+Use the order number or email to retrieve the current fulfillment status and tracking details.
+
+- Provide the current status (e.g. Unfulfilled, In Transit, Delivered).
+- If a tracking link is available, share it with the customer.
+
+### 3. Handle delays
+
+**IF** tracking shows "In Transit" for more than **7 business days** past the estimated delivery date, **THEN** escalate to a human agent.
+
+**Note:** Do not speculate on delivery dates beyond what carrier data shows.`,
         actions: [
           { id: "ot-a1", name: "Look up order status", description: "Query order details including current fulfillment status and line items.", type: "read", connector: "Shopify", enabled: true },
           { id: "ot-a2", name: "Get tracking information", description: "Retrieve carrier tracking number, URL, and latest tracking events.", type: "read", connector: "Shopify", enabled: true },
@@ -82,10 +99,18 @@ const initialSkills: Skill[] = [
       {
         id: "ot-s2",
         intent: "When will my order arrive?",
-        rules: `- Check carrier tracking data and provide estimated delivery date based on latest carrier update.
-- Only provide estimated dates that come directly from carrier tracking data.
-- If no estimated date is available, inform customer that tracking updates may be delayed and provide carrier contact info.
-- Do not make promises about delivery timing.`,
+        guidance: `**WHEN:** The customer asks about estimated delivery date.
+
+### 1. Retrieve tracking data
+
+Look up the carrier tracking information for the customer's order.
+
+### 2. Provide estimate
+
+- **Only** provide estimated dates that come directly from carrier tracking data.
+- **IF** no estimated date is available, inform the customer that tracking updates may be delayed and provide the carrier's contact info.
+
+**Note:** Do not make promises about delivery timing.`,
         actions: [
           { id: "ot-a2b", name: "Get tracking information", description: "Retrieve carrier tracking number, URL, and latest tracking events.", type: "read", connector: "Shopify", enabled: true },
         ],
@@ -93,9 +118,22 @@ const initialSkills: Skill[] = [
       {
         id: "ot-s3",
         intent: "My order shows delivered but I didn't receive it.",
-        rules: `- Verify delivery confirmation details (date, time, location) from carrier data.
-- Advise customer to check with neighbors, building management, or other household members.
-- Do not issue refund or replacement directly — this requires human review.`,
+        guidance: `**WHEN:** The customer reports non-receipt despite delivery confirmation.
+
+### 1. Verify delivery details
+
+Look up the order and check delivery confirmation details from the carrier (date, time, delivery location).
+
+### 2. Advise the customer
+
+- Suggest checking with neighbors, building management, or other household members.
+- Share the specific delivery details from the carrier.
+
+### 3. Escalation
+
+**IF** the customer confirms they still haven't received the package after checking, **THEN** escalate to a human agent.
+
+**Note:** Do not issue refund or replacement directly — this requires human review.`,
         actions: [
           { id: "ot-a1b", name: "Look up order status", description: "Query order details including current fulfillment status.", type: "read", connector: "Shopify", enabled: true },
           { id: "ot-a2c", name: "Get tracking information", description: "Retrieve carrier tracking details and delivery confirmation.", type: "read", connector: "Shopify", enabled: true },
@@ -117,9 +155,18 @@ const initialSkills: Skill[] = [
       {
         id: "sp-s1",
         intent: "What does my Seel protection cover?",
-        rules: `- Always look up the specific policy before answering — do not provide generic coverage information.
-- Clearly state the coverage period and any exclusions.
-- If no active policy is found, inform the customer and suggest they check their order confirmation.`,
+        guidance: `**WHEN:** The customer asks about their protection coverage.
+
+### 1. Look up the specific policy
+
+Always retrieve the customer's actual policy before answering. Do not provide generic coverage information.
+
+### 2. Explain coverage
+
+- Clearly state the **coverage period** and what is covered.
+- Mention any **exclusions** that apply.
+
+**IF** no active policy is found, **THEN** inform the customer and suggest they check their order confirmation email.`,
         actions: [
           { id: "sp-a1", name: "Look up protection policy", description: "Retrieve customer's Seel protection policy details, coverage scope, and status.", type: "read", connector: "Seel API", enabled: true },
         ],
@@ -127,10 +174,28 @@ const initialSkills: Skill[] = [
       {
         id: "sp-s2",
         intent: "I want to file a claim.",
-        rules: `- Claims must be filed within the coverage period. Reject claims outside this window with a clear explanation.
-- Required information: order number, description of the issue, date the issue was discovered.
-- Photos are recommended but not mandatory for MVP.
-- Never disclose internal claim approval criteria or scoring logic to the customer.`,
+        guidance: `**WHEN:** The customer wants to file a protection claim.
+
+### 1. Verify eligibility
+
+Look up the customer's policy and confirm it is active and within the coverage period.
+
+**IF** the policy is expired or no policy exists, **THEN** inform the customer with a clear explanation.
+
+### 2. Collect claim details
+
+Required information:
+- Order number
+- Description of the issue
+- Date the issue was discovered
+
+Photos are recommended but not mandatory.
+
+### 3. File the claim
+
+**IF** eligible, initiate the claim with the collected details.
+
+**Note:** Never disclose internal claim approval criteria or scoring logic to the customer.`,
         actions: [
           { id: "sp-a1b", name: "Look up protection policy", description: "Verify customer has an active policy and check eligibility.", type: "read", connector: "Seel API", enabled: true },
           { id: "sp-a3", name: "File a claim", description: "Initiate a new protection claim with order and issue details.", type: "write", connector: "Seel API", enabled: true, disabledHint: "Agent will collect claim details and escalate to human agent for manual filing." },
@@ -140,8 +205,18 @@ const initialSkills: Skill[] = [
       {
         id: "sp-s3",
         intent: "What's the status of my claim?",
-        rules: `- Provide factual status updates only — do not predict claim outcomes.
-- If the claim has been pending for more than 5 business days, acknowledge the delay and provide an updated timeline.`,
+        guidance: `**WHEN:** The customer asks about an existing claim.
+
+### 1. Look up claim
+
+Retrieve the claim details and current status.
+
+### 2. Provide update
+
+- Share the current status and any next steps.
+- **IF** the claim has been pending for more than **5 business days**, acknowledge the delay and provide an updated timeline.
+
+**Note:** Provide factual status updates only — do not predict claim outcomes.`,
         actions: [
           { id: "sp-a2", name: "Check claim status", description: "Query existing claim details including current status and resolution timeline.", type: "read", connector: "Seel API", enabled: true },
         ],
@@ -149,9 +224,21 @@ const initialSkills: Skill[] = [
       {
         id: "sp-s4",
         intent: "I want to cancel my protection policy.",
-        rules: `- Policy cancellation is only allowed within 30 days of purchase and before any claim has been filed.
-- If outside the cancellation window, explain the policy terms clearly.
-- After successful cancellation, confirm the refund amount and expected timeline.`,
+        guidance: `**WHEN:** The customer requests to cancel their protection policy.
+
+### 1. Check eligibility
+
+Look up the policy and verify cancellation eligibility:
+- Must be within **30 days** of purchase
+- **AND** no claim has been filed
+
+**IF** outside the cancellation window or a claim exists, **THEN** explain the policy terms clearly.
+
+### 2. Process cancellation
+
+**IF** eligible, process the cancellation and confirm:
+- Refund amount
+- Expected refund timeline`,
         actions: [
           { id: "sp-a1c", name: "Look up protection policy", description: "Check policy status and cancellation eligibility.", type: "read", connector: "Seel API", enabled: true },
           { id: "sp-a4", name: "Cancel protection policy", description: "Process policy cancellation and trigger refund if eligible.", type: "write", connector: "Seel API", enabled: true, disabledHint: "Agent will confirm eligibility and escalate to human agent for manual cancellation." },
@@ -173,10 +260,24 @@ const initialSkills: Skill[] = [
       {
         id: "om-s1",
         intent: "I want to cancel my order.",
-        rules: `- Only cancel orders that have NOT been fulfilled or shipped.
-- If the order is already fulfilled, inform the customer and suggest they initiate a return instead.
-- Always confirm the specific order and cancellation intent with the customer before proceeding.
-- After successful cancellation, confirm the refund amount and expected timeline (5-7 business days).
+        guidance: `**WHEN:** The customer asks to cancel an order.
+
+### 1. Verify the order
+
+Confirm which order the customer wants to cancel. Ask for the order number if not provided.
+
+### 2. Check eligibility
+
+**IF** the order is **Unfulfilled**, **THEN** proceed with cancellation.
+
+**IF** the order is already fulfilled or shipped, **THEN** inform the customer and suggest they initiate a return instead.
+
+### 3. Confirm and cancel
+
+- Always confirm the cancellation intent with the customer before proceeding.
+- After successful cancellation, confirm:
+  - Refund amount
+  - Expected timeline (5-7 business days)
 - Log the cancellation reason for analytics.`,
         actions: [
           { id: "om-a1", name: "Check order status", description: "Verify order fulfillment status and cancellation eligibility.", type: "read", connector: "Shopify", enabled: true },
@@ -187,9 +288,17 @@ const initialSkills: Skill[] = [
       {
         id: "om-s2",
         intent: "Can I still cancel? I just placed it.",
-        rules: `- Same cancellation rules apply — check fulfillment status first.
-- Prioritize speed — customer expectation is that a just-placed order should be easy to cancel.
-- If the order has already entered fulfillment pipeline, inform the customer honestly.`,
+        guidance: `**WHEN:** The customer wants to cancel a recently placed order.
+
+### 1. Check order status immediately
+
+Prioritize speed — the customer expects a just-placed order to be easy to cancel.
+
+### 2. Process
+
+**IF** the order is still **Unfulfilled**, **THEN** proceed with cancellation following standard rules.
+
+**IF** the order has already entered the fulfillment pipeline, **THEN** inform the customer honestly.`,
         actions: [
           { id: "om-a1b", name: "Check order status", description: "Verify order fulfillment status and cancellation eligibility.", type: "read", connector: "Shopify", enabled: true },
           { id: "om-a2b", name: "Cancel order", description: "Cancel an unfulfilled order and trigger refund.", type: "write", connector: "Shopify", enabled: false, disabledHint: "Agent will verify eligibility and escalate to human agent for manual cancellation." },
@@ -198,10 +307,17 @@ const initialSkills: Skill[] = [
       {
         id: "om-s3",
         intent: "I changed my mind about my purchase.",
-        rules: `- Confirm which order the customer wants to cancel, then verify eligibility.
-- Apply the same fulfillment-status check before cancellation.
-- Log reason as "changed mind" for analytics purposes.
-- If the order contains multiple items and customer wants partial cancellation, escalate to human agent.`,
+        guidance: `**WHEN:** The customer wants to cancel because they changed their mind.
+
+### 1. Identify the order
+
+Confirm which order the customer is referring to.
+
+### 2. Check eligibility and cancel
+
+Apply the same fulfillment-status check before cancellation. Log reason as "changed mind" for analytics.
+
+**IF** the order contains multiple items and the customer wants **partial cancellation**, **THEN** escalate to a human agent — partial cancellation is not supported.`,
         actions: [
           { id: "om-a1c", name: "Check order status", description: "Verify order details and fulfillment status.", type: "read", connector: "Shopify", enabled: true },
           { id: "om-a2c", name: "Cancel order", description: "Cancel an unfulfilled order and trigger refund.", type: "write", connector: "Shopify", enabled: false, disabledHint: "Agent will verify eligibility and escalate to human agent for manual cancellation." },
@@ -215,31 +331,64 @@ const initialSkills: Skill[] = [
 const cV = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iV = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.25 } } };
 
+/* ── Markdown renderer with Gorgias-like styling ── */
+function GuidanceView({ content }: { content: string }) {
+  return (
+    <div className="guidance-markdown">
+      <Markdown
+        components={{
+          h3: ({ children }) => (
+            <h3 className="text-sm font-semibold mt-4 mb-1.5 pb-1 border-b border-border/40">{children}</h3>
+          ),
+          p: ({ children }) => (
+            <p className="text-[13px] text-foreground/80 leading-relaxed mb-2">{children}</p>
+          ),
+          strong: ({ children }) => (
+            <strong className="font-semibold text-foreground">{children}</strong>
+          ),
+          ul: ({ children }) => (
+            <ul className="list-disc list-outside ml-4 mb-2 space-y-0.5">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="list-decimal list-outside ml-4 mb-2 space-y-0.5">{children}</ol>
+          ),
+          li: ({ children }) => (
+            <li className="text-[13px] text-foreground/80 leading-relaxed">{children}</li>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-primary/30 pl-3 my-2 text-[13px] text-foreground/70 italic">{children}</blockquote>
+          ),
+        }}
+      />
+    </div>
+  );
+}
+
 /* ── Scenario Card Component ── */
 function ScenarioCard({
   scenario,
   skillId,
   defaultOpen,
   onToggleAction,
-  onSaveRules,
+  onSaveGuidance,
   onTestScenario,
 }: {
   scenario: Scenario;
   skillId: string;
   defaultOpen: boolean;
   onToggleAction: (skillId: string, scenarioId: string, actionId: string) => void;
-  onSaveRules: (skillId: string, scenarioId: string, rules: string) => void;
+  onSaveGuidance: (skillId: string, scenarioId: string, guidance: string) => void;
   onTestScenario: (intent: string) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const [editingRules, setEditingRules] = useState(false);
-  const [rulesBuffer, setRulesBuffer] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editBuffer, setEditBuffer] = useState("");
 
   const hasWrite = scenario.actions.some(a => a.type === "write" && a.enabled);
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
-      {/* Scenario header — always visible */}
+      {/* Scenario header */}
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/20 transition-colors"
@@ -257,22 +406,24 @@ function ScenarioCard({
 
       {/* Expanded content */}
       {open && (
-        <div className="border-t border-border px-4 pb-4 space-y-4">
-          {/* Business Rules — the single editable area */}
-          <div className="pt-3">
-            <div className="flex items-center justify-between mb-1.5">
+        <div className="border-t border-border">
+          {/* Guidance section */}
+          <div className="px-4 pt-3 pb-4">
+            <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Business Rules</p>
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Guidance</p>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground/60 cursor-help" />
                   </TooltipTrigger>
-                  <TooltipContent className="text-xs max-w-[260px]">These rules define how your agent handles this scenario — including verification steps, conditions, and response guidelines. Edit in natural language.</TooltipContent>
+                  <TooltipContent className="text-xs max-w-[280px]">
+                    This is the complete instruction document for this scenario. Edit it in Markdown to define how the agent should handle this customer intent — including verification steps, conditions, and response guidelines.
+                  </TooltipContent>
                 </Tooltip>
               </div>
-              {!editingRules ? (
+              {!editing ? (
                 <button
-                  onClick={() => { setRulesBuffer(scenario.rules); setEditingRules(true); }}
+                  onClick={() => { setEditBuffer(scenario.guidance); setEditing(true); }}
                   className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
                 >
                   <Pencil className="w-3 h-3" /> Edit
@@ -280,13 +431,13 @@ function ScenarioCard({
               ) : (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => { onSaveRules(skillId, scenario.id, rulesBuffer); setEditingRules(false); toast.success("Rules updated"); }}
+                    onClick={() => { onSaveGuidance(skillId, scenario.id, editBuffer); setEditing(false); toast.success("Guidance updated"); }}
                     className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80"
                   >
                     <Check className="w-3 h-3" /> Save
                   </button>
                   <button
-                    onClick={() => setEditingRules(false)}
+                    onClick={() => setEditing(false)}
                     className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
                   >
                     <X className="w-3 h-3" /> Cancel
@@ -294,31 +445,42 @@ function ScenarioCard({
                 </div>
               )}
             </div>
-            {editingRules ? (
+
+            {editing ? (
               <Textarea
-                value={rulesBuffer}
-                onChange={e => setRulesBuffer(e.target.value)}
-                rows={6}
-                className="text-sm leading-relaxed"
+                value={editBuffer}
+                onChange={e => setEditBuffer(e.target.value)}
+                rows={14}
+                className="text-[13px] leading-relaxed font-mono"
+                placeholder="Write your guidance in Markdown..."
               />
             ) : (
-              <div className="p-3 rounded-md bg-muted/20 border border-border/60">
-                {scenario.rules.split("\n").filter(l => l.trim()).map((line, i) => (
-                  <p key={i} className="text-sm text-foreground/75 leading-relaxed">{line}</p>
-                ))}
+              <div className="p-4 rounded-md bg-muted/15 border border-border/50">
+                <GuidanceView content={scenario.guidance} />
               </div>
             )}
           </div>
 
-          {/* Actions */}
-          <div>
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Actions</p>
+          {/* Escalation — shown between guidance and actions */}
+          {scenario.escalation && (
+            <div className="mx-4 mb-3 flex items-start gap-2 p-2.5 rounded-md bg-orange-50/50 border border-orange-200/40">
+              <AlertTriangle className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[11px] font-medium text-orange-700">Escalation</p>
+                <p className="text-[11px] text-orange-600 mt-0.5">{scenario.escalation}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Actions — separate section below guidance */}
+          <div className="border-t border-border/50 px-4 py-3">
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Actions</p>
             <div className="space-y-1.5">
               {scenario.actions.map(action => (
                 <div key={action.id} className={cn(
                   "flex items-center gap-3 p-2.5 rounded-md border transition-colors",
                   !action.enabled && action.type === "write"
-                    ? "border-border/60 bg-muted/10"
+                    ? "border-border/50 bg-muted/5"
                     : "border-border/60 hover:bg-muted/10"
                 )}>
                   <div className={cn(
@@ -364,19 +526,8 @@ function ScenarioCard({
             </div>
           </div>
 
-          {/* Escalation */}
-          {scenario.escalation && (
-            <div className="flex items-start gap-2 p-2.5 rounded-md bg-orange-50/50 border border-orange-200/40">
-              <AlertTriangle className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[11px] font-medium text-orange-700">Escalation rule</p>
-                <p className="text-[11px] text-orange-600 mt-0.5">{scenario.escalation}</p>
-              </div>
-            </div>
-          )}
-
           {/* Test this scenario */}
-          <div className="pt-2 border-t border-border/40">
+          <div className="border-t border-border/40 px-4 py-2.5">
             <button
               onClick={() => onTestScenario(scenario.intent)}
               className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
@@ -422,12 +573,12 @@ export default function Skills() {
     }));
   };
 
-  const saveRules = (skillId: string, scenarioId: string, rules: string) => {
+  const saveGuidance = (skillId: string, scenarioId: string, guidance: string) => {
     setSkills(prev => prev.map(s => {
       if (s.id !== skillId) return s;
       return {
         ...s,
-        scenarios: s.scenarios.map(sc => sc.id === scenarioId ? { ...sc, rules } : sc),
+        scenarios: s.scenarios.map(sc => sc.id === scenarioId ? { ...sc, guidance } : sc),
       };
     }));
   };
@@ -494,7 +645,7 @@ export default function Skills() {
               <TooltipTrigger asChild>
                 <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
               </TooltipTrigger>
-              <TooltipContent className="text-xs max-w-[280px]">Each scenario represents a customer intent. It includes your business rules (editable) and the actions the agent can perform.</TooltipContent>
+              <TooltipContent className="text-xs max-w-[280px]">Each scenario represents a customer intent. The guidance document defines how the agent handles it. Actions below can be toggled independently.</TooltipContent>
             </Tooltip>
           </div>
           <div className="space-y-3">
@@ -505,13 +656,14 @@ export default function Skills() {
                 skillId={detailSkill.id}
                 defaultOpen={idx === 0}
                 onToggleAction={toggleAction}
-                onSaveRules={saveRules}
+                onSaveGuidance={saveGuidance}
                 onTestScenario={handleTestScenario}
               />
             ))}
           </div>
         </div>
-        {/* SOP hint at bottom of detail */}
+
+        {/* SOP hint */}
         <div className="mt-6 pt-4 border-t border-border/50">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Sparkles className="w-3.5 h-3.5 text-primary/60" />
@@ -546,7 +698,7 @@ export default function Skills() {
       {/* Global hint */}
       <motion.div variants={iV} className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
         <Target className="w-4 h-4 text-primary shrink-0" />
-        <p className="text-xs text-primary">Skills define <strong>business scenarios</strong> your agents can handle. Each scenario includes business rules you can customize and the actions the agent is allowed to perform.</p>
+        <p className="text-xs text-primary">Skills define <strong>business scenarios</strong> your agents can handle. Each scenario has a guidance document you can edit and actions you can toggle.</p>
       </motion.div>
 
       {/* Summary */}
@@ -564,7 +716,6 @@ export default function Skills() {
             <DialogTitle className="text-base">Add Skill</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-1">
-            {/* Option 1: Choose from templates */}
             <button
               onClick={() => { setAddSkillOpen(false); toast.info("All available template skills are already shown in your list."); }}
               className="w-full flex items-start gap-3 p-4 rounded-lg border border-border hover:border-primary/30 hover:bg-muted/20 transition-all text-left group"
@@ -579,7 +730,6 @@ export default function Skills() {
               <ArrowRight className="w-4 h-4 text-muted-foreground mt-2.5 shrink-0 group-hover:text-primary transition-colors" />
             </button>
 
-            {/* Option 2: Import from SOP */}
             <div className="w-full flex items-start gap-3 p-4 rounded-lg border border-dashed border-primary/30 bg-gradient-to-r from-primary/[0.03] to-violet-50/50 text-left relative overflow-hidden">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                 <FileText className="w-4.5 h-4.5 text-primary" />
@@ -589,7 +739,7 @@ export default function Skills() {
                   <p className="text-sm font-medium">Import from SOP</p>
                   <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary border-primary/20">Coming Soon</Badge>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Upload your team's standard operating procedures and let AI automatically generate skills, business rules, and actions.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Upload your team's standard operating procedures and let AI automatically generate skills, guidance, and actions.</p>
                 <div className="mt-3 flex items-center gap-3">
                   <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     <Upload className="w-3 h-3" /> Upload SOP documents
