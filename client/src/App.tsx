@@ -10,6 +10,7 @@ import HireAgent from "./pages/HireAgent";
 import AgentDetail from "./pages/AgentDetail";
 import Knowledge from "./pages/Knowledge";
 import Conversations from "./pages/Conversations";
+import Skills from "./pages/Skills";
 import Settings from "./pages/Settings";
 
 /* Placeholder for Seel global pages */
@@ -36,7 +37,7 @@ function SubTabPlaceholder({ title }: { title: string }) {
   );
 }
 
-function SkillsPage() { return <SubTabPlaceholder title="Skills" />; }
+
 function ActionsPage() { return <SubTabPlaceholder title="Actions" />; }
 function AnalyticsPage() { return <SubTabPlaceholder title="Analytics" />; }
 
@@ -51,7 +52,7 @@ function Router() {
 
       {/* Playbook tab */}
       <Route path="/playbook" component={Knowledge} />
-      <Route path="/playbook/skills" component={SkillsPage} />
+      <Route path="/playbook/skills" component={Skills} />
       <Route path="/playbook/actions" component={ActionsPage} />
 
       {/* Performance tab */}
