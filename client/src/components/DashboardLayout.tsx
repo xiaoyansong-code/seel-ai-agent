@@ -47,8 +47,8 @@ const aiTabs: { label: string; path: string; subTabs?: { label: string; path: st
     label: "Performance",
     path: "/performance",
     subTabs: [
-      { label: "Conversations", path: "/performance" },
-      { label: "Analytics", path: "/performance/analytics" },
+      { label: "Overview", path: "/performance" },
+      { label: "Conversations", path: "/performance/conversations" },
     ],
   },
 ];

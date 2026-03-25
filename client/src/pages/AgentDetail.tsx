@@ -609,6 +609,7 @@ function LiveView({ agent }: { agent: AgentData }) {
           <TabsTrigger value="skills" className="gap-1 text-xs"><Target className="w-3 h-3" /> Skills</TabsTrigger>
           <TabsTrigger value="channel" className="gap-1 text-xs"><Mail className="w-3 h-3" /> Channel</TabsTrigger>
           <TabsTrigger value="conversations" className="gap-1 text-xs"><MessageSquare className="w-3 h-3" /> Conversations</TabsTrigger>
+          <TabsTrigger value="simulator" className="gap-1 text-xs"><Bot className="w-3 h-3" /> Simulator</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-3 space-y-3">
@@ -745,7 +746,7 @@ function LiveView({ agent }: { agent: AgentData }) {
           </div>
           <div className="space-y-1.5">
             {agent.recentConversations.map(conv => (
-              <Card key={conv.id} className="hover:shadow-md transition-all cursor-pointer" onClick={() => toast.info("Conversation detail coming soon")}>
+              <Card key={conv.id} className="hover:shadow-md transition-all cursor-pointer" onClick={() => toast.info("View full conversation details in Performance > Conversations")}>
                 <CardContent className="p-3 flex items-center gap-3">
                   <div className={cn("w-1.5 h-1.5 rounded-full shrink-0",
                     conv.status === "active" ? "bg-primary animate-pulse" : conv.status === "resolved" ? "bg-blue-400" : "bg-amber-500"
@@ -763,7 +764,312 @@ function LiveView({ agent }: { agent: AgentData }) {
             ))}
           </div>
         </TabsContent>
+        <TabsContent value="simulator" className="mt-3">
+          <SimulatorPanel agentName={agent.name} />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════ */
+/* ── Simulator Panel ── */
+/* ═══════════════════════════════════════════ */
+function SimulatorPanel({ agentName }: { agentName: string }) {
+  const [mode, setMode] = useState<"single" | "batch">("single");
+  const [singleInput, setSingleInput] = useState("");
+  const [singleMessages, setSingleMessages] = useState<{ role: "customer" | "agent"; text: string; time: string; action?: string; reasoning?: string }[]>([]);
+  const [singleRunning, setSingleRunning] = useState(false);
+
+  // Batch test state
+  const [batchResults, setBatchResults] = useState<{ id: number; input: string; intent: string; result: string; response: string; time: string; status: "pass" | "fail" | "warn" }[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+
+  const sampleBatchCases = [
+    "Where is my order #1234?",
+    "I want to cancel order #5678",
+    "My package arrived damaged, I need a refund",
+    "Can I change my shipping address?",
+    "I haven't received my refund after 2 weeks",
+    "What's your return policy?",
+    "I want to exchange my item for a different size",
+    "My order is showing delivered but I never got it",
+  ];
+
+  const handleSingleSend = () => {
+    if (!singleInput.trim()) return;
+    const userMsg = singleInput;
+    setSingleMessages(prev => [...prev, { role: "customer", text: userMsg, time: "Now" }]);
+    setSingleInput("");
+    setSingleRunning(true);
+
+    setTimeout(() => {
+      const responses: Record<string, { text: string; action: string; reasoning: string }> = {
+        default: {
+          text: "I understand your concern. Let me look into that for you right away. I've checked your account and I can help resolve this. Is there anything specific you'd like me to do?",
+          action: "get_order_status",
+          reasoning: "Detected general inquiry intent (confidence: 0.72). Retrieved customer context. No specific order mentioned — asking for clarification while showing proactive helpfulness.",
+        },
+      };
+      const lowerInput = userMsg.toLowerCase();
+      let resp;
+      if (lowerInput.includes("where") || lowerInput.includes("track") || lowerInput.includes("shipping")) {
+        resp = {
+          text: "I found your order! It's currently in transit with FedEx, tracking number FX-9876543. Expected delivery is in 2 business days. Here's your tracking link.",
+          action: "get_order_status → send_tracking_link",
+          reasoning: "Intent: Order Tracking (WISMO) — confidence 0.96. Extracted order reference from message. Called get_order_status API → status: In Transit. Generated tracking link for customer.",
+        };
+      } else if (lowerInput.includes("cancel")) {
+        resp = {
+          text: "I've processed the cancellation for your order. A full refund has been initiated and you should see it within 3-5 business days.",
+          action: "get_order_status → cancel_order → process_refund",
+          reasoning: "Intent: Order Cancellation — confidence 0.94. Verified order is still in Processing status (not shipped). Proceeded with cancellation and automatic refund per policy.",
+        };
+      } else if (lowerInput.includes("damage") || lowerInput.includes("refund") || lowerInput.includes("broken")) {
+        resp = {
+          text: "I'm sorry about the damaged item. I can see your order is covered by Seel Protection. I've initiated a full refund to your original payment method. You should see it in 3-5 business days.",
+          action: "get_order_status → check_protection_eligibility → process_refund",
+          reasoning: "Intent: Seel Protection Claim — confidence 0.93. Checked protection eligibility → Active, within claim window. Auto-approved refund per Seel Protection policy.",
+        };
+      } else if (lowerInput.includes("address") || lowerInput.includes("change")) {
+        resp = {
+          text: "I've updated your shipping address. Since the order hasn't shipped yet, the new address will be used for delivery.",
+          action: "get_order_status → update_shipping_address",
+          reasoning: "Intent: Order Changes — Address Update — confidence 0.91. Verified order status is pre-shipment. Address update is allowed. Applied change successfully.",
+        };
+      } else {
+        resp = responses.default;
+      }
+
+      setSingleMessages(prev => [...prev, {
+        role: "agent",
+        text: resp.text,
+        time: "Now",
+        action: resp.action,
+        reasoning: resp.reasoning,
+      }]);
+      setSingleRunning(false);
+    }, 1200);
+  };
+
+  const handleBatchRun = () => {
+    setBatchRunning(true);
+    setBatchResults([]);
+
+    const mockResults = sampleBatchCases.map((input, i) => {
+      const intents = ["Order Tracking", "Order Cancellation", "Seel Protection", "Order Changes", "Return Inquiry", "General Inquiry", "Returns & Exchanges", "Order Tracking"];
+      const results = ["Resolved", "Resolved", "Resolved", "Resolved", "Escalated", "Resolved", "Resolved", "Resolved"];
+      const statuses: ("pass" | "fail" | "warn")[] = ["pass", "pass", "pass", "pass", "warn", "pass", "pass", "pass"];
+      const responses = [
+        "Your order is in transit with FedEx. ETA: 2 days.",
+        "Order cancelled. Full refund of $89 initiated.",
+        "Seel Protection claim approved. Refund of $45.99 processed.",
+        "Shipping address updated successfully.",
+        "Escalated to Tier 2 — refund SLA exceeded.",
+        "Our return policy allows returns within 30 days.",
+        "Exchange initiated. New item will ship within 2 days.",
+        "Order shows delivered. Investigating with carrier.",
+      ];
+      const times = ["0.8s", "1.2s", "1.4s", "0.9s", "2.1s", "0.6s", "1.1s", "1.5s"];
+      return { id: i + 1, input, intent: intents[i], result: results[i], response: responses[i], time: times[i], status: statuses[i] };
+    });
+
+    // Simulate progressive loading
+    mockResults.forEach((result, i) => {
+      setTimeout(() => {
+        setBatchResults(prev => [...prev, result]);
+        if (i === mockResults.length - 1) setBatchRunning(false);
+      }, 300 * (i + 1));
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Mode Toggle */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant={mode === "single" ? "default" : "outline"}
+          size="sm"
+          className="text-xs gap-1 h-7"
+          onClick={() => setMode("single")}
+        >
+          <MessageSquare className="w-3 h-3" /> Single Test
+        </Button>
+        <Button
+          variant={mode === "batch" ? "default" : "outline"}
+          size="sm"
+          className="text-xs gap-1 h-7"
+          onClick={() => setMode("batch")}
+        >
+          <Zap className="w-3 h-3" /> Batch Test
+        </Button>
+      </div>
+
+      {mode === "single" ? (
+        <Card>
+          <CardContent className="p-0">
+            {/* Chat area */}
+            <div className="h-[320px] flex flex-col">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {singleMessages.length === 0 && (
+                  <div className="h-full flex flex-col items-center justify-center text-center">
+                    <Bot className="w-8 h-8 text-muted-foreground/30 mb-2" />
+                    <p className="text-xs text-muted-foreground">Type a customer message to test how {agentName} responds</p>
+                    <div className="flex flex-wrap gap-1.5 mt-3 max-w-[400px] justify-center">
+                      {["Where is my order #1234?", "I want a refund", "Cancel my order"].map((q) => (
+                        <button
+                          key={q}
+                          onClick={() => { setSingleInput(q); }}
+                          className="text-[10px] px-2.5 py-1 rounded-full border border-border hover:bg-muted/50 text-muted-foreground transition-colors"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {singleMessages.map((msg, i) => (
+                  <div key={i} className={cn("flex", msg.role === "customer" ? "justify-end" : "justify-start")}>
+                    <div className={cn("max-w-[80%] rounded-xl px-3 py-2",
+                      msg.role === "customer" ? "bg-muted" : "bg-primary/10 border border-primary/15"
+                    )}>
+                      <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
+                        {msg.role === "customer" ? "Test Customer" : agentName}
+                      </p>
+                      {msg.action && (
+                        <div className="flex items-center gap-1 mb-1">
+                          <Badge variant="secondary" className="text-[8px] gap-0.5 font-mono px-1.5 py-0">
+                            <Zap className="w-2 h-2" />
+                            {msg.action}
+                          </Badge>
+                        </div>
+                      )}
+                      <p className="text-xs leading-relaxed">{msg.text}</p>
+                      {msg.reasoning && (
+                        <div className="mt-2 pt-2 border-t border-primary/10">
+                          <p className="text-[9px] font-medium text-muted-foreground flex items-center gap-1">
+                            <Eye className="w-2.5 h-2.5" /> Reasoning
+                          </p>
+                          <p className="text-[10px] text-muted-foreground leading-relaxed mt-0.5">{msg.reasoning}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {singleRunning && (
+                  <div className="flex justify-start">
+                    <div className="bg-primary/10 border border-primary/15 rounded-xl px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                        <span className="text-[10px] text-muted-foreground">Thinking...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 p-3 border-t">
+                <Input
+                  value={singleInput}
+                  onChange={e => setSingleInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleSingleSend()}
+                  placeholder="Type as a customer..."
+                  className="text-xs h-8"
+                  disabled={singleRunning}
+                />
+                <Button size="sm" onClick={handleSingleSend} className="h-8 px-3" disabled={singleRunning || !singleInput.trim()}>
+                  <Send className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs font-semibold">Batch Test Suite</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Run {sampleBatchCases.length} predefined test cases against {agentName}</p>
+                </div>
+                <Button size="sm" className="text-xs gap-1 h-7" onClick={handleBatchRun} disabled={batchRunning}>
+                  {batchRunning ? <><Loader2 className="w-3 h-3 animate-spin" /> Running...</> : <><Play className="w-3 h-3" /> Run All</>}
+                </Button>
+              </div>
+
+              {batchResults.length > 0 && (
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                    <span className="text-[10px] font-medium">{batchResults.filter(r => r.status === "pass").length} Passed</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="text-[10px] font-medium">{batchResults.filter(r => r.status === "warn").length} Warning</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-red-400" />
+                    <span className="text-[10px] font-medium">{batchResults.filter(r => r.status === "fail").length} Failed</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground ml-auto">{batchResults.length}/{sampleBatchCases.length} completed</span>
+                </div>
+              )}
+
+              {/* Test cases list */}
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-muted/30 border-b">
+                      <th className="text-[10px] font-semibold text-muted-foreground text-left px-3 py-2 w-8">#</th>
+                      <th className="text-[10px] font-semibold text-muted-foreground text-left px-3 py-2">Input</th>
+                      <th className="text-[10px] font-semibold text-muted-foreground text-left px-3 py-2 w-[100px]">Intent</th>
+                      <th className="text-[10px] font-semibold text-muted-foreground text-left px-3 py-2 w-[80px]">Result</th>
+                      <th className="text-[10px] font-semibold text-muted-foreground text-right px-3 py-2 w-[50px]">Time</th>
+                      <th className="text-[10px] font-semibold text-muted-foreground text-center px-3 py-2 w-[50px]">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sampleBatchCases.map((testCase, i) => {
+                      const result = batchResults.find(r => r.id === i + 1);
+                      return (
+                        <tr key={i} className={cn("border-b last:border-b-0 transition-colors", result ? "bg-card" : "bg-muted/10")}>
+                          <td className="text-[10px] text-muted-foreground px-3 py-2">{i + 1}</td>
+                          <td className="px-3 py-2">
+                            <p className="text-[11px] truncate max-w-[250px]">{testCase}</p>
+                            {result && <p className="text-[9px] text-muted-foreground truncate max-w-[250px] mt-0.5">{result.response}</p>}
+                          </td>
+                          <td className="px-3 py-2">
+                            {result ? <Badge variant="secondary" className="text-[8px]">{result.intent}</Badge> : <span className="text-[10px] text-muted-foreground">—</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            {result ? <span className="text-[10px]">{result.result}</span> : <span className="text-[10px] text-muted-foreground">—</span>}
+                          </td>
+                          <td className="text-right px-3 py-2">
+                            {result ? <span className="text-[10px] text-muted-foreground">{result.time}</span> : <span className="text-[10px] text-muted-foreground">—</span>}
+                          </td>
+                          <td className="text-center px-3 py-2">
+                            {result ? (
+                              <div className={cn("w-4 h-4 rounded-full mx-auto flex items-center justify-center",
+                                result.status === "pass" ? "bg-primary/10" : result.status === "warn" ? "bg-amber-50" : "bg-red-50"
+                              )}>
+                                <div className={cn("w-1.5 h-1.5 rounded-full",
+                                  result.status === "pass" ? "bg-primary" : result.status === "warn" ? "bg-amber-400" : "bg-red-400"
+                                )} />
+                              </div>
+                            ) : (
+                              <div className="w-4 h-4 rounded-full mx-auto bg-muted/50" />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

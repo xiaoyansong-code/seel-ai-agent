@@ -1,17 +1,28 @@
 /**
  * Agents — Default tab for AI Support module
- * Top: Agent cards (with inline metrics) + Hire New Agent card
- * Bottom: Opportunities — lightweight suggestions list
+ * V2: UX optimizations
+ * - Compressed card vertical spacing
+ * - RC Live Chat data gets subtle background color
+ * - "Setting Up" card redesigned with clear next-step CTA
+ * - "Create Agent" opens as modal dialog (not separate page)
+ * - Opportunities section has light background box
+ * - Opportunity status badges next to title with color coding
  */
-import { Link } from "wouter";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
   Plus, MessageCircle, Mail, Instagram,
   ArrowRight, CheckCircle2, Lightbulb,
+  Bot, Loader2, AlertCircle, ArrowUpRight,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type AgentStatus = "setting-up" | "ready-to-test" | "live" | "paused";
 
@@ -43,6 +54,7 @@ const opportunities = [
     label: "Sync all orders",
     desc: "Give your agent full order history for accurate responses",
     status: "Partial sync",
+    statusColor: "text-amber-700 bg-amber-50 border-amber-200",
     href: "/seel/integrations",
     done: false,
   },
@@ -51,6 +63,7 @@ const opportunities = [
     label: "Enrich knowledge base",
     desc: "More articles help your agent resolve a wider range of inquiries",
     status: "3 articles",
+    statusColor: "text-blue-700 bg-blue-50 border-blue-200",
     href: "/playbook",
     done: false,
   },
@@ -58,11 +71,27 @@ const opportunities = [
     id: "activate-skills",
     label: "Activate skills",
     desc: "Enable capabilities like returns, exchanges, and tracking",
-    status: "2 skills enabled",
+    status: "2 of 6 enabled",
+    statusColor: "text-amber-700 bg-amber-50 border-amber-200",
     href: "/playbook/skills",
     done: false,
   },
 ];
+
+/* ── Channel selection for Create Agent dialog ── */
+type ChannelType = "email" | "live-chat" | "social-messaging";
+
+const channels: { id: ChannelType; label: string; icon: typeof Mail; desc: string; integration: string; comingSoonAlt?: string }[] = [
+  { id: "email", label: "Email", icon: Mail, desc: "Email tickets via ticketing system", integration: "Zendesk Email", comingSoonAlt: "Gorgias Email" },
+  { id: "live-chat", label: "Live Chat", icon: MessageCircle, desc: "Real-time chat on your site", integration: "RC Widget" },
+  { id: "social-messaging", label: "Social Messaging", icon: Instagram, desc: "Instagram, Facebook, WhatsApp", integration: "Zendesk Messaging" },
+];
+
+const defaultNames: Record<ChannelType, string> = {
+  email: "Email Support Agent",
+  "live-chat": "Live Chat Agent",
+  "social-messaging": "Social Media Agent",
+};
 
 function ChannelIcon({ type, className }: { type: string; className?: string }) {
   if (type === "email") return <Mail className={className} />;
@@ -74,14 +103,44 @@ const cV = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { stagge
 const iV = { hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0, transition: { duration: 0.2 } } };
 
 export default function Agents() {
+  const [, navigate] = useLocation();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [channel, setChannel] = useState<ChannelType | "">("");
+  const [agentName, setAgentName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const handleChannelSelect = (id: ChannelType) => {
+    setChannel(id);
+    setAgentName(defaultNames[id]);
+  };
+
+  const handleCreate = () => {
+    if (!agentName.trim() || !channel) return;
+    setCreating(true);
+    setTimeout(() => {
+      toast.success(`${agentName} created — let's set it up`);
+      setCreating(false);
+      setCreateOpen(false);
+      navigate("/agents/email-agent");
+    }, 800);
+  };
+
+  const handleOpenCreate = () => {
+    setChannel("");
+    setAgentName("");
+    setCreating(false);
+    setCreateOpen(true);
+  };
+
   return (
-    <motion.div variants={cV} initial="hidden" animate="visible" className="p-6 max-w-[960px] space-y-8">
+    <motion.div variants={cV} initial="hidden" animate="visible" className="p-6 max-w-[960px] space-y-6">
       {/* ── Agent Cards ── */}
       <motion.div variants={iV}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {agents.map((agent) => {
             const sc = statusCfg[agent.status];
             const isLive = agent.status === "live";
+            const isSettingUp = agent.status === "setting-up";
             const channelColors: Record<string, string> = {
               chat: "text-primary bg-primary/10",
               email: "text-blue-600 bg-blue-50",
@@ -93,11 +152,11 @@ export default function Agents() {
               <motion.div key={agent.id} variants={iV}>
                 <Link href={`/agents/${agent.id}`}>
                   <Card className="shadow-sm hover:shadow-md hover:border-primary/20 transition-all cursor-pointer group h-full">
-                    <CardContent className="p-5 flex flex-col h-full">
-                      {/* Header */}
-                      <div className="flex items-start gap-3 mb-4">
-                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", cc)}>
-                          <ChannelIcon type={agent.channelType} className="w-5 h-5" />
+                    <CardContent className="p-4 flex flex-col h-full">
+                      {/* Header — compressed */}
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", cc)}>
+                          <ChannelIcon type={agent.channelType} className="w-4.5 h-4.5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold group-hover:text-primary transition-colors truncate">{agent.name}</p>
@@ -106,33 +165,38 @@ export default function Agents() {
                         <Badge variant="outline" className={cn("text-[9px] shrink-0 font-medium", sc.color)}>{sc.label}</Badge>
                       </div>
 
-                      {/* Metrics or Setup Progress */}
-                      {isLive ? (
-                        <div className="grid grid-cols-3 gap-3 mt-auto">
-                          <div>
-                            <p className="text-lg font-semibold leading-none">{agent.sessions}</p>
-                            <p className="text-[10px] text-muted-foreground mt-1">Sessions (7d)</p>
-                          </div>
-                          <div>
-                            <p className="text-lg font-semibold leading-none">{agent.resolution}%</p>
-                            <p className="text-[10px] text-muted-foreground mt-1">Resolution</p>
-                          </div>
-                          <div>
-                            <p className="text-lg font-semibold leading-none">{agent.csat}</p>
-                            <p className="text-[10px] text-muted-foreground mt-1">CSAT</p>
-                          </div>
+                      {/* Live agent: metrics with subtle background */}
+                      {isLive && (
+                        <div className="grid grid-cols-3 gap-2 mt-auto">
+                          {[
+                            { value: agent.sessions, label: "Sessions (7d)" },
+                            { value: `${agent.resolution}%`, label: "Resolution" },
+                            { value: agent.csat, label: "CSAT" },
+                          ].map((m, i) => (
+                            <div key={i} className="bg-primary/[0.04] rounded-lg px-2.5 py-2 text-center">
+                              <p className="text-base font-bold leading-none">{m.value}</p>
+                              <p className="text-[9px] text-muted-foreground mt-1">{m.label}</p>
+                            </div>
+                          ))}
                         </div>
-                      ) : agent.setupSteps ? (
-                        <div className="mt-auto">
-                          <div className="flex items-center justify-between text-[11px] mb-1.5">
-                            <span className="text-muted-foreground">{agent.setupSteps.done} of {agent.setupSteps.total} steps</span>
-                            <span className="text-amber-600 font-medium">Next: {agent.setupSteps.next}</span>
+                      )}
+
+                      {/* Setting up: redesigned with clear next-step CTA */}
+                      {isSettingUp && agent.setupSteps && (
+                        <div className="mt-auto space-y-2.5">
+                          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50/70 border border-amber-100">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-medium text-amber-800">Next: {agent.setupSteps.next}</p>
+                              <p className="text-[10px] text-amber-600/80">Step {agent.setupSteps.done} of {agent.setupSteps.total} completed</p>
+                            </div>
+                            <ArrowUpRight className="w-3.5 h-3.5 text-amber-500 shrink-0 group-hover:text-amber-700 transition-colors" />
                           </div>
-                          <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
                             <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${(agent.setupSteps.done / agent.setupSteps.total) * 100}%` }} />
                           </div>
                         </div>
-                      ) : null}
+                      )}
                     </CardContent>
                   </Card>
                 </Link>
@@ -140,53 +204,134 @@ export default function Agents() {
             );
           })}
 
-          {/* Hire New Agent Card */}
+          {/* Hire New Agent Card — opens dialog */}
           <motion.div variants={iV}>
-            <Link href="/agents/new">
+            <button onClick={handleOpenCreate} className="w-full h-full text-left">
               <Card className="shadow-sm border-dashed hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer group h-full">
-                <CardContent className="p-5 flex flex-col items-center justify-center text-center h-full min-h-[160px]">
-                  <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mb-2.5 group-hover:bg-primary/10 transition-colors">
-                    <Plus className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                <CardContent className="p-4 flex flex-col items-center justify-center text-center h-full min-h-[148px]">
+                  <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center mb-2 group-hover:bg-primary/10 transition-colors">
+                    <Plus className="w-4.5 h-4.5 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
-                  <p className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">Hire New Agent</p>
+                  <p className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">Create New Agent</p>
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5">Email, Social, or Live Chat</p>
                 </CardContent>
               </Card>
-            </Link>
+            </button>
           </motion.div>
         </div>
       </motion.div>
 
-      {/* ── Opportunities ── */}
+      {/* ── Opportunities — with background box ── */}
       <motion.div variants={iV}>
-        <div className="flex items-center gap-2 mb-3">
-          <Lightbulb className="w-3.5 h-3.5 text-muted-foreground" />
-          <p className="text-sm font-medium text-muted-foreground">Opportunities</p>
-        </div>
-        <div className="space-y-1">
-          {opportunities.map((item) => (
-            <Link key={item.id} href={item.href}>
-              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                <div className={cn(
-                  "w-4 h-4 rounded-full flex items-center justify-center shrink-0",
-                  item.done ? "bg-primary" : "border-[1.5px] border-muted-foreground/20"
-                )}>
-                  {item.done && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+        <div className="rounded-xl bg-muted/40 border border-border/60 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+            <p className="text-sm font-semibold">Opportunities</p>
+          </div>
+          <div className="space-y-0.5">
+            {opportunities.map((item) => (
+              <Link key={item.id} href={item.href}>
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-background/80 transition-colors cursor-pointer group">
+                  <div className={cn(
+                    "w-4 h-4 rounded-full flex items-center justify-center shrink-0",
+                    item.done ? "bg-primary" : "border-[1.5px] border-muted-foreground/20"
+                  )}>
+                    {item.done && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className={cn(
+                        "text-[13px] leading-tight",
+                        item.done ? "text-muted-foreground line-through" : "text-foreground group-hover:text-primary transition-colors"
+                      )}>{item.label}</p>
+                      <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 font-medium", item.statusColor)}>
+                        {item.status}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.desc}</p>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/15 group-hover:text-primary/50 transition-colors shrink-0" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className={cn(
-                    "text-[13px] leading-tight",
-                    item.done ? "text-muted-foreground line-through" : "text-foreground group-hover:text-primary transition-colors"
-                  )}>{item.label}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.desc}</p>
-                </div>
-                <span className="text-[11px] text-muted-foreground shrink-0">{item.status}</span>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/15 group-hover:text-primary/50 transition-colors shrink-0" />
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))}
+          </div>
         </div>
       </motion.div>
+
+      {/* ── Create Agent Dialog ── */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-[540px]">
+          <DialogHeader>
+            <DialogTitle>Create New Agent</DialogTitle>
+            <DialogDescription>Choose a channel and name your agent. You can configure everything else after creation.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 pt-2">
+            {/* Channel Selection */}
+            <div>
+              <label className="text-sm font-medium mb-2.5 block">Channel</label>
+              <div className="grid grid-cols-3 gap-2.5">
+                {channels.map(ch => {
+                  const selected = channel === ch.id;
+                  return (
+                    <button
+                      key={ch.id}
+                      onClick={() => handleChannelSelect(ch.id)}
+                      className={cn(
+                        "text-left p-3.5 rounded-lg border transition-all",
+                        selected ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-muted-foreground/30"
+                      )}
+                    >
+                      <ch.icon className={cn("w-4.5 h-4.5 mb-1.5", selected ? "text-primary" : "text-muted-foreground")} />
+                      <p className="text-[13px] font-medium leading-tight">{ch.label}</p>
+                      <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{ch.desc}</p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-1.5">{ch.integration}</p>
+                      {ch.comingSoonAlt && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[9px] text-muted-foreground/50">{ch.comingSoonAlt}</span>
+                          <Badge variant="secondary" className="text-[7px] px-1 py-0">Soon</Badge>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Agent Name */}
+            {channel && (
+              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+                <label className="text-sm font-medium mb-1.5 block">Agent Name</label>
+                <Input
+                  value={agentName}
+                  onChange={e => setAgentName(e.target.value)}
+                  placeholder={channel ? defaultNames[channel] : "Agent name"}
+                  className="h-9 text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">You can change this later in agent settings.</p>
+              </motion.div>
+            )}
+
+            {/* Create Button */}
+            {channel && (
+              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15, delay: 0.05 }}>
+                <div className="pt-2 border-t border-border/50 flex items-center justify-between">
+                  <p className="text-[11px] text-muted-foreground">
+                    Agent will be created in <strong>Setting Up</strong> status.
+                  </p>
+                  <Button onClick={handleCreate} disabled={!agentName.trim() || creating} className="gap-1.5">
+                    {creating ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Creating...</>
+                    ) : (
+                      <><Bot className="w-3.5 h-3.5" /> Create Agent</>
+                    )}
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

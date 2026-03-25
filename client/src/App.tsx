@@ -6,41 +6,32 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 import Agents from "./pages/Agents";
-import HireAgent from "./pages/HireAgent";
 import AgentDetail from "./pages/AgentDetail";
 import Knowledge from "./pages/Knowledge";
 import Conversations from "./pages/Conversations";
 import Skills from "./pages/Skills";
 import Actions from "./pages/Actions";
 import Settings from "./pages/Settings";
+import PerformanceOverview from "./pages/PerformanceOverview";
 
 /* Placeholder for Seel global pages */
 function SeelPlaceholder() {
   return (
     <div className="p-8 flex items-center justify-center h-full">
-      <div className="text-center">
-        <p className="text-sm text-muted-foreground">This is a Seel platform page.</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">Navigate to AI support to see the prototype.</p>
+      <div className="text-center max-w-[320px]">
+        <div className="w-10 h-10 rounded-xl bg-muted/60 flex items-center justify-center mx-auto mb-3">
+          <svg className="w-5 h-5 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <p className="text-sm font-medium text-muted-foreground">Coming Soon</p>
+        <p className="text-xs text-muted-foreground/60 mt-1">This Seel platform page is not part of the AI Support prototype.</p>
+        <p className="text-xs text-muted-foreground/40 mt-3">Navigate to <span className="text-primary font-medium">AI support</span> in the sidebar to explore the prototype.</p>
       </div>
     </div>
   );
 }
 
-/* Placeholder for sub-tabs not yet built */
-function SubTabPlaceholder({ title }: { title: string }) {
-  return (
-    <div className="p-6">
-      <div className="text-center py-16">
-        <p className="text-sm text-muted-foreground">{title}</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">Coming soon</p>
-      </div>
-    </div>
-  );
-}
-
-
-
-function AnalyticsPage() { return <SubTabPlaceholder title="Analytics" />; }
 
 function Router() {
   return (
@@ -48,7 +39,6 @@ function Router() {
       {/* Agents tab (default) */}
       <Route path="/" component={Agents} />
       <Route path="/agents" component={Agents} />
-      <Route path="/agents/new" component={HireAgent} />
       <Route path="/agents/:id" component={AgentDetail} />
 
       {/* Playbook tab */}
@@ -57,8 +47,8 @@ function Router() {
       <Route path="/playbook/actions" component={Actions} />
 
       {/* Performance tab */}
-      <Route path="/performance" component={Conversations} />
-      <Route path="/performance/analytics" component={AnalyticsPage} />
+      <Route path="/performance" component={PerformanceOverview} />
+      <Route path="/performance/conversations" component={Conversations} />
 
       {/* Legacy routes redirect */}
       <Route path="/knowledge" component={Knowledge} />
