@@ -283,7 +283,7 @@ function SettingUpView({ agent }: { agent: AgentData }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <p className="text-xs font-medium">{skill.name}</p>
-                    {skill.globalEnabled && <Badge variant="secondary" className="text-[8px] px-1 py-0">Global</Badge>}
+                    {skill.globalEnabled && <Badge variant="secondary" className="text-[8px] px-1 py-0">Playbook default</Badge>}
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-0.5">{skill.desc}</p>
                 </div>
@@ -472,46 +472,51 @@ function LiveView({ agent, navigate }: { agent: AgentData; navigate: (to: string
 
         {/* ── Overview Tab ── */}
         <TabsContent value="overview" className="mt-3 space-y-3">
-          {/* Compact metrics */}
+          {/* #7 Compact metrics — trend includes time range */}
           <div className="grid grid-cols-5 gap-2">
-            <Metric label="Sessions" value={String(agent.sessionsToday)} trend="+12%" />
-            <Metric label="Resolution" value={`${agent.resolutionRate}%`} trend="+2.3%" />
-            <Metric label="CSAT" value={String(agent.csat)} trend="+0.1" />
-            <Metric label="Response" value={agent.avgResponseTime} trend="-0.2s" />
-            <Metric label="Escalation" value={`${agent.escalationRate}%`} trend="-1.2%" />
+            <Metric label="Sessions" value={String(agent.sessionsToday)} trend="+12% vs last week" />
+            <Metric label="Resolution" value={`${agent.resolutionRate}%`} trend="+2.3% vs last week" />
+            <Metric label="CSAT" value={String(agent.csat)} trend="+0.1 vs last week" />
+            <Metric label="Response" value={agent.avgResponseTime} trend="-0.2s vs last week" />
+            <Metric label="Escalation" value={`${agent.escalationRate}%`} trend="-1.2% vs last week" />
           </div>
 
-          {/* Single Performance deep-link */}
+          {/* #6 Performance deep-link — clearer CTA */}
           <Card className="bg-primary/[0.02] border-primary/10">
             <CardContent className="p-3 flex items-center justify-between">
-              <p className="text-[11px] text-muted-foreground">Dive deeper into this agent's performance and conversations</p>
+              <p className="text-[11px] text-muted-foreground">View detailed metrics, conversation logs, and skill-level breakdowns</p>
               <Button
                 variant="outline"
                 size="sm"
                 className="text-xs gap-1.5 h-7"
                 onClick={() => navigate(`/performance?agent=${agentFilterParam}`)}
               >
-                <BarChart3 className="w-3 h-3" /> View in Performance
+                <BarChart3 className="w-3 h-3" /> Open in Performance Dashboard
                 <ExternalLink className="w-2.5 h-2.5 text-muted-foreground" />
               </Button>
             </CardContent>
           </Card>
 
-          {/* Recent Activity — full width now */}
+          {/* #5 Recent Activity — with date grouping */}
           <Card>
             <CardHeader className="pb-1 px-4 pt-3"><CardTitle className="text-xs font-semibold">Recent Activity</CardTitle></CardHeader>
-            <CardContent className="px-4 pb-3 space-y-1">
-              {agent.auditLog.map((log, i) => (
-                <div key={i} className="flex items-start gap-2 p-1.5 rounded hover:bg-muted/30">
-                  <div className={cn("w-1.5 h-1.5 rounded-full mt-1 shrink-0",
-                    log.status === "success" ? "bg-primary" : log.status === "blocked" ? "bg-red-500" : "bg-amber-500"
-                  )} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-medium truncate">{log.detail}</p>
-                    <p className="text-[9px] text-muted-foreground">{log.time} · {log.ticket}</p>
+            <CardContent className="px-4 pb-3">
+              {agent.auditLog.length > 0 && (
+                <p className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-1.5">Today</p>
+              )}
+              <div className="space-y-1">
+                {agent.auditLog.map((log, i) => (
+                  <div key={i} className="flex items-start gap-2 p-1.5 rounded hover:bg-muted/30">
+                    <div className={cn("w-1.5 h-1.5 rounded-full mt-1 shrink-0",
+                      log.status === "success" ? "bg-primary" : log.status === "blocked" ? "bg-red-500" : "bg-amber-500"
+                    )} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-medium truncate">{log.detail}</p>
+                      <p className="text-[9px] text-muted-foreground">{log.time} · {log.ticket}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
               {agent.auditLog.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-4">No recent activity</p>
               )}
@@ -692,7 +697,12 @@ function ConfigurationTab({ agent }: { agent: AgentData }) {
                 <p className="text-sm font-semibold">{agent.channel.label}</p>
                 <p className="text-[11px] text-muted-foreground">via {agent.channel.integration}</p>
               </div>
-              <Badge variant="outline" className="ml-auto text-[9px] text-primary border-primary/20">Connected</Badge>
+              <div className="ml-auto flex items-center gap-1.5">
+                <Badge variant="outline" className="text-[9px] text-primary border-primary/20">Connected</Badge>
+                <Button variant="ghost" size="sm" className="text-[10px] h-6 px-2 text-muted-foreground" onClick={() => toast.success("Connection verified — all systems operational")}>
+                  Test Connection
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-3 pt-3 border-t">
@@ -743,19 +753,34 @@ function ConfigurationTab({ agent }: { agent: AgentData }) {
         </Card>
       </section>
 
-      {/* ── Guardrails — Coming Soon ── */}
+      {/* #10 Guardrails — Coming Soon with specific types listed */}
       <section>
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-sm font-semibold">Guardrails</h3>
           <Badge variant="secondary" className="text-[9px]">Coming Soon</Badge>
         </div>
-        <Card className="opacity-60">
+        <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center"><Shield className="w-4 h-4 text-amber-600" /></div>
-              <div>
-                <p className="text-xs font-medium">Safety guardrails and operational limits</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Set auto-refund limits, escalation rules, and response boundaries for this agent</p>
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0"><Shield className="w-4 h-4 text-amber-600" /></div>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs font-medium">Safety guardrails and operational limits</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Define boundaries for what your agent can and cannot do autonomously</p>
+                </div>
+                <div className="space-y-1">
+                  {[
+                    { label: "Auto-refund limit", desc: "Max amount the agent can refund without escalation" },
+                    { label: "Escalation triggers", desc: "Conditions that force handoff to a human agent" },
+                    { label: "Response boundaries", desc: "Topics the agent should never discuss or commit to" },
+                  ].map((g, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <div className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0" />
+                      <span className="font-medium text-foreground/70">{g.label}</span>
+                      <span>— {g.desc}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -837,7 +862,7 @@ function ConfigurationTab({ agent }: { agent: AgentData }) {
 /* ═══════════════════════════════════════════ */
 function SimulatorPanel({ agentName }: { agentName: string }) {
   const [singleInput, setSingleInput] = useState("");
-  const [singleMessages, setSingleMessages] = useState<{ role: "customer" | "agent"; text: string; time: string; action?: string; reasoning?: string }[]>([]);
+  const [singleMessages, setSingleMessages] = useState<{ role: "customer" | "agent"; text: string; time: string; action?: string; reasoning?: string; intent?: string; skill?: string }[]>([]);
   const [singleRunning, setSingleRunning] = useState(false);
 
   const handleSingleSend = () => {
@@ -849,19 +874,21 @@ function SimulatorPanel({ agentName }: { agentName: string }) {
 
     setTimeout(() => {
       const lowerInput = userMsg.toLowerCase();
-      let resp;
+      let resp: { text: string; action: string; reasoning: string; intent: string; skill: string };
       if (lowerInput.includes("where") || lowerInput.includes("track") || lowerInput.includes("shipping")) {
-        resp = { text: "I found your order! It's currently in transit with FedEx, tracking number FX-9876543. Expected delivery is in 2 business days.", action: "get_order_status → send_tracking_link", reasoning: "The customer is asking about their order status. I looked up the order and found it's in transit with FedEx. I'll provide the tracking number and expected delivery date." };
+        resp = { text: "I found your order! It's currently in transit with FedEx, tracking number FX-9876543. Expected delivery is in 2 business days.", action: "get_order_status → send_tracking_link", reasoning: "The customer is asking about their order status. I looked up the order and found it's in transit with FedEx. I'll provide the tracking number and expected delivery date.", intent: "Order Tracking", skill: "Where Is My Order (WISMO)" };
       } else if (lowerInput.includes("cancel")) {
-        resp = { text: "I've processed the cancellation for your order. A full refund has been initiated and you should see it within 3-5 business days.", action: "get_order_status → cancel_order → process_refund", reasoning: "The customer wants to cancel their order. I checked that it hasn't shipped yet, so cancellation is possible. I'll process both the cancellation and automatic refund." };
-      } else if (lowerInput.includes("damage") || lowerInput.includes("refund") || lowerInput.includes("broken")) {
-        resp = { text: "I'm sorry about the damaged item. Your order is covered by Seel Protection. I've initiated a full refund to your original payment method.", action: "get_order_status → check_protection → process_refund", reasoning: "The customer reports a damaged item. I checked and the order has active Seel Protection within the claim window. Per policy, I can auto-approve a full refund for damaged items." };
+        resp = { text: "I've processed the cancellation for your order. A full refund has been initiated and you should see it within 3-5 business days.", action: "get_order_status → cancel_order → process_refund", reasoning: "The customer wants to cancel their order. I checked that it hasn't shipped yet, so cancellation is possible. I'll process both the cancellation and automatic refund.", intent: "Order Cancellation", skill: "Order Changes" };
+      } else if (lowerInput.includes("damage") || lowerInput.includes("refund") || lowerInput.includes("broken") || lowerInput.includes("wrong")) {
+        resp = { text: "I'm sorry about that. Your order is covered by Seel Protection. I've initiated a full refund to your original payment method.", action: "get_order_status → check_protection → process_refund", reasoning: "The customer reports an issue with their item. I checked and the order has active Seel Protection within the claim window. Per policy, I can auto-approve a full refund.", intent: "Post-purchase Claim", skill: "Post-purchase Claims" };
       } else if (lowerInput.includes("address") || lowerInput.includes("change")) {
-        resp = { text: "I've updated your shipping address. Since the order hasn't shipped yet, the new address will be used for delivery.", action: "get_order_status → update_shipping_address", reasoning: "The customer wants to change their shipping address. I verified the order is still in processing (not shipped), so the address can be updated safely." };
+        resp = { text: "I've updated your shipping address. Since the order hasn't shipped yet, the new address will be used for delivery.", action: "get_order_status → update_shipping_address", reasoning: "The customer wants to change their shipping address. I verified the order is still in processing (not shipped), so the address can be updated safely.", intent: "Address Change", skill: "Order Changes" };
+      } else if (lowerInput.includes("human") || lowerInput.includes("person") || lowerInput.includes("speak") || lowerInput.includes("agent")) {
+        resp = { text: "Of course, I'll connect you with a human agent right away. Let me transfer this conversation.", action: "escalate_to_human", reasoning: "The customer explicitly requested to speak with a human. Per escalation policy, I should immediately transfer without trying to resolve further.", intent: "Human Escalation Request", skill: "N/A (Escalation Rule)" };
       } else {
-        resp = { text: "I understand your concern. Let me look into that for you right away. I've checked your account and I can help resolve this.", action: "get_order_status", reasoning: "General inquiry detected. I'll retrieve the customer's context and provide a helpful response while asking for more details if needed." };
+        resp = { text: "I understand your concern. Let me look into that for you right away. I've checked your account and I can help resolve this.", action: "get_order_status", reasoning: "General inquiry detected. I'll retrieve the customer's context and provide a helpful response while asking for more details if needed.", intent: "General Inquiry", skill: "Product Inquiry" };
       }
-      setSingleMessages(prev => [...prev, { role: "agent", text: resp.text, time: "Now", action: resp.action, reasoning: resp.reasoning }]);
+      setSingleMessages(prev => [...prev, { role: "agent", text: resp.text, time: "Now", action: resp.action, reasoning: resp.reasoning, intent: resp.intent, skill: resp.skill }]);
       setSingleRunning(false);
     }, 1200);
   };
@@ -889,7 +916,7 @@ function SimulatorPanel({ agentName }: { agentName: string }) {
                   <Bot className="w-8 h-8 text-muted-foreground/30 mb-2" />
                   <p className="text-xs text-muted-foreground">Type a customer message to test how {agentName} responds</p>
                   <div className="flex flex-wrap gap-1.5 mt-3 max-w-[400px] justify-center">
-                    {["Where is my order #1234?", "I want a refund", "Cancel my order"].map((q) => (
+                    {["Where is my order #1234?", "I want a refund", "Cancel my order", "I want to speak to a human", "My order arrived but it's the wrong item", "Can I change my shipping address?"].map((q) => (
                       <button key={q} onClick={() => setSingleInput(q)} className="text-[10px] px-2.5 py-1 rounded-full border border-border hover:bg-muted/50 text-muted-foreground transition-colors">{q}</button>
                     ))}
                   </div>
@@ -899,6 +926,13 @@ function SimulatorPanel({ agentName }: { agentName: string }) {
                 <div key={i} className={cn("flex", msg.role === "customer" ? "justify-end" : "justify-start")}>
                   <div className={cn("max-w-[80%] rounded-xl px-3 py-2", msg.role === "customer" ? "bg-muted" : "bg-primary/10 border border-primary/15")}>
                     <p className="text-[10px] font-medium text-muted-foreground mb-0.5">{msg.role === "customer" ? "Test Customer" : agentName}</p>
+                    {/* #19 Intent + Skill info */}
+                    {msg.intent && (
+                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                        <Badge variant="outline" className="text-[8px] px-1.5 py-0 font-medium"><Target className="w-2 h-2 mr-0.5" />{msg.intent}</Badge>
+                        <Badge variant="secondary" className="text-[8px] px-1.5 py-0">{msg.skill}</Badge>
+                      </div>
+                    )}
                     {msg.action && (
                       <div className="flex items-center gap-1 mb-1">
                         <Badge variant="secondary" className="text-[8px] gap-0.5 font-mono px-1.5 py-0"><Zap className="w-2 h-2" />{msg.action}</Badge>
@@ -1084,6 +1118,12 @@ function SkillsSection({
                           </div>
                         </div>
                       )}
+                      {/* #21 Edit in Playbook link */}
+                      <Link href="/playbook/skills">
+                        <button className="text-[10px] text-primary hover:underline mt-2 flex items-center gap-1">
+                          Edit in Playbook <ExternalLink className="w-2.5 h-2.5" />
+                        </button>
+                      </Link>
                     </div>
                   </motion.div>
                 )}

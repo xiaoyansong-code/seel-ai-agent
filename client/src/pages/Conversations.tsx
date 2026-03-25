@@ -237,32 +237,22 @@ const channelIcons: Record<string, { icon: typeof Mail; color: string }> = {
   social: { icon: Instagram, color: "text-pink-500" },
 };
 
+/* #13 Sentiment — text labels instead of dots+arrow */
 function SentimentArc({ start, end }: { start: string; end: string }) {
   const colorMap: Record<string, { text: string; bg: string; label: string }> = {
-    positive: { text: "text-primary", bg: "bg-primary", label: "Positive" },
-    neutral: { text: "text-amber-600", bg: "bg-amber-400", label: "Neutral" },
-    negative: { text: "text-red-500", bg: "bg-red-400", label: "Negative" },
+    positive: { text: "text-primary", bg: "bg-primary/10", label: "Positive" },
+    neutral: { text: "text-amber-600", bg: "bg-amber-50", label: "Neutral" },
+    negative: { text: "text-red-500", bg: "bg-red-50", label: "Negative" },
   };
   const s = colorMap[start] || colorMap.neutral;
   const e = colorMap[end] || colorMap.neutral;
-  const improved = (start === "negative" && end !== "negative") || (start === "neutral" && end === "positive");
-  const worsened = (start === "positive" && end !== "positive") || (start === "neutral" && end === "negative");
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-1 cursor-default">
-          <div className={cn("w-2 h-2 rounded-full", s.bg)} />
-          <svg width="12" height="8" viewBox="0 0 12 8" className={cn(improved ? "text-primary" : worsened ? "text-red-400" : "text-muted-foreground/40")}>
-            <path d="M0 4h8m0 0L6 2m2 2L6 6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <div className={cn("w-2 h-2 rounded-full", e.bg)} />
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="text-[10px]">
-        <span className={s.text}>{s.label}</span> → <span className={e.text}>{e.label}</span>
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex items-center gap-1">
+      <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded", s.text, s.bg)}>{s.label}</span>
+      <span className="text-[9px] text-muted-foreground/40">→</span>
+      <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded", e.text, e.bg)}>{e.label}</span>
+    </div>
   );
 }
 
@@ -476,7 +466,8 @@ export default function Conversations() {
 /* Right: Single Reasoning panel (selected from left)         */
 /* ═══════════════════════════════════════════════════════════ */
 function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: () => void }) {
-  const [activeReasoning, setActiveReasoning] = useState<number | null>(null);
+  /* #14 Default to first reasoning open */
+  const [activeReasoning, setActiveReasoning] = useState<number | null>(conv.reasoningTraces.length > 0 ? 0 : null);
   const [feedbackGroup, setFeedbackGroup] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
   const rc = resultConfig[conv.result];
@@ -523,7 +514,17 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
         <MetaCard label="Order" value={conv.orderId} />
         <MetaCard label="Intent" value={conv.intent} />
         <MetaCard label="Agent" value={conv.agent} />
-        <MetaCard label="Approach" value={conv.approach} />
+        {/* #16 Approach with tooltip explanation */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <MetaCard label="Approach" value={conv.approach} />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-[10px] max-w-[200px]">
+            {conv.approach === "Autopilot" ? "Fully autonomous — agent handles the conversation end-to-end" : "Agent drafts responses for human review before sending"}
+          </TooltipContent>
+        </Tooltip>
         <MetaCard label="Duration" value={conv.duration} />
         <MetaCard label="Sentiment" value={`${capitalize(conv.sentimentStart)} → ${capitalize(conv.sentimentEnd)}`} />
       </div>
@@ -635,9 +636,10 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
+                          {/* #15 More visible flag button */}
                           <button
                             onClick={() => { setFeedbackGroup(group.reasoningIndex); setFeedbackText(""); }}
-                            className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-amber-600 transition-colors px-1.5 py-0.5 rounded hover:bg-amber-50"
+                            className="flex items-center gap-1 text-[10px] text-amber-600/70 hover:text-amber-700 transition-colors px-2 py-1 rounded-md border border-amber-200/50 hover:bg-amber-50 hover:border-amber-300"
                           >
                             <Flag className="w-2.5 h-2.5" />
                             <span>Flag reply</span>
@@ -740,14 +742,14 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
                       </ReasoningStep>
                     )}
 
-                    {/* Step 6: Guardrails Checked */}
+                    {/* #17 Step 6: Guardrails — red highlight for Triggered */}
                     {currentTrace.guardrailsChecked && (
                       <ReasoningStep
-                        icon={<Shield className="w-3 h-3 text-emerald-600" />}
+                        icon={<Shield className={cn("w-3 h-3", currentTrace.guardrailsChecked.startsWith("Triggered") ? "text-red-500" : "text-emerald-600")} />}
                         label="Guardrails"
-                        labelColor="text-emerald-800"
+                        labelColor={currentTrace.guardrailsChecked.startsWith("Triggered") ? "text-red-700" : "text-emerald-800"}
                       >
-                        <p className="text-[10px] text-foreground/60">{currentTrace.guardrailsChecked}</p>
+                        <p className={cn("text-[10px]", currentTrace.guardrailsChecked.startsWith("Triggered") ? "text-red-600 font-medium" : "text-foreground/60")}>{currentTrace.guardrailsChecked}</p>
                       </ReasoningStep>
                     )}
                   </motion.div>

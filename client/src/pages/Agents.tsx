@@ -1,10 +1,10 @@
 /**
  * Agents — Default tab for AI Support module
- * V3: Messaging & Scale guidance
- * - Page header with context message
- * - Live Agent status banner (confidence builder)
- * - "Expand to more channels" guidance replacing cold "Create New Agent"
- * - Improved UX writing throughout
+ * UX Review fixes:
+ * #1 Banner uses natural language summary, no duplicate metrics with card
+ * #2 Expand channels dynamically excludes channels that already have agents
+ * #3 Opportunities status labels are more descriptive
+ * #4 Setting Up card shows full step context
  */
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -13,7 +13,7 @@ import {
   Plus, MessageCircle, Mail, Instagram,
   ArrowRight, CheckCircle2, Lightbulb,
   Bot, Loader2, AlertCircle, ArrowUpRight,
-  Zap, TrendingUp, Clock, Sparkles,
+  Zap, Clock, Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,22 +37,23 @@ const agents = [
     id: "rc-chat", name: "RC Live Chat Agent", channel: "Live Chat", channelType: "chat",
     integration: "RC Widget", status: "live" as AgentStatus,
     sessions: 847, csat: 4.6, resolution: 91.2,
-    setupSteps: null as null | { done: number; total: number; next: string },
+    setupSteps: null as null | { done: number; total: number; next: string; steps: string[] },
   },
   {
     id: "email-agent", name: "Email Support Agent", channel: "Email", channelType: "email",
     integration: "Zendesk Email", status: "setting-up" as AgentStatus,
     sessions: 0, csat: 0, resolution: 0,
-    setupSteps: { done: 1, total: 3, next: "Connect Zendesk" },
+    setupSteps: { done: 1, total: 3, next: "Connect Zendesk", steps: ["Create agent", "Connect Zendesk", "Test & go live"] },
   },
 ];
 
+/* #3 — Opportunities with clearer status labels */
 const opportunities = [
   {
     id: "sync-orders",
     label: "Sync all orders",
     desc: "Give your agent full order history for accurate responses",
-    status: "Partial sync",
+    status: "60% synced — sync all for better accuracy",
     statusColor: "text-amber-700 bg-amber-50 border-amber-200",
     href: "/seel/integrations",
     done: false,
@@ -61,16 +62,16 @@ const opportunities = [
     id: "enrich-kb",
     label: "Enrich knowledge base",
     desc: "More articles help your agent resolve a wider range of inquiries",
-    status: "3 articles",
+    status: "3 articles added — add more to improve coverage",
     statusColor: "text-blue-700 bg-blue-50 border-blue-200",
     href: "/playbook",
     done: false,
   },
   {
     id: "activate-skills",
-    label: "Activate skills",
+    label: "Activate more skills",
     desc: "Enable capabilities like returns, exchanges, and tracking",
-    status: "2 of 6 enabled",
+    status: "2 of 6 skills enabled",
     statusColor: "text-amber-700 bg-amber-50 border-amber-200",
     href: "/playbook/skills",
     done: false,
@@ -92,13 +93,19 @@ const defaultNames: Record<ChannelType, string> = {
   "social-messaging": "Social Media Agent",
 };
 
-/* ── Channels not yet covered by any agent ── */
-const coveredChannels = new Set(agents.map(a => a.channelType));
+/* #2 — Map agent channelTypes to ChannelType IDs for exclusion */
+const channelTypeToId: Record<string, ChannelType> = {
+  chat: "live-chat",
+  email: "email",
+  social: "social-messaging",
+};
+const existingChannelIds = new Set(agents.map(a => channelTypeToId[a.channelType]).filter(Boolean));
+
 const expandableChannels = [
-  { id: "email" as ChannelType, label: "Email", icon: Mail, desc: "Resolve tickets from Zendesk, Gorgias, or Freshdesk", color: "bg-blue-50 text-blue-600", covered: coveredChannels.has("email") },
-  { id: "live-chat" as ChannelType, label: "Live Chat", icon: MessageCircle, desc: "Real-time support on your website", color: "bg-primary/10 text-primary", covered: coveredChannels.has("chat") },
-  { id: "social-messaging" as ChannelType, label: "Social", icon: Instagram, desc: "Instagram, Facebook, WhatsApp", color: "bg-pink-50 text-pink-600", covered: coveredChannels.has("social") },
-];
+  { id: "email" as ChannelType, label: "Email", icon: Mail, desc: "Resolve tickets from Zendesk, Gorgias, or Freshdesk", color: "bg-blue-50 text-blue-600" },
+  { id: "live-chat" as ChannelType, label: "Live Chat", icon: MessageCircle, desc: "Real-time support on your website", color: "bg-primary/10 text-primary" },
+  { id: "social-messaging" as ChannelType, label: "Social", icon: Instagram, desc: "Instagram, Facebook, WhatsApp", color: "bg-pink-50 text-pink-600" },
+].filter(ch => !existingChannelIds.has(ch.id)); // Only show channels without existing agents
 
 function ChannelIcon({ type, className }: { type: string; className?: string }) {
   if (type === "email") return <Mail className={className} />;
@@ -160,7 +167,7 @@ export default function Agents() {
         </div>
       </motion.div>
 
-      {/* ── Live Agent Status Banner ── */}
+      {/* ── #1 Live Agent Status Banner — natural language, no duplicate metrics ── */}
       {hasLiveAgent && (
         <motion.div variants={iV}>
           <div className="rounded-xl bg-primary/[0.04] border border-primary/10 px-4 py-3">
@@ -170,19 +177,11 @@ export default function Agents() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium">
-                  Your AI agent handled <span className="text-primary font-semibold">847 conversations</span> this week
+                  Your agent resolved <span className="text-primary font-semibold">91%</span> of <span className="text-primary font-semibold">847 conversations</span> this week
                 </p>
-                <div className="flex items-center gap-4 mt-0.5">
-                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3 text-primary" /> 91.2% resolution rate
-                  </span>
-                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-muted-foreground" /> 1.1s avg response
-                  </span>
-                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-500" /> 4.6 CSAT
-                  </span>
-                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Avg response time 1.1s · CSAT 4.6/5.0
+                </p>
               </div>
               <Link href="/performance/overview">
                 <Button variant="ghost" size="sm" className="text-xs gap-1 text-primary hover:text-primary">
@@ -231,7 +230,7 @@ export default function Agents() {
                         <Badge variant="outline" className={cn("text-[9px] shrink-0 font-medium", sc.color)}>{sc.label}</Badge>
                       </div>
 
-                      {/* Live agent: metrics */}
+                      {/* Live agent: metrics — #1 no longer duplicates banner */}
                       {isLive && (
                         <div className="grid grid-cols-3 gap-2 mt-auto">
                           {[
@@ -240,23 +239,37 @@ export default function Agents() {
                             { value: agent.csat, label: "CSAT" },
                           ].map((m, i) => (
                             <div key={i} className="bg-primary/[0.04] rounded-lg px-2.5 py-2 text-center">
-                              <p className="text-base font-bold leading-none">{m.value}</p>
-                              <p className="text-[9px] text-muted-foreground mt-1">{m.label}</p>
+                              <p className="text-sm font-bold">{m.value}</p>
+                              <p className="text-[9px] text-muted-foreground">{m.label}</p>
                             </div>
                           ))}
                         </div>
                       )}
 
-                      {/* Setting up: next step CTA */}
+                      {/* #4 Setting up: full step context */}
                       {isSettingUp && agent.setupSteps && (
                         <div className="mt-auto space-y-2.5">
-                          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50/70 border border-amber-100">
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[11px] font-medium text-amber-800">Next: {agent.setupSteps.next}</p>
-                              <p className="text-[10px] text-amber-600/80">Step {agent.setupSteps.done} of {agent.setupSteps.total} completed</p>
-                            </div>
-                            <ArrowUpRight className="w-3.5 h-3.5 text-amber-500 shrink-0 group-hover:text-amber-700 transition-colors" />
+                          {/* Step list */}
+                          <div className="space-y-1">
+                            {agent.setupSteps.steps.map((step, i) => {
+                              const isDone = i < agent.setupSteps!.done;
+                              const isCurrent = i === agent.setupSteps!.done;
+                              return (
+                                <div key={i} className="flex items-center gap-2">
+                                  <div className={cn(
+                                    "w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold",
+                                    isDone ? "bg-primary text-white" : isCurrent ? "border-2 border-amber-400 text-amber-600" : "border border-muted-foreground/20 text-muted-foreground/40"
+                                  )}>
+                                    {isDone ? <CheckCircle2 className="w-2.5 h-2.5" /> : <span>{i + 1}</span>}
+                                  </div>
+                                  <span className={cn(
+                                    "text-[11px]",
+                                    isDone ? "text-muted-foreground line-through" : isCurrent ? "font-medium text-amber-800" : "text-muted-foreground/60"
+                                  )}>{step}</span>
+                                  {isCurrent && <ArrowUpRight className="w-3 h-3 text-amber-500 shrink-0" />}
+                                </div>
+                              );
+                            })}
                           </div>
                           <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
                             <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${(agent.setupSteps.done / agent.setupSteps.total) * 100}%` }} />
@@ -272,8 +285,8 @@ export default function Agents() {
         </div>
       </motion.div>
 
-      {/* ── Expand to More Channels ── */}
-      {expandableChannels.some(ch => !ch.covered) && (
+      {/* ── #2 Expand to More Channels — only uncovered channels ── */}
+      {expandableChannels.length > 0 && (
         <motion.div variants={iV}>
           <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -283,8 +296,8 @@ export default function Agents() {
             <p className="text-[11px] text-muted-foreground mb-3">
               Your AI agent's skills and knowledge carry over — set up a new channel in under 5 minutes.
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              {expandableChannels.filter(ch => !ch.covered).map(ch => (
+            <div className={cn("grid gap-2", expandableChannels.length === 1 ? "grid-cols-1 max-w-[300px]" : expandableChannels.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
+              {expandableChannels.map(ch => (
                 <button
                   key={ch.id}
                   onClick={() => handleOpenCreate(ch.id)}
@@ -307,7 +320,7 @@ export default function Agents() {
         </motion.div>
       )}
 
-      {/* ── Opportunities ── */}
+      {/* ── #3 Opportunities — clearer status labels ── */}
       <motion.div variants={iV}>
         <div className="rounded-xl bg-muted/40 border border-border/60 p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -325,19 +338,15 @@ export default function Agents() {
                     {item.done && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className={cn(
-                        "text-[13px] leading-tight",
-                        item.done ? "text-muted-foreground line-through" : "text-foreground font-medium"
-                      )}>
-                        {item.label}
-                      </p>
-                      <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 font-medium", item.statusColor)}>
-                        {item.status}
-                      </Badge>
-                    </div>
+                    <p className={cn(
+                      "text-[13px] leading-tight",
+                      item.done ? "text-muted-foreground line-through" : "text-foreground font-medium"
+                    )}>
+                      {item.label}
+                    </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.desc}</p>
                   </div>
+                  <span className="text-[10px] text-muted-foreground/70 shrink-0 max-w-[180px] text-right">{item.status}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/15 group-hover:text-primary/50 transition-colors shrink-0" />
                 </div>
               </Link>

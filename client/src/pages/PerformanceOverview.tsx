@@ -46,6 +46,7 @@ interface SkillRow {
   avgHandlingTime: string;
   escalationRate: number;
   csat: number;
+  avgTurns: number;
   trend: "up" | "down" | "flat";
 }
 
@@ -84,25 +85,25 @@ const agentMetrics: Record<string, MetricSet> = {
 };
 
 const allSkillPerformance: SkillRow[] = [
-  { id: "s1", name: "Order Tracking (WISMO)", icon: Package, iconColor: "text-blue-600 bg-blue-50", tickets: 1243, resolutionRate: 97.1, avgHandlingTime: "0m 52s", escalationRate: 2.9, csat: 4.8, trend: "up" },
-  { id: "s2", name: "Seel Protection Claims", icon: Shield, iconColor: "text-primary bg-primary/10", tickets: 876, resolutionRate: 94.2, avgHandlingTime: "1m 38s", escalationRate: 5.8, csat: 4.6, trend: "up" },
-  { id: "s3", name: "Order Cancellation", icon: ShoppingCart, iconColor: "text-amber-600 bg-amber-50", tickets: 428, resolutionRate: 88.5, avgHandlingTime: "2m 15s", escalationRate: 11.5, csat: 4.3, trend: "down" },
-  { id: "s4", name: "General Inquiry", icon: HelpCircle, iconColor: "text-gray-600 bg-gray-100", tickets: 300, resolutionRate: 82.0, avgHandlingTime: "1m 50s", escalationRate: 18.0, csat: 4.1, trend: "flat" },
+  { id: "s1", name: "Order Tracking (WISMO)", icon: Package, iconColor: "text-blue-600 bg-blue-50", tickets: 1243, resolutionRate: 97.1, avgHandlingTime: "0m 52s", escalationRate: 2.9, csat: 4.8, avgTurns: 2.1, trend: "up" },
+  { id: "s2", name: "Seel Protection Claims", icon: Shield, iconColor: "text-primary bg-primary/10", tickets: 876, resolutionRate: 94.2, avgHandlingTime: "1m 38s", escalationRate: 5.8, csat: 4.6, avgTurns: 3.4, trend: "up" },
+  { id: "s3", name: "Order Cancellation", icon: ShoppingCart, iconColor: "text-amber-600 bg-amber-50", tickets: 428, resolutionRate: 88.5, avgHandlingTime: "2m 15s", escalationRate: 11.5, csat: 4.3, avgTurns: 4.2, trend: "down" },
+  { id: "s4", name: "General Inquiry", icon: HelpCircle, iconColor: "text-gray-600 bg-gray-100", tickets: 300, resolutionRate: 82.0, avgHandlingTime: "1m 50s", escalationRate: 18.0, csat: 4.1, avgTurns: 5.1, trend: "flat" },
 ];
 
 // Per-agent skill data (simplified — in production this would be server-filtered)
 const agentSkillPerformance: Record<string, SkillRow[]> = {
   "RC Live Chat Agent": [
-    { id: "s1", name: "Order Tracking (WISMO)", icon: Package, iconColor: "text-blue-600 bg-blue-50", tickets: 987, resolutionRate: 97.8, avgHandlingTime: "0m 48s", escalationRate: 2.2, csat: 4.9, trend: "up" },
-    { id: "s2", name: "Seel Protection Claims", icon: Shield, iconColor: "text-primary bg-primary/10", tickets: 724, resolutionRate: 95.1, avgHandlingTime: "1m 32s", escalationRate: 4.9, csat: 4.7, trend: "up" },
-    { id: "s3", name: "Order Cancellation", icon: ShoppingCart, iconColor: "text-amber-600 bg-amber-50", tickets: 312, resolutionRate: 90.2, avgHandlingTime: "2m 05s", escalationRate: 9.8, csat: 4.4, trend: "flat" },
-    { id: "s4", name: "General Inquiry", icon: HelpCircle, iconColor: "text-gray-600 bg-gray-100", tickets: 111, resolutionRate: 84.0, avgHandlingTime: "1m 40s", escalationRate: 16.0, csat: 4.2, trend: "flat" },
+    { id: "s1", name: "Order Tracking (WISMO)", icon: Package, iconColor: "text-blue-600 bg-blue-50", tickets: 987, resolutionRate: 97.8, avgHandlingTime: "0m 48s", escalationRate: 2.2, csat: 4.9, avgTurns: 1.9, trend: "up" },
+    { id: "s2", name: "Seel Protection Claims", icon: Shield, iconColor: "text-primary bg-primary/10", tickets: 724, resolutionRate: 95.1, avgHandlingTime: "1m 32s", escalationRate: 4.9, csat: 4.7, avgTurns: 3.2, trend: "up" },
+    { id: "s3", name: "Order Cancellation", icon: ShoppingCart, iconColor: "text-amber-600 bg-amber-50", tickets: 312, resolutionRate: 90.2, avgHandlingTime: "2m 05s", escalationRate: 9.8, csat: 4.4, avgTurns: 4.0, trend: "flat" },
+    { id: "s4", name: "General Inquiry", icon: HelpCircle, iconColor: "text-gray-600 bg-gray-100", tickets: 111, resolutionRate: 84.0, avgHandlingTime: "1m 40s", escalationRate: 16.0, csat: 4.2, avgTurns: 4.8, trend: "flat" },
   ],
   "Email Support Agent": [
-    { id: "s1", name: "Order Tracking (WISMO)", icon: Package, iconColor: "text-blue-600 bg-blue-50", tickets: 256, resolutionRate: 94.5, avgHandlingTime: "3m 10s", escalationRate: 5.5, csat: 4.5, trend: "up" },
-    { id: "s2", name: "Seel Protection Claims", icon: Shield, iconColor: "text-primary bg-primary/10", tickets: 152, resolutionRate: 90.1, avgHandlingTime: "4m 20s", escalationRate: 9.9, csat: 4.3, trend: "flat" },
-    { id: "s3", name: "Order Cancellation", icon: ShoppingCart, iconColor: "text-amber-600 bg-amber-50", tickets: 116, resolutionRate: 83.6, avgHandlingTime: "5m 05s", escalationRate: 16.4, csat: 4.0, trend: "down" },
-    { id: "s4", name: "General Inquiry", icon: HelpCircle, iconColor: "text-gray-600 bg-gray-100", tickets: 189, resolutionRate: 80.4, avgHandlingTime: "3m 50s", escalationRate: 19.6, csat: 3.9, trend: "down" },
+    { id: "s1", name: "Order Tracking (WISMO)", icon: Package, iconColor: "text-blue-600 bg-blue-50", tickets: 256, resolutionRate: 94.5, avgHandlingTime: "3m 10s", escalationRate: 5.5, csat: 4.5, avgTurns: 2.8, trend: "up" },
+    { id: "s2", name: "Seel Protection Claims", icon: Shield, iconColor: "text-primary bg-primary/10", tickets: 152, resolutionRate: 90.1, avgHandlingTime: "4m 20s", escalationRate: 9.9, csat: 4.3, avgTurns: 4.1, trend: "flat" },
+    { id: "s3", name: "Order Cancellation", icon: ShoppingCart, iconColor: "text-amber-600 bg-amber-50", tickets: 116, resolutionRate: 83.6, avgHandlingTime: "5m 05s", escalationRate: 16.4, csat: 4.0, avgTurns: 5.3, trend: "down" },
+    { id: "s4", name: "General Inquiry", icon: HelpCircle, iconColor: "text-gray-600 bg-gray-100", tickets: 189, resolutionRate: 80.4, avgHandlingTime: "3m 50s", escalationRate: 19.6, csat: 3.9, avgTurns: 5.8, trend: "down" },
   ],
 };
 
@@ -242,6 +243,7 @@ export default function PerformanceOverview() {
                   <TableHead className="text-[11px] font-semibold text-muted-foreground text-right">Avg. Handling Time</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground text-right">Escalation Rate</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground text-right">CSAT</TableHead>
+                  <TableHead className="text-[11px] font-semibold text-muted-foreground text-right">Avg Turns</TableHead>
                   <TableHead className="text-[11px] font-semibold text-muted-foreground text-center w-[60px]">Trend</TableHead>
                 </TableRow>
               </TableHeader>
@@ -282,6 +284,12 @@ export default function PerformanceOverview() {
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="text-xs font-semibold">{skill.csat}</span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <span className={cn("text-xs font-semibold", skill.avgTurns <= 3 ? "text-primary" : skill.avgTurns <= 4 ? "text-foreground" : "text-amber-600")}>{skill.avgTurns}</span>
+                        <span className="text-[8px] text-muted-foreground/50">avg 3.5</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       {trendIcon(skill.trend)}
