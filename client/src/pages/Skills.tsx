@@ -7,7 +7,8 @@
  */
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import Markdown from "react-markdown";
+import RichTextEditor from "@/components/RichTextEditor";
+import { markdownToHtml } from "@/lib/markdown-to-html";
 import {
   Target, ChevronLeft, ChevronRight, ChevronDown, Package, Shield, ShoppingCart,
   Pencil, Check, X, Info, AlertTriangle, Eye, Zap, MessageSquare,
@@ -17,7 +18,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -252,42 +253,14 @@ const categories = [
   { key: "Protection" as const, label: "Protection" },
 ];
 
-/* ── Markdown renderer with Gorgias-like styling ── */
+/* ── Guidance display (read-only rendered HTML) ── */
 function GuidanceView({ content }: { content: string }) {
+  const html = markdownToHtml(content);
   return (
-    <div className="guidance-markdown">
-      <Markdown
-        components={{
-          h2: ({ children }) => (
-            <h2 className="text-[13px] font-semibold mt-5 mb-1.5 text-primary/80">{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-sm font-semibold mt-4 mb-1.5 pb-1 border-b border-border/40">{children}</h3>
-          ),
-          hr: () => (
-            <hr className="my-4 border-border/30" />
-          ),
-          p: ({ children }) => (
-            <p className="text-[13px] text-foreground/80 leading-relaxed mb-2">{children}</p>
-          ),
-          strong: ({ children }) => (
-            <strong className="font-semibold text-foreground">{children}</strong>
-          ),
-          ul: ({ children }) => (
-            <ul className="list-disc list-outside ml-4 mb-2 space-y-0.5">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal list-outside ml-4 mb-2 space-y-0.5">{children}</ol>
-          ),
-          li: ({ children }) => (
-            <li className="text-[13px] text-foreground/80 leading-relaxed">{children}</li>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-primary/30 pl-3 my-2 text-[13px] text-foreground/70 italic">{children}</blockquote>
-          ),
-        }}
-      />
-    </div>
+    <div
+      className="guidance-display"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
 
@@ -302,7 +275,7 @@ export default function Skills() {
 
   /* Guidance editing state */
   const [editing, setEditing] = useState(false);
-  const [editBuffer, setEditBuffer] = useState("");
+  const [editHtml, setEditHtml] = useState("");
 
   const [, navigate] = useLocation();
   const detailSkill = skills.find(s => s.id === detailId);
@@ -400,7 +373,7 @@ export default function Skills() {
             </div>
             {!editing ? (
               <button
-                onClick={() => { setEditBuffer(detailSkill.guidance); setEditing(true); }}
+                onClick={() => { setEditHtml(markdownToHtml(detailSkill.guidance)); setEditing(true); }}
                 className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
               >
                 <Pencil className="w-3 h-3" /> Edit
@@ -408,7 +381,7 @@ export default function Skills() {
             ) : (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { saveGuidance(detailSkill.id, editBuffer); setEditing(false); toast.success("Guidance updated"); }}
+                  onClick={() => { setEditing(false); toast.success("Guidance updated"); }}
                   className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
                 >
                   <Check className="w-3 h-3" /> Save
@@ -424,12 +397,10 @@ export default function Skills() {
           </div>
 
           {editing ? (
-            <Textarea
-              value={editBuffer}
-              onChange={e => setEditBuffer(e.target.value)}
-              rows={18}
-              className="text-[13px] leading-relaxed font-mono"
-              placeholder="Write your guidance in Markdown..."
+            <RichTextEditor
+              content={editHtml}
+              onChange={setEditHtml}
+              placeholder="Write your guidance here..."
             />
           ) : (
             <div className="p-4 rounded-lg bg-muted/15 border border-border/50">
