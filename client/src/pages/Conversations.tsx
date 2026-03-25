@@ -1,23 +1,24 @@
 /**
  * Performance > Conversations
  *
- * Redesign notes:
- * - Added "By Agent" filter (reads ?agent= from URL for deep-link from Agent Detail)
- * - Sentiment: replaced opaque dots with a mini line-chart showing sentiment arc (labeled)
- * - Reasoning Trace: restructured per agent-reply turn, each turn shows Agent Thinking
- *   (natural language reasoning) + Actions + Knowledge used. No overly technical metrics.
- * - Bad Case feedback: inline comment box next to each agent reply in detail view
+ * Redesign v3:
+ * - Conversation Detail: Agent consecutive replies grouped → one Reasoning per group
+ * - Left side: "View Reasoning" button at end of each agent reply group
+ * - Right side: shows ONE Reasoning at a time (selected from left)
+ * - Reasoning Trace: Intent Detection → Skill Matched → Agent Thinking → Actions → Knowledge → Guardrails
+ * - No Turn labels on both sides — just click to navigate
+ * - Bad Case feedback on agent reply groups
  */
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSearch } from "wouter";
 import {
-  Search, ArrowLeft, ChevronDown, ChevronRight,
+  Search, ArrowLeft, ChevronDown,
   MessageSquare, CheckCircle2, ArrowUpRight,
   Clock, Bot, User, Zap, Brain, BookOpen,
-  Send, Eye, Flag, MessageCircleWarning,
+  Eye, Flag, MessageCircleWarning,
   Mail, MessageCircle, Instagram,
-  ThumbsUp, ThumbsDown, X,
+  X, Target, Shield, Crosshair,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,12 +34,14 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 /* ── Types ── */
-interface AgentReply {
-  replyText: string;
-  replyTime: string;
-  thinking: string;          // Natural language reasoning — what the agent "thought"
-  actions: string[];         // Actions executed for this reply
-  knowledgeUsed?: string;    // Knowledge article referenced (if any)
+interface ReasoningTrace {
+  intentDetected: string;         // e.g., "Order Tracking (WISMO)"
+  skillMatched: string;           // e.g., "Where Is My Order (WISMO)"
+  skillConfidence: string;        // e.g., "High (0.96)"
+  thinking: string;               // Natural language reasoning
+  actions: string[];              // Actions executed
+  knowledgeUsed?: string;         // Knowledge article referenced
+  guardrailsChecked?: string;     // Guardrail result
 }
 
 interface ConversationRow {
@@ -58,7 +61,7 @@ interface ConversationRow {
   channel: "email" | "live_chat" | "social";
   timestamp: string;
   messages: { role: "customer" | "agent"; text: string; time: string }[];
-  agentReplies: AgentReply[];  // One per agent turn — maps to reasoning trace
+  reasoningTraces: ReasoningTrace[];  // One per agent reply GROUP
 }
 
 /* ── Mock Data ── */
@@ -75,19 +78,18 @@ const conversations: ConversationRow[] = [
       { role: "agent", text: "I found your order. It's currently in transit with FedEx. Tracking number: FX-2847391. The estimated delivery is March 27th. Here's your tracking link: https://track.fedex.com/FX-2847391", time: "14:33" },
       { role: "customer", text: "Oh great, thank you! That's very helpful.", time: "14:33" },
     ],
-    agentReplies: [
+    reasoningTraces: [
       {
-        replyText: "Hello Sarah! Let me check the status of your order #8834 right away.",
-        replyTime: "14:32",
-        thinking: "The customer is asking about their order status — this is a standard WISMO (Where Is My Order) request. I'll look up order #8834 in the system to get the current shipping status before responding.",
-        actions: ["get_order_status → Order #8834: In Transit, FedEx, ETA Mar 27"],
+        intentDetected: "Order Tracking (WISMO)",
+        skillMatched: "Where Is My Order (WISMO)",
+        skillConfidence: "High (0.96)",
+        thinking: "The customer is asking about their order status — this is a standard WISMO request. I'll look up order #8834 to get the current shipping status. The order is in transit with FedEx and on schedule. I should provide the tracking number and a direct tracking link so the customer can monitor it themselves. This should fully resolve their question.",
+        actions: [
+          "get_order_status → Order #8834: In Transit, FedEx, ETA Mar 27",
+          "send_tracking_link → Generated FedEx tracking URL for FX-2847391",
+        ],
         knowledgeUsed: "Shipping FAQ — How to track your order",
-      },
-      {
-        replyText: "I found your order. It's currently in transit with FedEx. Tracking number: FX-2847391. The estimated delivery is March 27th.",
-        replyTime: "14:33",
-        thinking: "I have the order details now. The order is in transit and on schedule. I should provide the tracking number and a direct tracking link so the customer can monitor it themselves. This should fully resolve their question.",
-        actions: ["send_tracking_link → Generated FedEx tracking URL"],
+        guardrailsChecked: "Passed — No sensitive data exposed, response within policy",
       },
     ],
   },
@@ -103,21 +105,18 @@ const conversations: ConversationRow[] = [
       { role: "agent", text: "I can see your order #7721 is covered by Seel Protection. Since the item arrived damaged, I've initiated a full refund of $45.99 to your original payment method. You should see it within 3-5 business days.", time: "14:30" },
       { role: "customer", text: "That was fast! Thank you so much.", time: "14:30" },
     ],
-    agentReplies: [
+    reasoningTraces: [
       {
-        replyText: "I'm sorry to hear about the damage, Mike. Let me look into this for you right away.",
-        replyTime: "14:28",
-        thinking: "The customer reports a damaged item and wants a refund. I need to first check the order details and whether it's covered by Seel Protection, which would allow me to process the refund automatically.",
-        actions: ["get_order_status → Order #7721: Delivered, Seel Protected"],
-      },
-      {
-        replyText: "I can see your order #7721 is covered by Seel Protection. Since the item arrived damaged, I've initiated a full refund of $45.99.",
-        replyTime: "14:30",
-        thinking: "Good news — this order has Seel Protection and is within the 30-day claim window (delivered Mar 20, 27 days remaining). Per our policy, damaged items with active protection qualify for an automatic full refund. I'll process it now and let the customer know the timeline.",
+        intentDetected: "Refund Request — Damaged Item",
+        skillMatched: "Post-purchase Claims (Seel Protection)",
+        skillConfidence: "High (0.94)",
+        thinking: "The customer reports a damaged item and wants a refund. I need to first check the order details and whether it's covered by Seel Protection. Good news — this order has Seel Protection and is within the 30-day claim window (delivered Mar 20, 27 days remaining). Per our policy, damaged items with active protection qualify for an automatic full refund. I'll process it now and let the customer know the timeline.",
         actions: [
-          "check_protection_eligibility → Eligible (within 30-day window)",
+          "get_order_status → Order #7721: Delivered Mar 20, Seel Protected",
+          "check_protection_eligibility → Eligible (within 30-day window, damage claim)",
           "process_refund → $45.99 refund initiated to original payment",
         ],
+        guardrailsChecked: "Passed — Refund amount $45.99 within auto-approve limit ($50)",
       },
     ],
   },
@@ -132,19 +131,18 @@ const conversations: ConversationRow[] = [
       { role: "agent", text: "I sincerely apologize for the inconvenience, Emily. Let me review your return request right away.", time: "14:20" },
       { role: "agent", text: "I can see your return for order #6655 was initiated but not yet processed. I understand your frustration. I'm escalating this to our team lead for immediate resolution.", time: "14:22" },
     ],
-    agentReplies: [
+    reasoningTraces: [
       {
-        replyText: "I sincerely apologize for the inconvenience, Emily. Let me review your return request right away.",
-        replyTime: "14:20",
-        thinking: "The customer is clearly frustrated — this is their third contact about the same issue. I need to acknowledge their frustration first, then quickly look up the return status to understand what went wrong.",
-        actions: ["get_order_status → Return initiated Mar 8, not yet processed (18 days pending, SLA is 7 days)"],
+        intentDetected: "Return Status Inquiry — Repeat Contact (3rd)",
+        skillMatched: "Returns & Exchanges",
+        skillConfidence: "Medium (0.82) — Escalation likely needed",
+        thinking: "The customer is clearly frustrated — this is their third contact about the same issue. I need to acknowledge their frustration first, then quickly look up the return status. The return has been pending for 18 days, which far exceeds our 7-day SLA. Combined with the customer's negative sentiment and this being a repeat contact, I should escalate this immediately rather than try to handle it myself. This needs human intervention from a team lead.",
+        actions: [
+          "get_order_status → Return initiated Mar 8, not yet processed (18 days pending, SLA: 7 days)",
+          "escalate_to_human → Escalated to Tier 2 Support (Priority: High, Reason: SLA breach + repeat contact)",
+        ],
         knowledgeUsed: "Returns Policy — Processing times and escalation procedures",
-      },
-      {
-        replyText: "I can see your return for order #6655 was initiated but not yet processed. I'm escalating this to our team lead for immediate resolution.",
-        replyTime: "14:22",
-        thinking: "The return has been pending for 18 days, which far exceeds our 7-day SLA. Combined with the customer's negative sentiment and this being a repeat contact, I should escalate this immediately rather than try to handle it myself. This needs human intervention from a team lead.",
-        actions: ["escalate_to_human → Escalated to Tier 2 Support (Priority: High)"],
+        guardrailsChecked: "Triggered — Escalation rule: Repeat contact (3+) with unresolved issue",
       },
     ],
   },
@@ -159,15 +157,17 @@ const conversations: ConversationRow[] = [
       { role: "agent", text: "Of course, James! I've updated the shipping address for order #9012 to 456 Oak Ave, Portland OR 97201. The package hasn't shipped yet, so the change will apply.", time: "13:44" },
       { role: "customer", text: "Perfect, thanks!", time: "13:45" },
     ],
-    agentReplies: [
+    reasoningTraces: [
       {
-        replyText: "Of course, James! I've updated the shipping address for order #9012 to 456 Oak Ave, Portland OR 97201.",
-        replyTime: "13:44",
-        thinking: "The customer wants to update their shipping address. I need to first check if the order has already shipped — if it has, I can't change the address. Let me look up the order status. The order is still in Processing and hasn't shipped yet, so I can safely update the address.",
+        intentDetected: "Shipping Address Change",
+        skillMatched: "Order Changes",
+        skillConfidence: "High (0.95)",
+        thinking: "The customer wants to update their shipping address. I need to first check if the order has already shipped — if it has, I can't change the address. The order is still in Processing and hasn't shipped yet, so I can safely update the address to the new one provided.",
         actions: [
           "get_order_status → Order #9012: Processing, not yet shipped",
           "update_shipping_address → Updated from 123 Main St, Seattle WA to 456 Oak Ave, Portland OR 97201",
         ],
+        guardrailsChecked: "Passed — Address change allowed for unshipped orders",
       },
     ],
   },
@@ -183,21 +183,18 @@ const conversations: ConversationRow[] = [
       { role: "agent", text: "Your order #8890 has been cancelled and a full refund of $78.00 has been initiated. You'll see it in 3-5 business days.", time: "12:50" },
       { role: "customer", text: "Thanks for the quick help!", time: "12:50" },
     ],
-    agentReplies: [
+    reasoningTraces: [
       {
-        replyText: "I understand, Lisa. Let me process the cancellation for order #8890.",
-        replyTime: "12:48",
-        thinking: "The customer wants to cancel their order. I need to check if it's still in a cancellable state (not yet shipped). Let me look up the order first.",
-        actions: ["get_order_status → Order #8890: Processing, not shipped"],
-      },
-      {
-        replyText: "Your order #8890 has been cancelled and a full refund of $78.00 has been initiated.",
-        replyTime: "12:50",
-        thinking: "The order hasn't shipped yet, so cancellation is straightforward. Per our policy, cancelled orders receive an automatic full refund. I'll process both the cancellation and refund together and confirm the timeline.",
+        intentDetected: "Order Cancellation",
+        skillMatched: "Order Changes (Cancellation)",
+        skillConfidence: "High (0.97)",
+        thinking: "The customer wants to cancel their order. I need to check if it's still in a cancellable state (not yet shipped). The order hasn't shipped yet, so cancellation is straightforward. Per our policy, cancelled orders receive an automatic full refund. I'll process both the cancellation and refund together and confirm the timeline.",
         actions: [
+          "get_order_status → Order #8890: Processing, not shipped",
           "cancel_order → Order #8890 cancelled",
           "process_refund → $78.00 refund initiated (3-5 business days)",
         ],
+        guardrailsChecked: "Passed — Refund amount $78.00 within auto-approve limit",
       },
     ],
   },
@@ -212,12 +209,14 @@ const conversations: ConversationRow[] = [
       { role: "agent", text: "Your order is out for delivery today! Tracking: FX-1234567. You should receive it by end of day.", time: "11:19" },
       { role: "customer", text: "Perfect, thanks!", time: "11:20" },
     ],
-    agentReplies: [
+    reasoningTraces: [
       {
-        replyText: "Your order is out for delivery today! Tracking: FX-1234567. You should receive it by end of day.",
-        replyTime: "11:19",
+        intentDetected: "Order Tracking (WISMO)",
+        skillMatched: "Where Is My Order (WISMO)",
+        skillConfidence: "High (0.98)",
         thinking: "Simple WISMO request. The order is already out for delivery today, which is great news. I'll share the tracking number and the expected delivery window right away — no need for additional steps.",
         actions: ["get_order_status → Order #7788: Out for delivery today, FedEx FX-1234567"],
+        guardrailsChecked: "Passed — Standard tracking response",
       },
     ],
   },
@@ -238,7 +237,6 @@ const channelIcons: Record<string, { icon: typeof Mail; color: string }> = {
   social: { icon: Instagram, color: "text-pink-500" },
 };
 
-/* Sentiment arc: shows start → end with arrow and color-coded labels */
 function SentimentArc({ start, end }: { start: string; end: string }) {
   const colorMap: Record<string, { text: string; bg: string; label: string }> = {
     positive: { text: "text-primary", bg: "bg-primary", label: "Positive" },
@@ -268,6 +266,40 @@ function SentimentArc({ start, end }: { start: string; end: string }) {
   );
 }
 
+/**
+ * Group consecutive agent messages into reply groups.
+ * Each group maps to one ReasoningTrace.
+ */
+interface MessageGroup {
+  type: "customer" | "agent-group";
+  messages: { role: "customer" | "agent"; text: string; time: string }[];
+  reasoningIndex: number; // index into reasoningTraces (only for agent-group)
+}
+
+function groupMessages(msgs: ConversationRow["messages"]): MessageGroup[] {
+  const groups: MessageGroup[] = [];
+  let agentGroupIdx = 0;
+
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
+    if (msg.role === "customer") {
+      groups.push({ type: "customer", messages: [msg], reasoningIndex: -1 });
+    } else {
+      // Start or continue agent group
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.type === "agent-group") {
+        // Continue existing agent group
+        lastGroup.messages.push(msg);
+      } else {
+        // Start new agent group
+        groups.push({ type: "agent-group", messages: [msg], reasoningIndex: agentGroupIdx });
+        agentGroupIdx++;
+      }
+    }
+  }
+  return groups;
+}
+
 const cV = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.03 } } };
 const iV = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.2 } } };
 
@@ -282,7 +314,6 @@ export default function Conversations() {
   const [intentFilter, setIntentFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState(agentFromUrl);
 
-  // Sync URL param on mount
   useEffect(() => {
     if (agentFromUrl !== "all") setAgentFilter(agentFromUrl);
   }, [agentFromUrl]);
@@ -441,29 +472,29 @@ export default function Conversations() {
 
 /* ═══════════════════════════════════════════════════════════ */
 /* ── Conversation Detail Page                                */
-/* Chat History (left) + Per-Turn Reasoning Trace (right)     */
-/* Bad Case feedback inline on each agent reply               */
+/* Left: Chat History with grouped agent replies              */
+/* Right: Single Reasoning panel (selected from left)         */
 /* ═══════════════════════════════════════════════════════════ */
 function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: () => void }) {
-  const [expandedTurn, setExpandedTurn] = useState<number | null>(0); // first turn expanded by default
-  const [feedbackTurn, setFeedbackTurn] = useState<number | null>(null);
+  const [activeReasoning, setActiveReasoning] = useState<number | null>(null);
+  const [feedbackGroup, setFeedbackGroup] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
   const rc = resultConfig[conv.result];
   const ch = channelIcons[conv.channel];
   const ChIcon = ch.icon;
 
-  const handleSubmitFeedback = (turnIndex: number) => {
+  const messageGroups = useMemo(() => groupMessages(conv.messages), [conv.messages]);
+
+  const handleSubmitFeedback = (groupIdx: number) => {
     if (!feedbackText.trim()) return;
-    toast.success(`Feedback submitted for Turn ${turnIndex + 1}`);
+    toast.success("Feedback submitted — this will help improve agent behavior");
     setFeedbackText("");
-    setFeedbackTurn(null);
+    setFeedbackGroup(null);
   };
 
-  // Map agent replies to the chat messages for highlighting
-  const agentMsgIndices = conv.messages.reduce<number[]>((acc, msg, i) => {
-    if (msg.role === "agent") acc.push(i);
-    return acc;
-  }, []);
+  const currentTrace = activeReasoning !== null && activeReasoning < conv.reasoningTraces.length
+    ? conv.reasoningTraces[activeReasoning]
+    : null;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-6 max-w-[1100px] space-y-5">
@@ -508,65 +539,99 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-3">
-              {conv.messages.map((msg, i) => {
-                // Determine which agent turn this message belongs to (for highlighting)
-                const agentTurnIndex = msg.role === "agent" ? agentMsgIndices.indexOf(i) : -1;
-                const isHighlightedTurn = agentTurnIndex >= 0 && expandedTurn !== null && agentTurnIndex === expandedTurn;
-
-                return (
-                  <div key={i} className={cn(
-                    "flex gap-2.5 rounded-lg transition-colors px-2 py-1.5 -mx-2",
-                    isHighlightedTurn && "bg-primary/[0.04] ring-1 ring-primary/10"
-                  )}>
-                    <div className={cn(
-                      "w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-                      msg.role === "customer" ? "bg-muted" : "bg-primary/10"
-                    )}>
-                      {msg.role === "customer" ? <User className="w-3 h-3 text-muted-foreground" /> : <Bot className="w-3 h-3 text-primary" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[11px] font-medium">{msg.role === "customer" ? conv.customer : conv.agent}</span>
-                        <span className="text-[9px] text-muted-foreground">{msg.time}</span>
-                        {msg.role === "agent" && agentTurnIndex >= 0 && (
-                          <span className="text-[8px] text-muted-foreground/50 ml-auto">Turn {agentTurnIndex + 1}</span>
-                        )}
+            <CardContent className="px-4 pb-4 space-y-1">
+              {messageGroups.map((group, gIdx) => {
+                if (group.type === "customer") {
+                  const msg = group.messages[0];
+                  return (
+                    <div key={gIdx} className="flex gap-2.5 px-2 py-2 -mx-2 rounded-lg">
+                      <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                        <User className="w-3 h-3 text-muted-foreground" />
                       </div>
-                      <p className="text-xs leading-relaxed text-foreground/80">{msg.text}</p>
-
-                      {/* Bad Case Feedback Button — on agent messages */}
-                      {msg.role === "agent" && agentTurnIndex >= 0 && (
-                        <div className="mt-1.5">
-                          {feedbackTurn === agentTurnIndex ? (
-                            <div className="space-y-1.5 mt-2 p-2.5 rounded-md bg-amber-50/50 border border-amber-200/50">
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <MessageCircleWarning className="w-3 h-3 text-amber-600" />
-                                <span className="text-[10px] font-medium text-amber-800">What could be improved in this reply?</span>
-                                <button onClick={() => setFeedbackTurn(null)} className="ml-auto"><X className="w-3 h-3 text-muted-foreground" /></button>
-                              </div>
-                              <Textarea
-                                placeholder="e.g., Should have asked for photo evidence before processing refund..."
-                                value={feedbackText}
-                                onChange={e => setFeedbackText(e.target.value)}
-                                rows={2}
-                                className="text-xs resize-none bg-white"
-                              />
-                              <div className="flex justify-end gap-1.5">
-                                <Button variant="ghost" size="sm" className="text-[10px] h-6" onClick={() => setFeedbackTurn(null)}>Cancel</Button>
-                                <Button size="sm" className="text-[10px] h-6" onClick={() => handleSubmitFeedback(agentTurnIndex)}>Submit Feedback</Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => { setFeedbackTurn(agentTurnIndex); setFeedbackText(""); }}
-                              className="flex items-center gap-1 text-[9px] text-muted-foreground/50 hover:text-amber-600 transition-colors mt-0.5"
-                            >
-                              <Flag className="w-2.5 h-2.5" />
-                              <span>Leave feedback</span>
-                            </button>
-                          )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-[11px] font-medium">{conv.customer}</span>
+                          <span className="text-[9px] text-muted-foreground">{msg.time}</span>
                         </div>
+                        <p className="text-xs leading-relaxed text-foreground/80">{msg.text}</p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Agent reply group
+                const isActive = activeReasoning === group.reasoningIndex;
+                return (
+                  <div
+                    key={gIdx}
+                    className={cn(
+                      "px-2 py-2 -mx-2 rounded-lg transition-all border",
+                      isActive ? "bg-primary/[0.03] border-primary/15" : "border-transparent"
+                    )}
+                  >
+                    {group.messages.map((msg, mIdx) => (
+                      <div key={mIdx} className="flex gap-2.5 mb-1.5 last:mb-0">
+                        {mIdx === 0 ? (
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                            <Bot className="w-3 h-3 text-primary" />
+                          </div>
+                        ) : (
+                          <div className="w-6 shrink-0" /> /* spacer for alignment */
+                        )}
+                        <div className="flex-1 min-w-0">
+                          {mIdx === 0 && (
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-[11px] font-medium">{conv.agent}</span>
+                              <span className="text-[9px] text-muted-foreground">{msg.time}</span>
+                            </div>
+                          )}
+                          <p className="text-xs leading-relaxed text-foreground/80">{msg.text}</p>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* View Reasoning button + Bad Case feedback */}
+                    <div className="flex items-center gap-3 mt-2 ml-8">
+                      <button
+                        onClick={() => setActiveReasoning(isActive ? null : group.reasoningIndex)}
+                        className={cn(
+                          "flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-all",
+                          isActive
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "text-muted-foreground hover:text-primary hover:bg-primary/5"
+                        )}
+                      >
+                        <Eye className="w-3 h-3" />
+                        {isActive ? "Viewing Reasoning" : "View Reasoning"}
+                      </button>
+
+                      {feedbackGroup === group.reasoningIndex ? (
+                        <div className="flex-1 space-y-1.5 p-2.5 rounded-md bg-amber-50/50 border border-amber-200/50">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <MessageCircleWarning className="w-3 h-3 text-amber-600" />
+                            <span className="text-[10px] font-medium text-amber-800">What could be improved?</span>
+                            <button onClick={() => setFeedbackGroup(null)} className="ml-auto"><X className="w-3 h-3 text-muted-foreground" /></button>
+                          </div>
+                          <Textarea
+                            placeholder="e.g., Should have asked for photo evidence before processing refund..."
+                            value={feedbackText}
+                            onChange={e => setFeedbackText(e.target.value)}
+                            rows={2}
+                            className="text-xs resize-none bg-white"
+                          />
+                          <div className="flex justify-end gap-1.5">
+                            <Button variant="ghost" size="sm" className="text-[10px] h-6" onClick={() => setFeedbackGroup(null)}>Cancel</Button>
+                            <Button size="sm" className="text-[10px] h-6" onClick={() => handleSubmitFeedback(group.reasoningIndex)}>Submit</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setFeedbackGroup(group.reasoningIndex); setFeedbackText(""); }}
+                          className="flex items-center gap-1 text-[9px] text-muted-foreground/50 hover:text-amber-600 transition-colors"
+                        >
+                          <Flag className="w-2.5 h-2.5" />
+                          <span>Leave feedback</span>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -576,101 +641,132 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
           </Card>
         </div>
 
-        {/* ── Per-Turn Reasoning Trace (right, 2 cols) ── */}
+        {/* ── Reasoning Panel (right, 2 cols) — shows ONE at a time ── */}
         <div className="lg:col-span-2">
-          <Card className="shadow-sm">
+          <Card className="shadow-sm sticky top-6">
             <CardHeader className="pb-2 px-4 pt-3">
               <div className="flex items-center gap-2">
                 <Eye className="w-3.5 h-3.5 text-muted-foreground" />
                 <CardTitle className="text-xs font-semibold">Agent Reasoning</CardTitle>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">What the agent thought and did for each reply</p>
             </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-1">
-              {conv.agentReplies.map((reply, turnIdx) => {
-                const isExpanded = expandedTurn === turnIdx;
-                return (
-                  <div key={turnIdx} className="border border-border/50 rounded-lg overflow-hidden">
-                    {/* Turn header — always visible */}
-                    <button
-                      onClick={() => setExpandedTurn(isExpanded ? null : turnIdx)}
-                      className={cn(
-                        "w-full text-left px-3 py-2.5 flex items-start gap-2 transition-colors",
-                        isExpanded ? "bg-primary/[0.04]" : "hover:bg-muted/30"
-                      )}
+            <CardContent className="px-4 pb-4">
+              <AnimatePresence mode="wait">
+                {currentTrace ? (
+                  <motion.div
+                    key={activeReasoning}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.15 }}
+                    className="space-y-3"
+                  >
+                    {/* Step 1: Intent Detection */}
+                    <ReasoningStep
+                      icon={<Crosshair className="w-3 h-3 text-indigo-600" />}
+                      label="Intent Detected"
+                      labelColor="text-indigo-800"
                     >
-                      <div className="w-5 h-5 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <Bot className="w-3 h-3 text-primary" />
+                      <p className="text-[11px] text-foreground/70">{currentTrace.intentDetected}</p>
+                    </ReasoningStep>
+
+                    {/* Step 2: Skill Matched */}
+                    <ReasoningStep
+                      icon={<Target className="w-3 h-3 text-violet-600" />}
+                      label="Skill Matched"
+                      labelColor="text-violet-800"
+                    >
+                      <div className="flex items-center gap-2">
+                        <p className="text-[11px] text-foreground/70">{currentTrace.skillMatched}</p>
+                        <Badge variant="secondary" className="text-[8px] px-1 py-0">{currentTrace.skillConfidence}</Badge>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-semibold">Turn {turnIdx + 1}</span>
-                          <span className="text-[9px] text-muted-foreground">{reply.replyTime}</span>
-                          <ChevronDown className={cn("w-2.5 h-2.5 text-muted-foreground/50 transition-transform ml-auto", isExpanded && "rotate-180")} />
+                    </ReasoningStep>
+
+                    {/* Step 3: Agent Thinking */}
+                    <ReasoningStep
+                      icon={<Brain className="w-3 h-3 text-blue-600" />}
+                      label="Agent Thinking"
+                      labelColor="text-blue-800"
+                    >
+                      <p className="text-[11px] leading-relaxed text-foreground/70">{currentTrace.thinking}</p>
+                    </ReasoningStep>
+
+                    {/* Step 4: Actions */}
+                    {currentTrace.actions.length > 0 && (
+                      <ReasoningStep
+                        icon={<Zap className="w-3 h-3 text-orange-600" />}
+                        label="Actions Executed"
+                        labelColor="text-orange-800"
+                      >
+                        <div className="space-y-0.5">
+                          {currentTrace.actions.map((action, ai) => (
+                            <p key={ai} className="text-[10px] text-foreground/60 font-mono">{action}</p>
+                          ))}
                         </div>
-                        <p className="text-[10px] text-muted-foreground truncate mt-0.5">{reply.replyText}</p>
-                      </div>
-                    </button>
+                      </ReasoningStep>
+                    )}
 
-                    {/* Expanded: Thinking + Actions + Knowledge */}
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.15 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="px-3 pb-3 space-y-2.5 border-t border-border/30 pt-2.5">
-                            {/* Agent Thinking */}
-                            <div>
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <Brain className="w-3 h-3 text-blue-600" />
-                                <span className="text-[10px] font-semibold text-blue-800">Agent Thinking</span>
-                              </div>
-                              <p className="text-[11px] leading-relaxed text-foreground/70 pl-[18px]">
-                                {reply.thinking}
-                              </p>
-                            </div>
+                    {/* Step 5: Knowledge Referenced */}
+                    {currentTrace.knowledgeUsed && (
+                      <ReasoningStep
+                        icon={<BookOpen className="w-3 h-3 text-amber-600" />}
+                        label="Knowledge Referenced"
+                        labelColor="text-amber-800"
+                      >
+                        <p className="text-[10px] text-foreground/60">{currentTrace.knowledgeUsed}</p>
+                      </ReasoningStep>
+                    )}
 
-                            {/* Actions */}
-                            {reply.actions.length > 0 && (
-                              <div>
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <Zap className="w-3 h-3 text-orange-600" />
-                                  <span className="text-[10px] font-semibold text-orange-800">Actions</span>
-                                </div>
-                                <div className="pl-[18px] space-y-0.5">
-                                  {reply.actions.map((action, ai) => (
-                                    <p key={ai} className="text-[10px] text-foreground/60 font-mono">{action}</p>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Knowledge Used */}
-                            {reply.knowledgeUsed && (
-                              <div>
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <BookOpen className="w-3 h-3 text-amber-600" />
-                                  <span className="text-[10px] font-semibold text-amber-800">Knowledge Referenced</span>
-                                </div>
-                                <p className="text-[10px] text-foreground/60 pl-[18px]">{reply.knowledgeUsed}</p>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
+                    {/* Step 6: Guardrails Checked */}
+                    {currentTrace.guardrailsChecked && (
+                      <ReasoningStep
+                        icon={<Shield className="w-3 h-3 text-emerald-600" />}
+                        label="Guardrails"
+                        labelColor="text-emerald-800"
+                      >
+                        <p className="text-[10px] text-foreground/60">{currentTrace.guardrailsChecked}</p>
+                      </ReasoningStep>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col items-center justify-center py-12 text-center"
+                  >
+                    <Eye className="w-8 h-8 text-muted-foreground/20 mb-2" />
+                    <p className="text-xs text-muted-foreground">Click "View Reasoning" on an agent reply to see the full reasoning process</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </CardContent>
           </Card>
         </div>
       </div>
     </motion.div>
+  );
+}
+
+/* ── Reasoning Step Component ── */
+function ReasoningStep({
+  icon, label, labelColor, children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  labelColor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative pl-5">
+      {/* Vertical connector line */}
+      <div className="absolute left-[5px] top-5 bottom-0 w-px bg-border/50" />
+      <div className="absolute left-0 top-0.5">{icon}</div>
+      <div>
+        <span className={cn("text-[10px] font-semibold", labelColor)}>{label}</span>
+        <div className="mt-0.5">{children}</div>
+      </div>
+    </div>
   );
 }
 
