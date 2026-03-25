@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import Agents from "./pages/Agents";
+import HireAgent from "./pages/HireAgent";
 import AgentDetail from "./pages/AgentDetail";
 import Conversations from "./pages/Conversations";
 import Knowledge from "./pages/Knowledge";
@@ -17,6 +18,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/agents" component={Agents} />
+      <Route path="/agents/new" component={HireAgent} />
       <Route path="/agents/:id" component={AgentDetail} />
       <Route path="/conversations" component={Conversations} />
       <Route path="/knowledge" component={Knowledge} />
