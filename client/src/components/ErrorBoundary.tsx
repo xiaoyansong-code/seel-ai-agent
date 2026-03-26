@@ -1,62 +1,39 @@
-import { cn } from "@/lib/utils";
-import { AlertTriangle, RotateCcw } from "lucide-react";
-import { Component, ReactNode } from "react";
+import { Component, type ReactNode, type ErrorInfo } from "react";
 
-interface Props {
-  children: ReactNode;
-}
+interface Props { children: ReactNode; }
+interface State { hasError: boolean; error?: Error; }
 
-interface State {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends Component<Props, State> {
+export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught:", error, errorInfo);
+  }
+
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center min-h-screen p-8 bg-background">
-          <div className="flex flex-col items-center w-full max-w-2xl p-8">
-            <AlertTriangle
-              size={48}
-              className="text-destructive mb-6 flex-shrink-0"
-            />
-
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
-
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
-
+        <div className="min-h-screen flex items-center justify-center bg-background p-8">
+          <div className="text-center max-w-md">
+            <h2 className="text-lg font-heading font-semibold text-foreground mb-2">Something went wrong</h2>
+            <p className="text-sm text-muted-foreground mb-4">{this.state.error?.message}</p>
             <button
               onClick={() => window.location.reload()}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg",
-                "bg-primary text-primary-foreground",
-                "hover:opacity-90 cursor-pointer"
-              )}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
             >
-              <RotateCcw size={16} />
               Reload Page
             </button>
           </div>
         </div>
       );
     }
-
     return this.props.children;
   }
 }
-
-export default ErrorBoundary;

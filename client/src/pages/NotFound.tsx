@@ -1,38 +1,15 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, Home } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link } from "wouter";
 
 export default function NotFound() {
-  const [, setLocation] = useLocation();
-
   return (
-    <div className="min-h-full w-full flex items-center justify-center p-8">
-      <Card className="w-full max-w-md shadow-sm">
-        <CardContent className="pt-8 pb-8 text-center">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-              <AlertCircle className="h-8 w-8 text-primary" />
-            </div>
-          </div>
-
-          <h1 className="text-4xl font-bold mb-2">404</h1>
-          <h2 className="text-lg font-semibold text-muted-foreground mb-4">
-            Page Not Found
-          </h2>
-          <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
-            The page you are looking for doesn't exist or has been moved.
-          </p>
-
-          <Button
-            onClick={() => setLocation("/")}
-            className="bg-primary hover:bg-primary/90 gap-2"
-          >
-            <Home className="w-4 h-4" />
-            Back to Dashboard
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center max-w-[320px]">
+        <h1 className="text-5xl font-heading font-bold text-foreground/20 mb-3">404</h1>
+        <p className="text-sm text-muted-foreground mb-4">Page not found</p>
+        <Link href="/" className="text-sm text-primary hover:underline">
+          Back to Instruct
+        </Link>
+      </div>
     </div>
   );
 }
