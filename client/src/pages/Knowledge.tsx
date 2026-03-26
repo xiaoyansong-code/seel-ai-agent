@@ -107,6 +107,7 @@ export default function Knowledge() {
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState<"upload" | "url" | "text">("upload");
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [knowledgeTipDismissed, setKnowledgeTipDismissed] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
@@ -278,11 +279,16 @@ export default function Knowledge() {
   // ── List View ──
   return (
     <motion.div variants={cV} initial="hidden" animate="visible" className="p-6 max-w-[1100px] space-y-4">
-      {/* Global hint */}
-      <motion.div variants={iV} className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
-        <BookOpen className="w-4 h-4 text-primary shrink-0" />
-        <p className="text-xs text-primary">Knowledge articles are <strong>globally shared</strong> across all agents. They provide reference information for answering customer questions.</p>
-      </motion.div>
+      {/* Global hint — dismissible */}
+      {!knowledgeTipDismissed && (
+        <motion.div variants={iV} className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
+          <BookOpen className="w-4 h-4 text-primary shrink-0" />
+          <p className="text-xs text-primary flex-1">Knowledge articles are <strong>globally shared</strong> across all agents. They provide reference information for answering customer questions.</p>
+          <button onClick={() => setKnowledgeTipDismissed(true)} className="text-primary/50 hover:text-primary transition-colors shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </motion.div>
+      )}
 
       {/* Processing banner */}
       {!bannerDismissed && processingCount > 0 && (

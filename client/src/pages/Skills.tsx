@@ -292,6 +292,7 @@ export default function Skills() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [addSkillOpen, setAddSkillOpen] = useState(false);
   const [sopBannerDismissed, setSopBannerDismissed] = useState(false);
+  const [skillsTipDismissed, setSkillsTipDismissed] = useState(false);
   const [notified, setNotified] = useState(false);
   const [activeCategory, setActiveCategory] = useState<"all" | "Order" | "Protection">("all");
 
@@ -550,11 +551,16 @@ export default function Skills() {
         </motion.div>
       )}
 
-      {/* Global hint */}
-      <motion.div variants={iV} className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
-        <Target className="w-4 h-4 text-primary shrink-0" />
-        <p className="text-xs text-primary">Each skill is a complete instruction set your agent follows. It includes a <strong>guidance document</strong> (editable Markdown) and <strong>actions</strong> (toggleable operations). You decide the scope — from a single intent to an entire business domain.</p>
-      </motion.div>
+      {/* Global hint — dismissible */}
+      {!skillsTipDismissed && (
+        <motion.div variants={iV} className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
+          <Target className="w-4 h-4 text-primary shrink-0" />
+          <p className="text-xs text-primary flex-1">Each skill is a complete instruction set your agent follows. It includes a <strong>guidance document</strong> (editable Markdown) and <strong>actions</strong> (toggleable operations). You decide the scope — from a single intent to an entire business domain.</p>
+          <button onClick={() => setSkillsTipDismissed(true)} className="text-primary/50 hover:text-primary transition-colors shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </motion.div>
+      )}
 
       {/* Category Tabs + Summary */}
       <motion.div variants={iV} className="flex items-center justify-between">

@@ -1,19 +1,12 @@
-/**
- * Agents — Default tab for AI Support module
- * UX Review fixes:
- * #1 Banner uses natural language summary, no duplicate metrics with card
- * #2 Expand channels dynamically excludes channels that already have agents
- * #3 Opportunities status labels are more descriptive
- * #4 Setting Up card shows full step context
- */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, MessageCircle, Mail, Instagram,
-  ArrowRight, CheckCircle2, Lightbulb,
-  Bot, Loader2, AlertCircle, ArrowUpRight,
-  Zap, Clock, Sparkles,
+  ArrowRight, CheckCircle2,
+  Bot, Loader2, ArrowUpRight,
+  Zap, Clock, Sparkles, Globe,
+  X, Check,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,8 +21,8 @@ type AgentStatus = "setting-up" | "ready-to-test" | "live" | "paused";
 const statusCfg: Record<AgentStatus, { label: string; color: string }> = {
   "setting-up": { label: "Setting Up", color: "text-amber-700 bg-amber-50 border-amber-200" },
   "ready-to-test": { label: "Ready to Test", color: "text-blue-700 bg-blue-50 border-blue-200" },
-  "live": { label: "Live", color: "text-primary bg-primary/10 border-primary/20" },
-  "paused": { label: "Paused", color: "text-gray-600 bg-gray-50 border-gray-200" },
+  live: { label: "Live", color: "text-primary bg-primary/10 border-primary/20" },
+  paused: { label: "Paused", color: "text-gray-600 bg-gray-50 border-gray-200" },
 };
 
 const agents = [
@@ -47,53 +40,62 @@ const agents = [
   },
 ];
 
-/* #3 — Opportunities with clearer status labels */
-const opportunities = [
+interface OpportunityItem {
+  id: string;
+  label: string;
+  statusVar: string;
+  statusText: string;
+  benefit: string;
+  href: string;
+  done: boolean;
+}
+
+const opportunities: OpportunityItem[] = [
   {
     id: "sync-orders",
     label: "Sync all orders",
-    desc: "Give your agent full order history for accurate responses",
-    status: "60% synced — sync all for better accuracy",
-    statusColor: "text-amber-700 bg-amber-50 border-amber-200",
+    statusVar: "60% synced",
+    statusText: " \u2014 sync all for better accuracy",
+    benefit: "Full order history enables more accurate responses",
     href: "/seel/integrations",
     done: false,
   },
   {
     id: "enrich-kb",
     label: "Enrich knowledge base",
-    desc: "More articles help your agent resolve a wider range of inquiries",
-    status: "3 articles added — add more to improve coverage",
-    statusColor: "text-blue-700 bg-blue-50 border-blue-200",
+    statusVar: "3 articles",
+    statusText: " added \u2014 add more to improve coverage",
+    benefit: "More articles help resolve a wider range of inquiries",
     href: "/playbook",
     done: false,
   },
   {
     id: "activate-skills",
     label: "Activate more skills",
-    desc: "Enable capabilities like returns, exchanges, and tracking",
-    status: "2 of 6 skills enabled",
-    statusColor: "text-amber-700 bg-amber-50 border-amber-200",
+    statusVar: "2 of 6",
+    statusText: " skills enabled",
+    benefit: "Unlock returns, exchanges, and tracking capabilities",
     href: "/playbook/skills",
     done: false,
   },
 ];
 
-/* ── Channel selection for Create Agent dialog ── */
-type ChannelType = "email" | "live-chat" | "social-messaging";
+type ChannelType = "email" | "live-chat" | "social-messaging" | "live-chat-widget";
 
-const channels: { id: ChannelType; label: string; icon: typeof Mail; desc: string; integration: string; comingSoonAlt?: string }[] = [
+const allChannels: { id: ChannelType; label: string; icon: typeof Mail; desc: string; integration: string; comingSoonAlt?: string }[] = [
   { id: "email", label: "Email", icon: Mail, desc: "Email tickets via ticketing system", integration: "Zendesk Email", comingSoonAlt: "Gorgias Email" },
   { id: "live-chat", label: "Live Chat", icon: MessageCircle, desc: "Real-time chat on your site", integration: "RC Widget" },
+  { id: "live-chat-widget", label: "Live Chat Widget", icon: Globe, desc: "Standalone chat widget for any website", integration: "Seel Widget" },
   { id: "social-messaging", label: "Social Messaging", icon: Instagram, desc: "Instagram, Facebook, WhatsApp", integration: "Zendesk Messaging" },
 ];
 
 const defaultNames: Record<ChannelType, string> = {
   email: "Email Support Agent",
   "live-chat": "Live Chat Agent",
+  "live-chat-widget": "Website Chat Agent",
   "social-messaging": "Social Media Agent",
 };
 
-/* #2 — Map agent channelTypes to ChannelType IDs for exclusion */
 const channelTypeToId: Record<string, ChannelType> = {
   chat: "live-chat",
   email: "email",
@@ -103,16 +105,19 @@ const existingChannelIds = new Set(agents.map(a => channelTypeToId[a.channelType
 
 const expandableChannels = [
   { id: "email" as ChannelType, label: "Email", icon: Mail, desc: "Resolve tickets from Zendesk, Gorgias, or Freshdesk", color: "bg-blue-50 text-blue-600" },
-  { id: "live-chat" as ChannelType, label: "Live Chat", icon: MessageCircle, desc: "Real-time support on your website", color: "bg-primary/10 text-primary" },
+  { id: "live-chat" as ChannelType, label: "Live Chat", icon: MessageCircle, desc: "Real-time support via RC Widget", color: "bg-primary/10 text-primary" },
+  { id: "live-chat-widget" as ChannelType, label: "Live Chat Widget", icon: Globe, desc: "Standalone AI chat widget for any page", color: "bg-teal-50 text-teal-600" },
   { id: "social-messaging" as ChannelType, label: "Social", icon: Instagram, desc: "Instagram, Facebook, WhatsApp", color: "bg-pink-50 text-pink-600" },
-].filter(ch => !existingChannelIds.has(ch.id)); // Only show channels without existing agents
+].filter(ch => !existingChannelIds.has(ch.id));
 
 function ChannelIcon({ type, className }: { type: string; className?: string }) {
   if (type === "email") return <Mail className={className} />;
   if (type === "social") return <Instagram className={className} />;
+  if (type === "widget") return <Globe className={className} />;
   return <MessageCircle className={className} />;
 }
 
+const INTRO_KEY = "seel-ai-intro-seen";
 const cV = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } };
 const iV = { hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0, transition: { duration: 0.2 } } };
 
@@ -122,6 +127,21 @@ export default function Agents() {
   const [channel, setChannel] = useState<ChannelType | "">("");
   const [agentName, setAgentName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem(INTRO_KEY)) setShowIntro(true);
+  }, []);
+
+  const dismissIntro = () => {
+    setShowIntro(false);
+    localStorage.setItem(INTRO_KEY, "true");
+  };
+
+  const enableAI = () => {
+    dismissIntro();
+    toast.success("AI Support enabled \u2014 let\u2019s get started!");
+  };
 
   const liveAgents = agents.filter(a => a.status === "live");
   const hasLiveAgent = liveAgents.length > 0;
@@ -135,7 +155,7 @@ export default function Agents() {
     if (!agentName.trim() || !channel) return;
     setCreating(true);
     setTimeout(() => {
-      toast.success(`${agentName} created — let's set it up`);
+      toast.success(`${agentName} created \u2014 let\u2019s set it up`);
       setCreating(false);
       setCreateOpen(false);
       navigate("/agents/email-agent");
@@ -157,17 +177,12 @@ export default function Agents() {
   return (
     <motion.div variants={cV} initial="hidden" animate="visible" className="p-6 max-w-[960px] space-y-6">
 
-      {/* ── Page Header ── */}
+      {/* Page Header \u2014 no description */}
       <motion.div variants={iV}>
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold">AI Agents</h1>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Manage your AI support agents across channels. Each agent handles customer conversations autonomously based on your configured skills and guardrails.
-          </p>
-        </div>
+        <h1 className="text-lg font-semibold">AI Agents</h1>
       </motion.div>
 
-      {/* ── #1 Live Agent Status Banner — natural language, no duplicate metrics ── */}
+      {/* Live Agent Status Banner */}
       {hasLiveAgent && (
         <motion.div variants={iV}>
           <div className="rounded-xl bg-primary/[0.04] border border-primary/10 px-4 py-3">
@@ -180,7 +195,7 @@ export default function Agents() {
                   Your agent resolved <span className="text-primary font-semibold">91%</span> of <span className="text-primary font-semibold">847 conversations</span> this week
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Avg response time 1.1s · CSAT 4.6/5.0
+                  <Clock className="w-3 h-3" /> Avg response time 1.1s \u00b7 CSAT 4.6/5.0
                 </p>
               </div>
               <Link href="/performance/overview">
@@ -193,7 +208,7 @@ export default function Agents() {
         </motion.div>
       )}
 
-      {/* ── Agent Cards ── */}
+      {/* Agent Cards */}
       <motion.div variants={iV}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-muted-foreground">Your Agents</h2>
@@ -218,19 +233,17 @@ export default function Agents() {
                 <Link href={`/agents/${agent.id}`}>
                   <Card className="shadow-sm hover:shadow-md hover:border-primary/20 transition-all cursor-pointer group h-full">
                     <CardContent className="p-4 flex flex-col h-full">
-                      {/* Header */}
                       <div className="flex items-start gap-3 mb-3">
                         <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", cc)}>
                           <ChannelIcon type={agent.channelType} className="w-4.5 h-4.5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold group-hover:text-primary transition-colors truncate">{agent.name}</p>
-                          <p className="text-[11px] text-muted-foreground">{agent.channel} · {agent.integration}</p>
+                          <p className="text-[11px] text-muted-foreground">{agent.channel} \u00b7 {agent.integration}</p>
                         </div>
                         <Badge variant="outline" className={cn("text-[9px] shrink-0 font-medium", sc.color)}>{sc.label}</Badge>
                       </div>
 
-                      {/* Live agent: metrics — #1 no longer duplicates banner */}
                       {isLive && (
                         <div className="grid grid-cols-3 gap-2 mt-auto">
                           {[
@@ -238,18 +251,16 @@ export default function Agents() {
                             { value: `${agent.resolution}%`, label: "Resolution" },
                             { value: agent.csat, label: "CSAT" },
                           ].map((m, i) => (
-                            <div key={i} className="bg-primary/[0.04] rounded-lg px-2.5 py-2 text-center">
-                              <p className="text-sm font-bold">{m.value}</p>
+                            <div key={i} className="bg-primary/[0.03] rounded-md px-2.5 py-1.5 text-center">
+                              <p className="text-sm font-bold text-primary">{m.value}</p>
                               <p className="text-[9px] text-muted-foreground">{m.label}</p>
                             </div>
                           ))}
                         </div>
                       )}
 
-                      {/* #4 Setting up: full step context */}
                       {isSettingUp && agent.setupSteps && (
                         <div className="mt-auto space-y-2.5">
-                          {/* Step list */}
                           <div className="space-y-1">
                             {agent.setupSteps.steps.map((step, i) => {
                               const isDone = i < agent.setupSteps!.done;
@@ -285,7 +296,7 @@ export default function Agents() {
         </div>
       </motion.div>
 
-      {/* ── #2 Expand to More Channels — only uncovered channels ── */}
+      {/* Expand to More Channels */}
       {expandableChannels.length > 0 && (
         <motion.div variants={iV}>
           <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-4">
@@ -294,9 +305,9 @@ export default function Agents() {
               <h2 className="text-sm font-semibold">Expand to more channels</h2>
             </div>
             <p className="text-[11px] text-muted-foreground mb-3">
-              Your AI agent's skills and knowledge carry over — set up a new channel in under 5 minutes.
+              Your AI agent\u2019s skills and knowledge carry over \u2014 set up a new channel in under 5 minutes.
             </p>
-            <div className={cn("grid gap-2", expandableChannels.length === 1 ? "grid-cols-1 max-w-[300px]" : expandableChannels.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
+            <div className={cn("grid gap-2", expandableChannels.length <= 2 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-4")}>
               {expandableChannels.map(ch => (
                 <button
                   key={ch.id}
@@ -320,12 +331,12 @@ export default function Agents() {
         </motion.div>
       )}
 
-      {/* ── #3 Opportunities — clearer status labels ── */}
+      {/* Better Your Customer Experience */}
       <motion.div variants={iV}>
         <div className="rounded-xl bg-muted/40 border border-border/60 p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
-            <p className="text-sm font-semibold">Opportunities</p>
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <p className="text-sm font-semibold">Better Your Customer Experience</p>
           </div>
           <div className="space-y-0.5">
             {opportunities.map((item) => (
@@ -338,15 +349,18 @@ export default function Agents() {
                     {item.done && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={cn(
-                      "text-[13px] leading-tight",
-                      item.done ? "text-muted-foreground line-through" : "text-foreground font-medium"
-                    )}>
-                      {item.label}
+                    <div className="flex items-center gap-2">
+                      <p className={cn(
+                        "text-[13px] leading-tight",
+                        item.done ? "text-muted-foreground line-through" : "text-foreground font-medium"
+                      )}>
+                        {item.label}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                      <span className="text-primary font-semibold">{item.statusVar}</span>{item.statusText}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.desc}</p>
                   </div>
-                  <span className="text-[10px] text-muted-foreground/70 shrink-0 max-w-[180px] text-right">{item.status}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/15 group-hover:text-primary/50 transition-colors shrink-0" />
                 </div>
               </Link>
@@ -355,20 +369,18 @@ export default function Agents() {
         </div>
       </motion.div>
 
-      {/* ── Create Agent Dialog ── */}
+      {/* Create Agent Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
             <DialogTitle>Create New Agent</DialogTitle>
             <DialogDescription>Choose a channel and name your agent. Your existing skills and knowledge base will be available automatically.</DialogDescription>
           </DialogHeader>
-
           <div className="space-y-5 pt-2">
-            {/* Channel Selection */}
             <div>
               <label className="text-sm font-medium mb-2.5 block">Channel</label>
-              <div className="grid grid-cols-3 gap-2.5">
-                {channels.map(ch => {
+              <div className="grid grid-cols-2 gap-2.5">
+                {allChannels.map(ch => {
                   const selected = channel === ch.id;
                   return (
                     <button
@@ -395,7 +407,6 @@ export default function Agents() {
               </div>
             </div>
 
-            {/* Agent Name */}
             {channel && (
               <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
                 <label className="text-sm font-medium mb-1.5 block">Agent Name</label>
@@ -409,7 +420,6 @@ export default function Agents() {
               </motion.div>
             )}
 
-            {/* Create Button */}
             {channel && (
               <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15, delay: 0.05 }}>
                 <div className="pt-2 border-t border-border/50 flex items-center justify-between">
@@ -426,6 +436,104 @@ export default function Agents() {
                 </div>
               </motion.div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Intro Dialog for new merchants */}
+      <Dialog open={showIntro} onOpenChange={(open) => { if (!open) dismissIntro(); }}>
+        <DialogContent className="sm:max-w-[680px] p-0 overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-5">
+            {/* Left content */}
+            <div className="md:col-span-3 p-6 md:p-8 flex flex-col justify-center">
+              <h2 className="text-2xl font-bold tracking-tight leading-tight">
+                Introduce AI Support for{" "}
+                <span className="text-primary">E-commerce</span>
+              </h2>
+              <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+                Your new team member that drives sales and automates support in 1:1 conversations.
+              </p>
+              <div className="mt-5 space-y-2.5">
+                {[
+                  "Leads customers to fast resolutions in seconds, not hours.",
+                  "Enhances team productivity, reducing workload & response times by automating up to 60% of your tickets.",
+                  "Offers tailored discounts and product recommendations to drive personalized shopping experiences.",
+                ].map((text, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                    <p className="text-[13px] text-foreground/80 leading-relaxed">{text}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 flex items-center gap-3">
+                <Button onClick={enableAI} className="gap-2 px-5">
+                  Enable AI Support <ArrowRight className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" onClick={dismissIntro} className="gap-1.5">
+                  Learn more <ArrowUpRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-3">
+                No complex setup required. Our AI learns from your existing store data.
+              </p>
+              <div className="flex items-center gap-6 mt-5 pt-4 border-t border-border/50">
+                <div>
+                  <p className="text-xl font-bold text-primary">98%</p>
+                  <p className="text-[10px] text-muted-foreground">Resolution Accuracy</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-primary">24/7</p>
+                  <p className="text-[10px] text-muted-foreground">Active Monitoring</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-primary">&lt;2s</p>
+                  <p className="text-[10px] text-muted-foreground">Avg Response Time</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Right illustration */}
+            <div className="md:col-span-2 bg-muted/30 p-5 flex flex-col justify-center border-l border-border/50">
+              <div className="rounded-xl bg-card border border-border/80 shadow-sm p-4 space-y-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-border/50">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Bot className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold">AI Assistant</p>
+                    <p className="text-[9px] text-primary flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      Processing in real-time
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <div className="bg-muted rounded-lg px-3 py-2 max-w-[85%]">
+                    <p className="text-[11px] text-foreground/80">"Hey, where is my order #4829? It was supposed to arrive yesterday."</p>
+                  </div>
+                </div>
+                <div className="flex justify-start">
+                  <div className="bg-primary/5 border border-primary/10 rounded-lg px-3 py-2 max-w-[90%]">
+                    <p className="text-[10px] font-semibold text-primary mb-1">Seel AI Agent</p>
+                    <p className="text-[11px] text-foreground/80">"Checking your status... I see order #4829 is currently with the courier. It's scheduled for delivery by 4 PM today."</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge variant="secondary" className="text-[8px] gap-1 px-1.5"><MessageCircle className="w-2.5 h-2.5" /> TRACKING INFO</Badge>
+                      <Badge variant="secondary" className="text-[8px] gap-1 px-1.5"><Mail className="w-2.5 h-2.5" /> ENABLE SMS</Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="w-5 h-5 rounded-full bg-muted" />
+                  <span className="text-[10px] text-muted-foreground italic">Typing...</span>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-end gap-2 bg-card border border-border/80 rounded-lg px-3 py-2 shadow-sm">
+                <div className="text-right">
+                  <p className="text-[8px] text-muted-foreground uppercase tracking-wider">Conversion</p>
+                  <p className="text-lg font-bold text-primary">+24%</p>
+                </div>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
