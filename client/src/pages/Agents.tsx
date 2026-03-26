@@ -78,6 +78,15 @@ const opportunities: OpportunityItem[] = [
     href: "/playbook/skills",
     done: false,
   },
+  {
+    id: "review-knowledge-gaps",
+    label: "Review knowledge gaps",
+    statusVar: "21 gaps",
+    statusText: " detected this week — suggest articles to improve coverage",
+    benefit: "Filling knowledge gaps reduces escalations and improves resolution rate",
+    href: "/performance/conversations",
+    done: false,
+  },
 ];
 
 type ChannelType = "email" | "live-chat" | "social-messaging" | "live-chat-widget";

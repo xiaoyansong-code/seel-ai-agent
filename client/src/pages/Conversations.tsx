@@ -32,6 +32,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 /* ── Types ── */
 interface ReasoningTrace {
@@ -40,7 +42,7 @@ interface ReasoningTrace {
   skillConfidence: string;        // e.g., "High (0.96)"
   thinking: string;               // Natural language reasoning
   actions: string[];              // Actions executed
-  knowledgeUsed?: string;         // Knowledge article referenced
+  knowledgeUsed?: string;         // Knowledge article referenced (empty/undefined = knowledge gap)
   guardrailsChecked?: string;     // Guardrail result
 }
 
@@ -217,6 +219,32 @@ const conversations: ConversationRow[] = [
         thinking: "Simple WISMO request. The order is already out for delivery today, which is great news. I'll share the tracking number and the expected delivery window right away — no need for additional steps.",
         actions: ["get_order_status → Order #7788: Out for delivery today, FedEx FX-1234567"],
         guardrailsChecked: "Passed — Standard tracking response",
+      },
+    ],
+  },
+  {
+    id: "C-1007", orderId: "#ORD-5501", subject: "Do you offer gift wrapping?", customer: "Anna Lee",
+    intent: "Product Inquiry", result: "Escalated", approach: "Autopilot", turns: 3,
+    sentimentStart: "neutral", sentimentEnd: "negative",
+    agent: "RC Live Chat Agent", duration: "2m 05s",
+    actionsExecuted: ["search_knowledge_base", "escalate_to_human"], channel: "live_chat", timestamp: "Today 10:15",
+    messages: [
+      { role: "customer", text: "Hi, do you offer gift wrapping for orders? I want to send this as a birthday present.", time: "10:12" },
+      { role: "agent", text: "That's a thoughtful idea! Let me check our gift wrapping options for you.", time: "10:13" },
+      { role: "agent", text: "I wasn't able to find specific information about gift wrapping services in our system. Let me connect you with a team member who can help with this request.", time: "10:14" },
+      { role: "customer", text: "Okay, I'll wait.", time: "10:15" },
+    ],
+    reasoningTraces: [
+      {
+        intentDetected: "Product Inquiry — Gift Wrapping",
+        skillMatched: "Product Information",
+        skillConfidence: "Low (0.61) — No specific knowledge match",
+        thinking: "The customer is asking about gift wrapping services. I searched our knowledge base but found no articles about gift wrapping, gift packaging, or special packaging options. Without clear information, I shouldn't guess or make up a policy. The safest approach is to escalate to a human agent who can provide accurate information or check with the fulfillment team.",
+        actions: [
+          "search_knowledge_base → Query: 'gift wrapping' — No matching articles found",
+          "escalate_to_human → Escalated to Support Team (Reason: No knowledge base coverage for gift wrapping inquiry)",
+        ],
+        guardrailsChecked: "Triggered — Low confidence response, escalation recommended",
       },
     ],
   },
@@ -470,6 +498,9 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
   const [activeReasoning, setActiveReasoning] = useState<number | null>(conv.reasoningTraces.length > 0 ? 0 : null);
   const [feedbackGroup, setFeedbackGroup] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
+  const [suggestArticleOpen, setSuggestArticleOpen] = useState(false);
+  const [suggestedTitle, setSuggestedTitle] = useState("");
+  const [suggestedContext, setSuggestedContext] = useState("");
   const rc = resultConfig[conv.result];
   const ch = channelIcons[conv.channel];
   const ChIcon = ch.icon;
@@ -731,16 +762,30 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
                       </ReasoningStep>
                     )}
 
-                    {/* Step 5: Knowledge Referenced */}
-                    {currentTrace.knowledgeUsed && (
-                      <ReasoningStep
-                        icon={<BookOpen className="w-3 h-3 text-amber-600" />}
-                        label="Knowledge Referenced"
-                        labelColor="text-amber-800"
-                      >
+                    {/* Step 5: Knowledge Referenced — with gap detection */}
+                    <ReasoningStep
+                      icon={<BookOpen className={cn("w-3 h-3", currentTrace.knowledgeUsed ? "text-amber-600" : "text-yellow-500")} />}
+                      label={currentTrace.knowledgeUsed ? "Knowledge Referenced" : "Knowledge Gap Detected"}
+                      labelColor={currentTrace.knowledgeUsed ? "text-amber-800" : "text-yellow-700"}
+                    >
+                      {currentTrace.knowledgeUsed ? (
                         <p className="text-[10px] text-foreground/60">{currentTrace.knowledgeUsed}</p>
-                      </ReasoningStep>
-                    )}
+                      ) : (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-yellow-50 border border-yellow-200/60">
+                            <MessageCircleWarning className="w-3 h-3 text-yellow-600 shrink-0" />
+                            <p className="text-[10px] text-yellow-800">No matching knowledge article found for this query</p>
+                          </div>
+                          <button
+                            onClick={() => { setSuggestArticleOpen(true); setSuggestedTitle(conv.subject); setSuggestedContext(currentTrace.thinking); }}
+                            className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 font-medium transition-colors"
+                          >
+                            <BookOpen className="w-2.5 h-2.5" />
+                            Suggest Article
+                          </button>
+                        </div>
+                      )}
+                    </ReasoningStep>
 
                     {/* #17 Step 6: Guardrails — red highlight for Triggered */}
                     {currentTrace.guardrailsChecked && (
@@ -769,6 +814,44 @@ function ConversationDetail({ conv, onBack }: { conv: ConversationRow; onBack: (
           </Card>
         </div>
       </div>
+
+      {/* Suggest Article Dialog */}
+      <Dialog open={suggestArticleOpen} onOpenChange={setSuggestArticleOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Suggest Knowledge Article</DialogTitle>
+            <p className="text-xs text-muted-foreground mt-1">The AI agent couldn't find relevant knowledge for this query. Suggest an article to improve future responses.</p>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs">Suggested Article Title</Label>
+              <Input
+                value={suggestedTitle}
+                onChange={e => setSuggestedTitle(e.target.value)}
+                className="mt-1 text-xs"
+                placeholder="e.g., Gift Wrapping Options"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Context from Agent Reasoning</Label>
+              <Textarea
+                value={suggestedContext}
+                onChange={e => setSuggestedContext(e.target.value)}
+                rows={3}
+                className="mt-1 text-xs resize-none bg-muted/30"
+                placeholder="What should this article cover?"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => setSuggestArticleOpen(false)}>Cancel</Button>
+            <Button size="sm" className="text-xs" onClick={() => { setSuggestArticleOpen(false); toast.success("Article suggestion submitted", { description: `"${suggestedTitle}" added to Knowledge drafts` }); }}>
+              <BookOpen className="w-3 h-3 mr-1" />
+              Submit Suggestion
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
