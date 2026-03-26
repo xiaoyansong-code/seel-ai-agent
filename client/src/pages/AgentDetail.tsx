@@ -35,7 +35,6 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -377,13 +376,35 @@ function SettingUpView({ agent }: { agent: AgentData }) {
 
       {/* ═══ Bottom Actions ═══ */}
       <div className="flex items-center justify-between pt-4 border-t">
-        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => setTestOpen(true)}>
-          <Play className="w-3 h-3" /> Test Agent
+        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => setTestOpen(!testOpen)}>
+          <Play className="w-3 h-3" /> {testOpen ? "Hide Test" : "Test Agent"}
         </Button>
         <Button size="sm" className="text-xs gap-1" onClick={() => toast.success("Agent configuration saved. Ready to test!")}>
           <Rocket className="w-3 h-3" /> Save & Continue
         </Button>
       </div>
+
+      {/* Inline Test Panel */}
+      <AnimatePresence>
+        {testOpen && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold">Test Agent</h2>
+                <div className="flex items-center gap-2">
+                  <Button variant="default" size="sm" className="text-xs gap-1 h-7"><MessageSquare className="w-3 h-3" /> Single Test</Button>
+                  <Button variant="outline" size="sm" className="text-xs gap-1 h-7 opacity-60 cursor-not-allowed" disabled><Zap className="w-3 h-3" /> Batch Test <Badge variant="secondary" className="text-[8px] px-1 py-0 ml-1">V1.1</Badge></Button>
+                </div>
+              </div>
+              <Card>
+                <CardContent className="p-0">
+                  <TestPanel agentName={agent.name} />
+                </CardContent>
+              </Card>
+            </section>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add Skill Dialog */}
       <Dialog open={showAddSkill} onOpenChange={setShowAddSkill}>
@@ -426,13 +447,6 @@ function SettingUpView({ agent }: { agent: AgentData }) {
         </DialogContent>
       </Dialog>
 
-      {/* Test Panel Sheet */}
-      <Sheet open={testOpen} onOpenChange={setTestOpen}>
-        <SheetContent className="sm:max-w-[420px] p-0 flex flex-col">
-          <SheetHeader className="px-4 py-3 border-b"><SheetTitle className="text-sm">Test Agent</SheetTitle></SheetHeader>
-          <TestPanel agentName={agent.name} />
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
@@ -558,8 +572,8 @@ function ReadyToTestView({ agent }: { agent: AgentData }) {
             </p>
           </div>
           <div className="flex items-center justify-center gap-2 pt-1">
-            <Button size="sm" className="text-xs gap-1" onClick={() => setTestOpen(true)}>
-              <Play className="w-3 h-3" /> Open Simulator
+            <Button size="sm" className="text-xs gap-1" onClick={() => setTestOpen(!testOpen)}>
+              <Play className="w-3 h-3" /> {testOpen ? "Hide Simulator" : "Open Simulator"}
             </Button>
             <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => toast.success("Agent is now live!")}>
               <Rocket className="w-3 h-3" /> Go Live
@@ -594,12 +608,27 @@ function ReadyToTestView({ agent }: { agent: AgentData }) {
         </Card>
       </div>
 
-      <Sheet open={testOpen} onOpenChange={setTestOpen}>
-        <SheetContent className="sm:max-w-[420px] p-0 flex flex-col">
-          <SheetHeader className="px-4 py-3 border-b"><SheetTitle className="text-sm">Test Agent</SheetTitle></SheetHeader>
-          <TestPanel agentName={agent.name} />
-        </SheetContent>
-      </Sheet>
+      {/* Inline Test Panel */}
+      <AnimatePresence>
+        {testOpen && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold">Test Agent</h2>
+                <div className="flex items-center gap-2">
+                  <Button variant="default" size="sm" className="text-xs gap-1 h-7"><MessageSquare className="w-3 h-3" /> Single Test</Button>
+                  <Button variant="outline" size="sm" className="text-xs gap-1 h-7 opacity-60 cursor-not-allowed" disabled><Zap className="w-3 h-3" /> Batch Test <Badge variant="secondary" className="text-[8px] px-1 py-0 ml-1">V1.1</Badge></Button>
+                </div>
+              </div>
+              <Card>
+                <CardContent className="p-0">
+                  <TestPanel agentName={agent.name} />
+                </CardContent>
+              </Card>
+            </section>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -753,36 +782,66 @@ function ConfigurationTab({ agent }: { agent: AgentData }) {
         </Card>
       </section>
 
-      {/* #10 Guardrails — Coming Soon with specific types listed */}
+      {/* Guardrails — Coming Soon with preview of available guardrails */}
       <section>
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-sm font-semibold">Guardrails</h3>
           <Badge variant="secondary" className="text-[9px]">Coming Soon</Badge>
         </div>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0"><Shield className="w-4 h-4 text-amber-600" /></div>
-              <div className="space-y-2">
-                <div>
-                  <p className="text-xs font-medium">Safety guardrails and operational limits</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Define boundaries for what your agent can and cannot do autonomously</p>
-                </div>
-                <div className="space-y-1">
-                  {[
-                    { label: "Auto-refund limit", desc: "Max amount the agent can refund without escalation" },
-                    { label: "Escalation triggers", desc: "Conditions that force handoff to a human agent" },
-                    { label: "Response boundaries", desc: "Topics the agent should never discuss or commit to" },
-                  ].map((g, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                      <div className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0" />
-                      <span className="font-medium text-foreground/70">{g.label}</span>
-                      <span>— {g.desc}</span>
-                    </div>
-                  ))}
-                </div>
+              <div>
+                <p className="text-xs font-medium">Safety guardrails and operational limits</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Define boundaries for what your agent can and cannot do autonomously. These guardrails will be configurable per agent.</p>
               </div>
             </div>
+            <div className="space-y-2 pt-1">
+              {[
+                { name: "Risk Word Escalation", desc: "Escalate when customer uses threatening or legal language", severity: "high", type: "escalation" },
+                { name: "Brand Voice Enforcement", desc: "Ensure responses follow brand tone guidelines", severity: "medium", type: "tone" },
+                { name: "PII Protection", desc: "Block access to or sharing of customer PII", severity: "critical", type: "security" },
+                { name: "Repeated Failure Escalation", desc: "Escalate after 3 consecutive failed resolution attempts", severity: "medium", type: "escalation" },
+                { name: "Auto-refund Limit", desc: "Max amount the agent can refund without human approval", severity: "high", type: "workflow" },
+              ].map((g, i) => {
+                const sevColor = g.severity === "critical" ? "bg-red-100 text-red-700" : g.severity === "high" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700";
+                return (
+                  <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg border border-dashed border-border/60 bg-muted/20 opacity-70">
+                    <Shield className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[11px] font-medium text-foreground/70">{g.name}</p>
+                        <Badge variant="outline" className={cn("text-[8px] px-1 py-0", sevColor)}>{g.severity}</Badge>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{g.desc}</p>
+                    </div>
+                    <Lock className="w-3 h-3 text-muted-foreground/30 shrink-0" />
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* CSAT Collection */}
+      <section>
+        <h3 className="text-sm font-semibold mb-3">CSAT Collection</h3>
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            {isChat ? (
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><BarChart3 className="w-4 h-4 text-primary" /></div>
+                <div>
+                  <p className="text-xs font-medium">Built-in CSAT Survey</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">CSAT surveys are automatically presented to customers at the end of each live chat conversation. No additional configuration needed.</p>
+                  <Badge variant="outline" className="text-[9px] mt-2 text-primary border-primary/20">Auto-enabled for Live Chat</Badge>
+                </div>
+              </div>
+            ) : (
+              <CsatEmailConfig markChanged={markChanged} />
+            )}
           </CardContent>
         </Card>
       </section>
@@ -970,7 +1029,7 @@ function SimulatorPanel({ agentName }: { agentName: string }) {
 }
 
 /* ═══════════════════════════════════════════ */
-/* ── Test Panel (used in Sheet for Setting Up / Ready to Test) */
+/* ── Test Panel (used inline in Setting Up / Ready to Test) */
 /* ═══════════════════════════════════════════ */
 function TestPanel({ agentName }: { agentName: string }) {
   const [input, setInput] = useState("");
@@ -1146,5 +1205,85 @@ function Metric({ label, value, trend }: { label: string; value: string; trend: 
         <span className="text-[9px] text-primary font-medium">{trend}</span>
       </div>
     </CardContent></Card>
+  );
+}
+
+/* ═══════════════════════════════════════════ */
+/* ── CSAT Email Config                        */
+/* For email channel: external collection or   */
+/* webhook-based link configuration            */
+/* ═══════════════════════════════════════════ */
+function CsatEmailConfig({ markChanged }: { markChanged: () => void }) {
+  const [csatMethod, setCsatMethod] = useState("external");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [externalProvider, setExternalProvider] = useState("zendesk-survey");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0"><BarChart3 className="w-4 h-4 text-blue-500" /></div>
+        <div>
+          <p className="text-xs font-medium">CSAT Collection Method</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Choose how customer satisfaction scores are collected for email conversations</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setCsatMethod("external"); markChanged(); }}
+            className={cn(
+              "flex-1 p-3 rounded-lg border text-left transition-all",
+              csatMethod === "external" ? "border-primary bg-primary/5" : "border-border hover:border-border/80"
+            )}
+          >
+            <p className="text-[11px] font-medium">External Provider</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Collect CSAT via your existing survey tool (e.g., Zendesk, Delighted, Typeform)</p>
+          </button>
+          <button
+            onClick={() => { setCsatMethod("webhook"); markChanged(); }}
+            className={cn(
+              "flex-1 p-3 rounded-lg border text-left transition-all",
+              csatMethod === "webhook" ? "border-primary bg-primary/5" : "border-border hover:border-border/80"
+            )}
+          >
+            <p className="text-[11px] font-medium">Webhook Integration</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Send CSAT data to Seel via a webhook endpoint for custom integrations</p>
+          </button>
+        </div>
+
+        {csatMethod === "external" && (
+          <div className="space-y-2 p-3 rounded-lg bg-muted/30">
+            <div>
+              <Label className="text-xs">Survey Provider</Label>
+              <Select value={externalProvider} onValueChange={(v) => { setExternalProvider(v); markChanged(); }}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="zendesk-survey">Zendesk CSAT Survey</SelectItem>
+                  <SelectItem value="delighted">Delighted</SelectItem>
+                  <SelectItem value="typeform">Typeform</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[10px] text-muted-foreground">CSAT scores from your external provider will be synced automatically via the connected integration.</p>
+          </div>
+        )}
+
+        {csatMethod === "webhook" && (
+          <div className="space-y-2 p-3 rounded-lg bg-muted/30">
+            <div>
+              <Label className="text-xs">Webhook Endpoint URL</Label>
+              <Input value={webhookUrl} onChange={e => { setWebhookUrl(e.target.value); markChanged(); }} placeholder="https://your-app.com/api/csat-webhook" className="mt-1 font-mono text-xs" />
+              <p className="text-[10px] text-muted-foreground mt-1">Seel will send a POST request with CSAT data to this URL after each survey response.</p>
+            </div>
+            <div className="p-2 rounded bg-muted/50 border border-border/50">
+              <p className="text-[10px] font-medium text-muted-foreground">Payload format:</p>
+              <pre className="text-[9px] text-muted-foreground font-mono mt-1">{`{ "conversation_id": "...", "score": 1-5, "comment": "..." }`}</pre>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
