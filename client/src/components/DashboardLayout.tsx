@@ -16,9 +16,11 @@ import {
   BookOpen,
   MessageSquare,
   User,
+  Plug,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TOPICS, AGENT_MODE } from "@/lib/mock-data";
+import { toast } from "sonner";
 
 interface NavItem {
   label: string;
@@ -61,6 +63,7 @@ const NAV_ITEMS: NavItem[] = [
 function AgentStatusDot({ mode }: { mode: string }) {
   const colors: Record<string, string> = {
     production: "bg-emerald-400",
+    training: "bg-amber-400",
     shadow: "bg-amber-400",
     off: "bg-gray-300",
   };
@@ -181,8 +184,30 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        {/* Demo links */}
+        {/* Integrations + Demo links */}
         <div className="px-1.5 pb-1 space-y-0.5">
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => toast.info("Integrations settings would open here")}
+                  className="flex items-center justify-center w-full h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                >
+                  <Plug className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Integrations</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              onClick={() => toast.info("Integrations settings would open here")}
+              className="flex items-center gap-2 px-2.5 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all w-full"
+            >
+              <Plug className="w-4 h-4 shrink-0" />
+              <span className="text-[12px] font-medium">Integrations</span>
+            </button>
+          )}
+          <div className="border-t border-border/30 my-1" />
           <Link href="/zendesk">
             <div
               className={cn(

@@ -450,14 +450,15 @@ export default function Onboarding() {
                           <div className="flex-1 min-w-0">
                             <span className="text-[13px] font-medium text-foreground">{action.name}</span>
                             <p className="text-[11px] text-muted-foreground mt-0.5">{action.description}</p>
-                            {action.parameters && (
+                            {action.guardrails && action.guardrails.length > 0 && (
                               <div className="flex items-center gap-2 mt-1.5">
-                                {Object.entries(action.parameters).map(([key, val]) => (
-                                  <div key={key} className="flex items-center gap-1">
-                                    <span className="text-[10px] text-muted-foreground capitalize">
-                                      {key.replace(/([A-Z])/g, " $1")}:
-                                    </span>
-                                    <Input type="number" defaultValue={val as number} className="w-16 h-6 text-[11px]" />
+                                {action.guardrails.map((g) => (
+                                  <div key={g.id} className="flex items-center gap-1">
+                                    <span className="text-[10px] text-muted-foreground font-medium">Guardrail:</span>
+                                    <span className="text-[10px] text-foreground">{g.label}</span>
+                                    {g.type === "number" && (
+                                      <Input type="number" defaultValue={g.value} className="w-16 h-6 text-[11px]" />
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -469,7 +470,6 @@ export default function Onboarding() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="autonomous" className="text-[11px]">Autonomous</SelectItem>
-                              <SelectItem value="ask_permission" className="text-[11px]">Ask Permission</SelectItem>
                               <SelectItem value="disabled" className="text-[11px]">Disabled</SelectItem>
                             </SelectContent>
                           </Select>

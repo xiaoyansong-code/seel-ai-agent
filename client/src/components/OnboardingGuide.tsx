@@ -27,19 +27,10 @@ const GUIDE_STEPS: GuideStep[] = [
     ],
   },
   {
-    id: "integrations",
-    title: "Connect your tools",
-    message: "First, connect Zendesk and Shopify so Alex can read tickets and look up orders. Click \"Manage\" on each integration above.",
-    sectionId: "section-integrations",
-    choices: [
-      { label: "Done — next step", action: "complete" },
-    ],
-  },
-  {
     id: "mode",
-    title: "Choose agent mode",
-    message: "I recommend starting with **Shadow Mode** — Alex will draft replies as internal notes, but won't send anything until you approve.",
-    sectionId: "section-general",
+    title: "Choose rep mode",
+    message: "I recommend starting with **Training Mode** — Alex will draft replies as internal notes, but won't send anything until you approve. You can configure this in **Agent** settings.",
+    sectionId: "",
     choices: [
       { label: "Got it, next", action: "complete" },
     ],

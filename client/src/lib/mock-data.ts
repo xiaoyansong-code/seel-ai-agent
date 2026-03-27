@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════
 // Mock Data Layer — Seel AI Support Agent
 // Brand: "Coastal Living Co" (home goods DTC)
-// Agent: "Alex" | Manager: "Jordan Chen"
+// Rep: "Alex" | Manager: "Jordan Chen"
 // ══════════════════════════════════════════════════════════════
 
 // ── Types ──────────────────────────────────────────────────
@@ -10,8 +10,8 @@ export type TopicType = "knowledge_gap" | "performance_report" | "open_question"
 export type TopicStatus = "unread" | "read" | "resolved";
 export type MessageSender = "ai" | "manager";
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired";
-export type PermissionLevel = "autonomous" | "ask_permission" | "disabled";
-export type AgentMode = "shadow" | "production" | "off";
+export type PermissionLevel = "autonomous" | "disabled";
+export type AgentMode = "training" | "production" | "off";
 export type OnboardingStep = "connect_zendesk" | "connect_shopify" | "import_rules" | "confirm_rules" | "set_permissions" | "capability_boundary" | "escalation_rules" | "agent_identity" | "readiness_audit" | "go_live";
 export type TicketSidebarState = "ai_handling" | "pending_approval" | "escalated" | "taken_over";
 
@@ -50,13 +50,22 @@ export interface ProposedRule {
   status: "pending" | "accepted" | "rejected";
 }
 
+export interface Guardrail {
+  id: string;
+  label: string;
+  type: "number" | "boolean";
+  value?: number;
+  unit?: string;
+  enabled: boolean;
+}
+
 export interface ActionPermission {
   id: string;
   name: string;
   description: string;
   category: string;
   permission: PermissionLevel;
-  parameters?: Record<string, unknown>;
+  guardrails?: Guardrail[];
   lastModified: string;
   dependsOn?: string[];
 }
@@ -96,6 +105,7 @@ export interface KnowledgeDocument {
   size: string;
   extractedRules: number;
   status: "processed" | "processing" | "error";
+  sourceUrl?: string;
 }
 
 export interface Skill {
@@ -105,14 +115,15 @@ export interface Skill {
   ruleText: string;
   lastUpdated: string;
   updatedByTopicId?: string;
-  confidence: number;
+  sourceDocId?: string;
+  tags?: string[];
 }
 
 export interface PerformanceMetric {
   label: string;
   value: number;
   unit: string;
-  trend: number; // positive = improvement
+  trend: number;
   trendLabel: string;
 }
 
@@ -221,16 +232,104 @@ export const INTEGRATIONS: Integration[] = [
 ];
 
 export const ACTION_PERMISSIONS: ActionPermission[] = [
-  { id: "ap-1", name: "Issue Refund", description: "Process refund to original payment method", category: "Financial", permission: "ask_permission", parameters: { maxAmount: 150 }, lastModified: "2026-03-10T14:00:00Z" },
-  { id: "ap-2", name: "Cancel Order", description: "Cancel unfulfilled order and notify customer", category: "Order Management", permission: "autonomous", lastModified: "2026-03-01T09:00:00Z" },
-  { id: "ap-3", name: "Create Return Label", description: "Generate prepaid return shipping label", category: "Returns", permission: "autonomous", lastModified: "2026-03-01T09:00:00Z" },
-  { id: "ap-4", name: "Track Shipment", description: "Look up shipment status and share with customer", category: "Order Management", permission: "autonomous", lastModified: "2026-02-28T09:00:00Z" },
-  { id: "ap-5", name: "Apply Discount", description: "Apply discount code or manual discount", category: "Financial", permission: "ask_permission", parameters: { maxPercentage: 15 }, lastModified: "2026-03-05T11:00:00Z" },
-  { id: "ap-6", name: "Update Shipping Address", description: "Modify shipping address on unfulfilled order", category: "Order Management", permission: "autonomous", lastModified: "2026-02-28T09:00:00Z" },
-  { id: "ap-7", name: "Resend Order", description: "Create replacement shipment for lost/damaged items", category: "Order Management", permission: "ask_permission", parameters: { maxValue: 200 }, lastModified: "2026-03-08T16:00:00Z" },
-  { id: "ap-8", name: "Create Coupon", description: "Generate unique discount coupon for customer retention", category: "Financial", permission: "disabled", lastModified: "2026-02-28T09:00:00Z", dependsOn: ["ap-5"] },
-  { id: "ap-9", name: "Escalate to Manager", description: "Transfer ticket to human agent with context summary", category: "Workflow", permission: "autonomous", lastModified: "2026-02-28T09:00:00Z" },
-  { id: "ap-10", name: "Close Ticket", description: "Mark ticket as resolved after customer confirmation", category: "Workflow", permission: "autonomous", lastModified: "2026-02-28T09:00:00Z" },
+  {
+    id: "ap-1",
+    name: "Issue Refund",
+    description: "Process refund to original payment method",
+    category: "Financial",
+    permission: "autonomous",
+    guardrails: [
+      { id: "g-1-1", label: "Max refund amount", type: "number", value: 150, unit: "$", enabled: true },
+    ],
+    lastModified: "2026-03-10T14:00:00Z",
+  },
+  {
+    id: "ap-2",
+    name: "Cancel Order",
+    description: "Cancel unfulfilled order and notify customer",
+    category: "Order Management",
+    permission: "autonomous",
+    lastModified: "2026-03-01T09:00:00Z",
+  },
+  {
+    id: "ap-3",
+    name: "Create Return Label",
+    description: "Generate prepaid return shipping label",
+    category: "Returns",
+    permission: "autonomous",
+    lastModified: "2026-03-01T09:00:00Z",
+  },
+  {
+    id: "ap-4",
+    name: "Track Shipment",
+    description: "Look up shipment status and share with customer",
+    category: "Order Management",
+    permission: "autonomous",
+    lastModified: "2026-02-28T09:00:00Z",
+  },
+  {
+    id: "ap-5",
+    name: "Apply Discount",
+    description: "Apply discount code or manual discount",
+    category: "Financial",
+    permission: "autonomous",
+    guardrails: [
+      { id: "g-5-1", label: "Max discount percentage", type: "number", value: 15, unit: "%", enabled: true },
+    ],
+    lastModified: "2026-03-05T11:00:00Z",
+  },
+  {
+    id: "ap-6",
+    name: "Update Shipping Address",
+    description: "Modify shipping address on unfulfilled order",
+    category: "Order Management",
+    permission: "autonomous",
+    lastModified: "2026-02-28T09:00:00Z",
+  },
+  {
+    id: "ap-7",
+    name: "Resend Order",
+    description: "Create replacement shipment for lost/damaged items",
+    category: "Order Management",
+    permission: "autonomous",
+    guardrails: [
+      { id: "g-7-1", label: "Max order value", type: "number", value: 200, unit: "$", enabled: true },
+    ],
+    lastModified: "2026-03-08T16:00:00Z",
+  },
+  {
+    id: "ap-8",
+    name: "Create Coupon",
+    description: "Generate unique discount coupon for customer retention",
+    category: "Financial",
+    permission: "disabled",
+    lastModified: "2026-02-28T09:00:00Z",
+    dependsOn: ["ap-5"],
+  },
+  {
+    id: "ap-9",
+    name: "Escalate to Manager",
+    description: "Transfer ticket to human agent with context summary",
+    category: "Workflow",
+    permission: "autonomous",
+    guardrails: [
+      { id: "g-9-1", label: "Angry customer detected", type: "boolean", enabled: true },
+      { id: "g-9-2", label: "Legal/safety keywords", type: "boolean", enabled: true },
+      { id: "g-9-3", label: "Unresolved after N turns", type: "number", value: 4, unit: "turns", enabled: true },
+      { id: "g-9-4", label: "Customer requests human", type: "boolean", enabled: true },
+      { id: "g-9-5", label: "High-value order threshold", type: "number", value: 500, unit: "$", enabled: true },
+      { id: "g-9-6", label: "Repeat contact threshold", type: "number", value: 3, unit: "times", enabled: true },
+    ],
+    lastModified: "2026-02-28T09:00:00Z",
+  },
+  {
+    id: "ap-10",
+    name: "Close Ticket",
+    description: "Mark ticket as resolved after customer confirmation",
+    category: "Workflow",
+    permission: "autonomous",
+    lastModified: "2026-02-28T09:00:00Z",
+  },
 ];
 
 export const ESCALATION_RULES: EscalationRule[] = [
@@ -245,21 +344,22 @@ export const ESCALATION_RULES: EscalationRule[] = [
 ];
 
 export const KNOWLEDGE_DOCUMENTS: KnowledgeDocument[] = [
-  { id: "doc-1", name: "Coastal Living Co — Customer Service SOP v3.2.pdf", type: "pdf", uploadedAt: "2026-03-01T09:00:00Z", size: "2.4 MB", extractedRules: 12, status: "processed" },
-  { id: "doc-2", name: "Return & Refund Policy — March 2026.pdf", type: "pdf", uploadedAt: "2026-03-01T09:00:00Z", size: "890 KB", extractedRules: 5, status: "processed" },
-  { id: "doc-3", name: "Shipping Partner SLA & Escalation Guide.doc", type: "doc", uploadedAt: "2026-03-05T14:00:00Z", size: "1.1 MB", extractedRules: 3, status: "processed" },
-  { id: "doc-4", name: "VIP Customer Handling Guidelines.pdf", type: "pdf", uploadedAt: "2026-03-10T11:00:00Z", size: "540 KB", extractedRules: 4, status: "processed" },
-  { id: "doc-5", name: "Product Warranty Terms — All Categories.csv", type: "csv", uploadedAt: "2026-03-15T16:00:00Z", size: "320 KB", extractedRules: 8, status: "processed" },
+  { id: "doc-1", name: "Coastal Living Co — Customer Service SOP v3.2.pdf", type: "pdf", uploadedAt: "2026-03-01T09:00:00Z", size: "2.4 MB", extractedRules: 12, status: "processed", sourceUrl: "/documents/sop-v3.2.pdf" },
+  { id: "doc-2", name: "Return & Refund Policy — March 2026.pdf", type: "pdf", uploadedAt: "2026-03-01T09:00:00Z", size: "890 KB", extractedRules: 5, status: "processed", sourceUrl: "/documents/return-policy.pdf" },
+  { id: "doc-3", name: "Shipping Partner SLA & Escalation Guide.doc", type: "doc", uploadedAt: "2026-03-05T14:00:00Z", size: "1.1 MB", extractedRules: 3, status: "processed", sourceUrl: "/documents/shipping-sla.doc" },
+  { id: "doc-4", name: "VIP Customer Handling Guidelines.pdf", type: "pdf", uploadedAt: "2026-03-10T11:00:00Z", size: "540 KB", extractedRules: 4, status: "processed", sourceUrl: "/documents/vip-guidelines.pdf" },
+  { id: "doc-5", name: "Product Warranty Terms — All Categories.csv", type: "csv", uploadedAt: "2026-03-15T16:00:00Z", size: "320 KB", extractedRules: 8, status: "processed", sourceUrl: "/documents/warranty-terms.csv" },
+  { id: "doc-6", name: "Coastal Living Co FAQ Page", type: "url", uploadedAt: "2026-03-18T10:00:00Z", size: "—", extractedRules: 6, status: "processed", sourceUrl: "https://coastalliving.com/faq" },
 ];
 
 export const SKILLS: Skill[] = [
-  { id: "sk-1", name: "Standard Refund Policy", intent: "Refunds", ruleText: "Process full refund for items returned within 30 days in original condition. For VIP customers (3+ orders), extend window to 45 days. Refund to original payment method only.", lastUpdated: "2026-03-15T10:00:00Z", updatedByTopicId: "t-4", confidence: 0.95 },
-  { id: "sk-2", name: "WISMO Response", intent: "Where Is My Order", ruleText: "Look up order in Shopify, check shipment tracking. If shipped, share tracking link and estimated delivery. If delayed >3 days past estimate, apologize and offer to contact carrier.", lastUpdated: "2026-03-01T09:00:00Z", confidence: 0.98 },
-  { id: "sk-3", name: "Cancellation Policy", intent: "Cancellations", ruleText: "Cancel unfulfilled orders immediately with full refund. For fulfilled orders, guide customer to return process instead. Express sympathy for the inconvenience.", lastUpdated: "2026-03-01T09:00:00Z", confidence: 0.92 },
-  { id: "sk-4", name: "Damaged Item Handling", intent: "Product Issues", ruleText: "Ask for photo evidence. If damage is confirmed, offer replacement or full refund — customer's choice. Do not require return of damaged item for orders under $80.", lastUpdated: "2026-03-12T14:00:00Z", updatedByTopicId: "t-3", confidence: 0.88 },
-  { id: "sk-5", name: "Shipping Delay Communication", intent: "Shipping", ruleText: "Acknowledge the delay, provide updated ETA if available. For delays >7 days, offer 10% discount on next order. Never blame the carrier directly.", lastUpdated: "2026-03-08T11:00:00Z", confidence: 0.90 },
-  { id: "sk-6", name: "Product Recommendation", intent: "Pre-sale", ruleText: "When customer asks about product features or comparisons, reference product descriptions from Shopify. Suggest complementary items. Do not make claims not in the product listing.", lastUpdated: "2026-03-01T09:00:00Z", confidence: 0.85 },
-  { id: "sk-7", name: "Return Shipping Cost", intent: "Returns", ruleText: "Free return shipping for defective/wrong items. Customer pays return shipping for change-of-mind returns. Provide prepaid label in both cases, deduct $8.95 from refund for change-of-mind.", lastUpdated: "2026-03-20T09:00:00Z", updatedByTopicId: "t-7", confidence: 0.91 },
+  { id: "sk-1", name: "Standard Refund Policy", intent: "Refunds", ruleText: "Process full refund for items returned within 30 days in original condition. For VIP customers (3+ orders), extend window to 45 days. Refund to original payment method only.", lastUpdated: "2026-03-15T10:00:00Z", updatedByTopicId: "t-4", sourceDocId: "doc-2", tags: ["Refunds", "VIP"] },
+  { id: "sk-2", name: "WISMO Response", intent: "Where Is My Order", ruleText: "Look up order in Shopify, check shipment tracking. If shipped, share tracking link and estimated delivery. If delayed >3 days past estimate, apologize and offer to contact carrier.", lastUpdated: "2026-03-01T09:00:00Z", sourceDocId: "doc-1", tags: ["Shipping", "WISMO"] },
+  { id: "sk-3", name: "Cancellation Policy", intent: "Cancellations", ruleText: "Cancel unfulfilled orders immediately with full refund. For fulfilled orders, guide customer to return process instead. Express sympathy for the inconvenience.", lastUpdated: "2026-03-01T09:00:00Z", sourceDocId: "doc-1", tags: ["Cancellations"] },
+  { id: "sk-4", name: "Damaged Item Handling", intent: "Product Issues", ruleText: "Ask for photo evidence. If damage is confirmed, offer replacement or full refund — customer's choice. Do not require return of damaged item for orders under $80.", lastUpdated: "2026-03-12T14:00:00Z", updatedByTopicId: "t-3", sourceDocId: "doc-1", tags: ["Product Issues", "Damage"] },
+  { id: "sk-5", name: "Shipping Delay Communication", intent: "Shipping", ruleText: "Acknowledge the delay, provide updated ETA if available. For delays >7 days, offer 10% discount on next order. Never blame the carrier directly.", lastUpdated: "2026-03-08T11:00:00Z", sourceDocId: "doc-3", tags: ["Shipping"] },
+  { id: "sk-6", name: "Product Recommendation", intent: "Pre-sale", ruleText: "When customer asks about product features or comparisons, reference product descriptions from Shopify. Suggest complementary items. Do not make claims not in the product listing.", lastUpdated: "2026-03-01T09:00:00Z", sourceDocId: "doc-6", tags: ["Pre-sale"] },
+  { id: "sk-7", name: "Return Shipping Cost", intent: "Returns", ruleText: "Free return shipping for defective/wrong items. Customer pays return shipping for change-of-mind returns. Provide prepaid label in both cases, deduct $8.95 from refund for change-of-mind.", lastUpdated: "2026-03-20T09:00:00Z", updatedByTopicId: "t-7", sourceDocId: "doc-2", tags: ["Returns", "Shipping"] },
 ];
 
 export const TOPICS: Topic[] = [
@@ -515,8 +615,8 @@ export const ONBOARDING_PARSED_RULES: ParsedRule[] = [
   { id: "opr-2", text: "Always address customer by first name", source: "SOP Document, Section 1.2", category: "behavior", confidence: 0.95, status: "confirmed" },
   { id: "opr-3", text: "Look up order status in Shopify when customer asks about delivery", source: "SOP Document, Section 4.1", category: "action_mapping", confidence: 0.93, status: "confirmed" },
   { id: "opr-4", text: "Refund window is 30 days for all customers", source: "SOP Document, Section 3.1", category: "business_rule", confidence: 0.88, status: "conflicted", conflictGroupId: "cg-1", conflictAlternative: "23% of agents extend to 45 days for VIP customers (3+ orders)" },
-  { id: "opr-5", text: "Extend refund window to 45 days for VIP customers with 3+ orders", source: "Historical ticket analysis (23% of agents)", category: "business_rule", confidence: 0.72, status: "conflicted", conflictGroupId: "cg-1", conflictAlternative: "SOP says 30 days for all customers" },
-  { id: "opr-6", text: "Never provide legal advice or make warranty promises beyond stated policy", source: "SOP Document, Section 1.4", category: "behavior", confidence: 0.99, status: "confirmed" },
+  { id: "opr-5", text: "Extend refund window to 45 days for VIP customers with 3+ orders", source: "Historical ticket analysis", category: "business_rule", confidence: 0.82, status: "conflicted", conflictGroupId: "cg-1", conflictAlternative: "SOP says 30 days for all customers" },
+  { id: "opr-6", text: "Never promise specific delivery dates — use estimated ranges", source: "SOP Document, Section 4.2", category: "behavior", confidence: 0.90, status: "confirmed" },
   { id: "opr-7", text: "For damaged items, always request photo evidence before processing", source: "SOP Document, Section 5.2", category: "business_rule", confidence: 0.91, status: "pending" },
   { id: "opr-8", text: "Offer free shipping on replacement orders for defective items", source: "Historical ticket analysis", category: "business_rule", confidence: 0.85, status: "pending" },
   { id: "opr-9", text: "Use Shopify API to cancel unfulfilled orders", source: "SOP Document, Section 4.3", category: "action_mapping", confidence: 0.96, status: "confirmed" },
@@ -541,7 +641,6 @@ export const CAPABILITY_SUMMARY = {
   ],
   estimatedCoverage: 67,
 };
-
 
 // ── Zendesk Ticket Types for Sidebar Simulation ──────────────
 

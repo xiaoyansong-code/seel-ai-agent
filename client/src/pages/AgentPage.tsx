@@ -116,7 +116,7 @@ export default function AgentPage() {
       desc: "Replies directly to customers.",
     },
     {
-      mode: "shadow",
+      mode: "training",
       icon: Eye,
       color: "amber",
       desc: "Drafts as internal notes for review.",
@@ -162,7 +162,7 @@ export default function AgentPage() {
           <Section
             id="section-mode"
             title="Mode"
-            tip="Controls how the agent handles incoming Zendesk tickets. Shadow mode drafts as internal notes; Production replies directly."
+            tip="Controls how the rep handles incoming Zendesk tickets. Training mode drafts as internal notes; Production replies directly."
           >
             <div className="grid grid-cols-3 gap-3">
               {modeConfig.map(({ mode, icon: Icon, color, desc }) => (
@@ -204,7 +204,7 @@ export default function AgentPage() {
           <Section
             id="section-identity"
             title="Identity"
-            tip="How the agent presents itself to customers in conversations."
+            tip="How the rep presents itself to customers in conversations."
           >
             <div className="space-y-4">
               <div className="flex items-center gap-6">
@@ -244,7 +244,7 @@ export default function AgentPage() {
                   <Label className="text-[12px] font-medium text-muted-foreground shrink-0">
                     Disclose AI
                   </Label>
-                  <Tip text="If enabled, the agent will tell customers it's an AI when directly asked." />
+                  <Tip text="If enabled, the rep will tell customers it's an AI when directly asked." />
                   <Switch
                     checked={identity.transparentAboutAI}
                     onCheckedChange={(checked) =>
@@ -290,7 +290,7 @@ export default function AgentPage() {
           <Section
             id="section-actions"
             title="Actions"
-            tip="Toggle which actions the agent can perform autonomously. Disabled actions will be escalated to you."
+            tip="Toggle which actions the rep can perform autonomously. Disabled actions will be escalated to you."
           >
             {Object.entries(
               permissions.reduce<Record<string, ActionPermission[]>>(
@@ -318,47 +318,26 @@ export default function AgentPage() {
                             {action.name}
                           </span>
                           <Tip text={action.description} />
-                          {isOn &&
-                            action.parameters &&
-                            Object.entries(action.parameters).map(
-                              ([key, val]) => (
-                                <div
-                                  key={key}
-                                  className="flex items-center gap-1 ml-2"
-                                >
-                                  <span className="text-[11px] text-muted-foreground">
-                                    {key === "maxAmount"
-                                      ? "max $"
-                                      : key === "maxPercentage"
-                                      ? "max %"
-                                      : key === "maxValue"
-                                      ? "max $"
-                                      : key}
-                                  </span>
-                                  <Input
-                                    type="number"
-                                    defaultValue={val as number}
-                                    className="w-16 h-6 text-[11px] px-2"
-                                    onChange={(e) => {
-                                      const newVal = Number(e.target.value);
-                                      setPermissions((prev) =>
-                                        prev.map((p) =>
-                                          p.id === action.id
-                                            ? {
-                                                ...p,
-                                                parameters: {
-                                                  ...p.parameters,
-                                                  [key]: newVal,
-                                                },
-                                              }
-                                            : p
-                                        )
-                                      );
-                                    }}
-                                  />
+                          {isOn && action.guardrails && action.guardrails.length > 0 && (
+                            <div className="flex items-center gap-2 ml-2">
+                              {action.guardrails.filter(g => g.enabled).map((g) => (
+                                <div key={g.id} className="flex items-center gap-1">
+                                  <span className="text-[10px] text-muted-foreground font-medium">Guardrail:</span>
+                                  <span className="text-[10px] text-foreground">{g.label}</span>
+                                  {g.type === "number" && (
+                                    <div className="flex items-center gap-0.5">
+                                      <Input
+                                        type="number"
+                                        defaultValue={g.value}
+                                        className="w-14 h-5 text-[10px] px-1.5"
+                                      />
+                                      {g.unit && <span className="text-[9px] text-muted-foreground">{g.unit}</span>}
+                                    </div>
+                                  )}
                                 </div>
-                              )
-                            )}
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <Switch
                           checked={isOn}

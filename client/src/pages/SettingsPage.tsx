@@ -1,4 +1,4 @@
-/* ── Settings Page ────────────────────────────────────────────
+/* ── SettingsPage ─────────────────────────────────────────
    Tabs: General | Actions | Escalation | Identity | Knowledge
    ──────────────────────────────────────────────────────────── */
 
@@ -64,7 +64,6 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
 
 const PERMISSION_OPTIONS: { value: PermissionLevel; label: string; description: string; color: string }[] = [
   { value: "autonomous", label: "Autonomous", description: "AI executes without approval", color: "text-emerald-600 bg-emerald-50" },
-  { value: "ask_permission", label: "Ask Permission", description: "AI requests manager approval", color: "text-amber-600 bg-amber-50" },
   { value: "disabled", label: "Disabled", description: "AI cannot perform this action", color: "text-red-600 bg-red-50" },
 ];
 
@@ -77,7 +76,7 @@ function KnowledgeTab() {
       <div>
         <h2 className="text-[15px] font-semibold text-foreground">Knowledge Base</h2>
         <p className="text-[13px] text-muted-foreground mt-1">
-          Manage source documents and view the rules Alex has learned.
+          Manage source documents and view the rules the rep has learned.
         </p>
       </div>
 
@@ -154,7 +153,7 @@ function KnowledgeTab() {
           >
             <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
             <p className="text-[13px] font-medium text-foreground">Upload Document</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">PDF, DOC, CSV — Alex will extract rules automatically</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">PDF, DOC, CSV — the rep will extract rules automatically</p>
           </button>
         </div>
       )}
@@ -172,25 +171,24 @@ function KnowledgeTab() {
                       <Badge variant="secondary" className="h-[18px] px-1.5 text-[10px]">
                         {skill.intent}
                       </Badge>
+                      {skill.tags?.map((tag) => (
+                        <Badge key={tag} variant="outline" className="h-[16px] px-1 text-[9px]">{tag}</Badge>
+                      ))}
                     </div>
                     <p className="text-[12px] text-muted-foreground leading-relaxed">{skill.ruleText}</p>
                     <div className="flex items-center gap-3 mt-2">
                       <span className="text-[11px] text-muted-foreground/60">
                         Updated {new Date(skill.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </span>
-                      <div className="flex items-center gap-1">
-                        <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-primary/60"
-                            style={{ width: `${skill.confidence * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">{Math.round(skill.confidence * 100)}%</span>
-                      </div>
                       {skill.updatedByTopicId && (
                         <Badge variant="outline" className="h-[16px] px-1 text-[9px] text-primary/70 border-primary/20">
-                          Updated via Inbox
+                          Updated via Messages
                         </Badge>
+                      )}
+                      {skill.sourceDocId && (
+                        <a href="#" onClick={(e) => { e.preventDefault(); toast.info("View source document"); }} className="text-[10px] text-primary hover:underline">
+                          View Source
+                        </a>
                       )}
                     </div>
                   </div>
@@ -201,8 +199,8 @@ function KnowledgeTab() {
 
           <div className="rounded-lg border border-dashed border-border/60 p-4 text-center">
             <p className="text-[12px] text-muted-foreground">
-              Rules are updated through conversations in <span className="font-medium text-primary">Inbox</span>.
-              Alex proposes rules, you confirm — and they appear here.
+              Rules are updated through conversations in <span className="font-medium text-primary">Messages</span>.
+              The rep proposes rules, you confirm — and they appear here.
             </p>
           </div>
         </div>
@@ -248,6 +246,7 @@ export default function SettingsPage() {
       {/* Content */}
       <ScrollArea className="flex-1">
         <div className="max-w-[680px] mx-auto px-6 py-6">
+
           {/* ── General Tab ── */}
           {activeTab === "general" && (
             <div className="space-y-6">
@@ -264,12 +263,12 @@ export default function SettingsPage() {
                     <CardTitle className="text-[15px]">Agent Mode</CardTitle>
                   </div>
                   <CardDescription className="text-[13px]">
-                    Control how Alex operates on your Zendesk tickets.
+                    Control how the rep operates on your Zendesk tickets.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-3 gap-3">
-                    {(["production", "shadow", "off"] as AgentMode[]).map((mode) => (
+                    {(["production", "training", "off"] as AgentMode[]).map((mode) => (
                       <button
                         key={mode}
                         onClick={() => {
@@ -288,16 +287,16 @@ export default function SettingsPage() {
                             className={cn(
                               "w-2 h-2 rounded-full",
                               mode === "production" && "bg-emerald-400",
-                              mode === "shadow" && "bg-amber-400",
+                              mode === "training" && "bg-amber-400",
                               mode === "off" && "bg-zinc-400"
                             )}
                           />
                           <span className="text-[13px] font-semibold capitalize">{mode}</span>
                         </div>
                         <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          {mode === "production" && "Alex handles tickets and executes actions autonomously."}
-                          {mode === "shadow" && "Alex drafts responses but doesn't send. You review and approve."}
-                          {mode === "off" && "Alex is inactive. All tickets go to human agents."}
+                          {mode === "production" && "Rep handles tickets and executes actions autonomously."}
+                          {mode === "training" && "Rep drafts responses and sends internal notes only. You review and approve."}
+                          {mode === "off" && "Rep is inactive. All tickets go to human agents."}
                         </p>
                       </button>
                     ))}
@@ -357,7 +356,7 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-[15px] font-semibold text-foreground">Action Permissions</h2>
                 <p className="text-[13px] text-muted-foreground mt-1">
-                  Control what Alex can do autonomously, what requires your approval, and what's disabled.
+                  Control what the rep can do autonomously and what's disabled.
                 </p>
               </div>
 
@@ -393,29 +392,41 @@ export default function SettingsPage() {
                                 )}
                               </div>
                               <p className="text-[12px] text-muted-foreground mt-0.5">{action.description}</p>
-                              {/* Parameter config */}
-                              {action.parameters && action.permission !== "disabled" && (
-                                <div className="mt-2 flex items-center gap-2">
-                                  {Object.entries(action.parameters).map(([key, val]) => (
-                                    <div key={key} className="flex items-center gap-1.5">
-                                      <Label className="text-[11px] text-muted-foreground capitalize">
-                                        {key.replace(/([A-Z])/g, " $1").trim()}:
-                                      </Label>
-                                      <Input
-                                        type="number"
-                                        defaultValue={val as number}
-                                        className="w-20 h-7 text-[12px]"
-                                        onChange={(e) => {
-                                          const newVal = Number(e.target.value);
+                              {/* Guardrails */}
+                              {action.guardrails && action.guardrails.length > 0 && action.permission !== "disabled" && (
+                                <div className="mt-2 space-y-1.5 ml-0.5">
+                                  {action.guardrails.map((g) => (
+                                    <div key={g.id} className="flex items-center gap-2">
+                                      <Switch
+                                        checked={g.enabled}
+                                        className="scale-75"
+                                        onCheckedChange={(checked) => {
                                           setPermissions((prev) =>
                                             prev.map((p) =>
                                               p.id === action.id
-                                                ? { ...p, parameters: { ...p.parameters, [key]: newVal } }
+                                                ? {
+                                                    ...p,
+                                                    guardrails: p.guardrails?.map((gr) =>
+                                                      gr.id === g.id ? { ...gr, enabled: checked } : gr
+                                                    ),
+                                                  }
                                                 : p
                                             )
                                           );
                                         }}
                                       />
+                                      <span className="text-[11px] text-muted-foreground font-medium">Guardrail:</span>
+                                      <span className="text-[11px] text-foreground">{g.label}</span>
+                                      {g.type === "number" && g.enabled && (
+                                        <div className="flex items-center gap-1">
+                                          <Input
+                                            type="number"
+                                            defaultValue={g.value}
+                                            className="w-16 h-6 text-[11px]"
+                                          />
+                                          {g.unit && <span className="text-[10px] text-muted-foreground">{g.unit}</span>}
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -430,7 +441,7 @@ export default function SettingsPage() {
                                 toast.success(`${action.name} set to ${val}`);
                               }}
                             >
-                              <SelectTrigger className={cn("w-[160px] h-8 text-[12px]", permConf.color)}>
+                              <SelectTrigger className={cn("w-[140px] h-8 text-[12px]", permConf?.color)}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -467,7 +478,7 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-[15px] font-semibold text-foreground">Escalation Rules</h2>
                 <p className="text-[13px] text-muted-foreground mt-1">
-                  Define when Alex should escalate a ticket to a human agent instead of handling it.
+                  Define when the rep should escalate a ticket to a human agent instead of handling it.
                 </p>
               </div>
 
@@ -552,7 +563,7 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-[15px] font-semibold text-foreground">Agent Identity</h2>
                 <p className="text-[13px] text-muted-foreground mt-1">
-                  Customize how Alex presents itself to customers.
+                  Customize how the rep presents itself to customers.
                 </p>
               </div>
 
@@ -595,7 +606,7 @@ export default function SettingsPage() {
                       className="mt-1.5 text-[13px] min-h-[80px]"
                     />
                     <p className="text-[11px] text-muted-foreground mt-1">
-                      This is the first message customers see when Alex starts a conversation.
+                      This is the first message customers see when the rep starts a conversation.
                     </p>
                   </div>
 
@@ -614,7 +625,7 @@ export default function SettingsPage() {
                     <div>
                       <Label className="text-[13px] font-medium">Transparent about AI</Label>
                       <p className="text-[12px] text-muted-foreground mt-0.5">
-                        If enabled, Alex will disclose that it's an AI assistant when asked.
+                        If enabled, the rep will disclose that it's an AI assistant when asked.
                       </p>
                     </div>
                     <Switch
