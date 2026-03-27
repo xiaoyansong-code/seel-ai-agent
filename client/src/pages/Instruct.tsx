@@ -2,6 +2,7 @@
    Left: Topic list (onboarding pinned at top)
    Right: Conversation thread with choice bubbles, inline forms,
           structured conflict resolution, scenario sanity checks
+   Onboarding: Team Lead hosts setup, then "hires" a Rep
    ──────────────────────────────────────────────────────────── */
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -15,6 +16,7 @@ import {
   Lightbulb, BarChart3, HelpCircle, AlertTriangle, FileEdit,
   Search, Send, Bot, User, ExternalLink, Check, X, Plus,
   Inbox as InboxIcon, Sparkles, Upload, FileText, ArrowRight, Zap,
+  Users, UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,7 +57,8 @@ interface ConflictItem {
 
 interface OnboardingMessage {
   id: string;
-  sender: "ai" | "manager";
+  sender: "team_lead" | "manager" | "rep";
+  senderName?: string;
   content: string;
   timestamp: string;
   choices?: OnboardingChoice[];
@@ -68,34 +71,31 @@ interface OnboardingMessage {
   isConflictForm?: boolean;
   conflicts?: ConflictItem[];
   scenarioFeedback?: boolean;
+  isPhaseTransition?: boolean;
 }
 
 type OnboardingPhase =
-  | "welcome" | "name_input"
+  | "welcome"
   | "connect_zendesk" | "connect_shopify"
   | "upload_doc" | "parsing" | "parse_done"
   | "conflicts"
-  | "actions_form"
   | "escalation_form"
+  | "phase2_intro"
+  | "rep_name_input"
   | "identity_tone"
+  | "actions_form"
   | "scenario_wismo" | "scenario_refund" | "scenario_escalation"
   | "mode_select" | "complete";
 
 /* ── Progress stages ── */
 const STAGES = [
-  { id: "connection", label: "Connection" },
-  { id: "knowledge", label: "Knowledge" },
-  { id: "permissions", label: "Permissions" },
-  { id: "sanity", label: "Sanity Check" },
-  { id: "go_live", label: "Go Live" },
+  { id: "team_setup", label: "Team Setup" },
+  { id: "hire_rep", label: "Hire a Rep" },
 ];
 
 function getStageIndex(phase: OnboardingPhase): number {
-  if (["welcome", "name_input", "connect_zendesk", "connect_shopify"].includes(phase)) return 0;
-  if (["upload_doc", "parsing", "parse_done", "conflicts"].includes(phase)) return 1;
-  if (["actions_form", "escalation_form", "identity_tone"].includes(phase)) return 2;
-  if (["scenario_wismo", "scenario_refund", "scenario_escalation"].includes(phase)) return 3;
-  return 4;
+  if (["welcome", "connect_zendesk", "connect_shopify", "upload_doc", "parsing", "parse_done", "conflicts", "escalation_form"].includes(phase)) return 0;
+  return 1;
 }
 
 /* ── Onboarding Welcome Topic ── */
@@ -103,9 +103,9 @@ const ONBOARDING_TOPIC_ID = "t-onboarding";
 function createOnboardingTopic(): Topic {
   return {
     id: ONBOARDING_TOPIC_ID, type: "rule_update" as TopicType,
-    title: "Welcome — meet your new rep", status: "unread" as TopicStatus,
+    title: "Welcome — set up your AI team", status: "unread" as TopicStatus,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    preview: "Hi! I'm your new AI support rep. Let's get set up.", messages: [],
+    preview: "Let's get your AI support team ready.", messages: [],
   };
 }
 
@@ -128,14 +128,14 @@ const DEFAULT_CONFLICTS: ConflictItem[] = [
   },
 ];
 
-/* ── Default action items ── */
+/* ── Default action items (no Ask Permission in MVP) ── */
 const DEFAULT_ACTIONS = [
-  { id: "refund", label: "Process refunds", description: "Issue refunds to customers", default: "ask" as const },
-  { id: "cancel", label: "Cancel orders", description: "Cancel unshipped orders", default: "ask" as const },
-  { id: "return_label", label: "Create return labels", description: "Generate prepaid return shipping labels", default: "auto" as const },
-  { id: "reply", label: "Send customer replies", description: "Respond to customer messages", default: "auto" as const },
-  { id: "internal_note", label: "Write internal notes", description: "Add notes to tickets for your team", default: "auto" as const },
-  { id: "lookup_order", label: "Look up orders", description: "Query order status and details in Shopify", default: "auto" as const },
+  { id: "return_label", label: "Create return labels", description: "Generate prepaid return shipping labels", default: true },
+  { id: "reply", label: "Send customer replies", description: "Respond to customer messages", default: true },
+  { id: "internal_note", label: "Write internal notes", description: "Add notes to tickets for your team", default: true },
+  { id: "lookup_order", label: "Look up orders", description: "Query order status and details in Shopify", default: true },
+  { id: "cancel", label: "Cancel orders", description: "Cancel unshipped orders", default: false },
+  { id: "seel_ticket", label: "Create Seel ticket", description: "Route to Seel Zendesk plugin for warranty claims", default: true },
 ];
 
 /* ── Default escalation triggers ── */
@@ -171,13 +171,13 @@ export default function Inbox() {
   const [obChoiceMade, setObChoiceMade] = useState<Record<string, string>>({});
   const [fileUploaded, setFileUploaded] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
-  const [agentName, setAgentName] = useState("Alex");
+  const [repName, setRepName] = useState("Alex");
   const [nameInput, setNameInput] = useState("");
   const [skippedSteps, setSkippedSteps] = useState<string[]>([]);
 
   // Inline form states
   const [conflicts, setConflicts] = useState<ConflictItem[]>(DEFAULT_CONFLICTS);
-  const [actionPerms, setActionPerms] = useState<Record<string, "auto" | "ask" | "off">>(
+  const [actionPerms, setActionPerms] = useState<Record<string, boolean>>(
     Object.fromEntries(DEFAULT_ACTIONS.map((a) => [a.id, a.default]))
   );
   const [escalationToggles, setEscalationToggles] = useState<Record<string, boolean>>(
@@ -192,61 +192,58 @@ export default function Inbox() {
   const isOnboarding = selectedId === ONBOARDING_TOPIC_ID;
 
   /* ── Onboarding message builder ── */
-  const addAIMessage = useCallback((content: string, extras?: Partial<OnboardingMessage>) => {
+  const addMessage = useCallback((sender: "team_lead" | "manager" | "rep", content: string, extras?: Partial<OnboardingMessage>) => {
+    const senderName = sender === "team_lead" ? "Team Lead" : sender === "rep" ? repName : "You";
     const msg: OnboardingMessage = {
       id: `ob-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      sender: "ai", content, timestamp: new Date().toISOString(), ...extras,
+      sender, senderName, content, timestamp: new Date().toISOString(), ...extras,
     };
     setObMessages((prev) => [...prev, msg]);
     return msg;
-  }, []);
-
-  const addManagerMessage = useCallback((content: string) => {
-    const msg: OnboardingMessage = {
-      id: `ob-mgr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      sender: "manager", content, timestamp: new Date().toISOString(),
-    };
-    setObMessages((prev) => [...prev, msg]);
-    return msg;
-  }, []);
+  }, [repName]);
 
   /* ── Kick off welcome ── */
   useEffect(() => {
     if (obPhase === "welcome" && obMessages.length === 0) {
       const timer = setTimeout(() => {
-        addAIMessage(
-          "Hi there! I'm your new AI support rep. I'll be handling customer tickets — things like order inquiries, refunds, returns, and more.\n\nBut first, let me learn how your team works. This will take about 5 minutes.\n\nBefore we start — **what should I call myself** when talking to customers?",
-          { isNameInput: true }
+        addMessage("team_lead",
+          "Hi! I'm your **Team Lead** — I'll manage your AI support reps and keep you in the loop on everything.\n\nLet's get your team set up. First, I need to connect to your tools and learn your rules. Then we'll hire your first rep.\n\nReady?",
+          {
+            choices: [
+              { label: "Let's go", value: "start" },
+            ],
+          }
         );
       }, 400);
       return () => clearTimeout(timer);
     }
-  }, [obPhase, obMessages.length, addAIMessage]);
+  }, [obPhase, obMessages.length, addMessage]);
 
-  /* ── Submit agent name ── */
+  /* ── Submit rep name ── */
   const handleNameSubmit = useCallback(() => {
     const name = nameInput.trim() || "Alex";
-    setAgentName(name);
-    addManagerMessage(name);
-    setObPhase("connect_zendesk");
+    setRepName(name);
+    addMessage("manager", name);
+    setObPhase("identity_tone");
     setTimeout(() => {
-      addAIMessage(
-        `**${name}** — I like it.\n\nFirst things first — I need access to your helpdesk so I can see and respond to tickets.\n\nDo you use Zendesk?`,
+      addMessage("team_lead",
+        `**${name}** — great name. What tone should ${name} use with customers?`,
         {
           choices: [
-            { label: "Connect Zendesk", value: "connect" },
-            { label: "I'll set this up later", value: "skip" },
+            { label: "Friendly and warm", value: "friendly", description: `"Hey Emma! Let me look into that for you 😊"` },
+            { label: "Professional", value: "professional", description: `"Hello Emma, I'd be happy to assist you with this."` },
+            { label: "Casual", value: "casual", description: `"Hi Emma! Sure thing, let me check that real quick."` },
           ],
         }
       );
     }, 500);
-  }, [nameInput, addManagerMessage, addAIMessage]);
+  }, [nameInput, addMessage]);
 
   /* ── Phase transitions ── */
   const advanceOnboarding = useCallback(
     (choice: string, choiceLabel: string, currentPhase: OnboardingPhase) => {
       setObChoiceMade((prev) => ({ ...prev, [currentPhase]: choice }));
-      addManagerMessage(choiceLabel);
+      addMessage("manager", choiceLabel);
 
       const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -254,19 +251,32 @@ export default function Inbox() {
         await delay(600);
 
         switch (currentPhase) {
+          case "welcome":
+            setObPhase("connect_zendesk");
+            addMessage("team_lead",
+              "First — I need access to your helpdesk so the team can see and respond to tickets.\n\nDo you use Zendesk?",
+              {
+                choices: [
+                  { label: "Connect Zendesk", value: "connect" },
+                  { label: "I'll set this up later", value: "skip" },
+                ],
+              }
+            );
+            break;
+
           case "connect_zendesk":
             if (choice === "connect") {
               await delay(1200);
-              addAIMessage("Connected to **Zendesk** — coastalliving.zendesk.com. I can see 1,247 tickets from the last 90 days.");
+              addMessage("team_lead", "Connected to **Zendesk** — coastalliving.zendesk.com. I can see 1,247 tickets from the last 90 days.");
               await delay(800);
             } else {
               setSkippedSteps((prev) => [...prev, "zendesk"]);
             }
             setObPhase("connect_shopify");
-            addAIMessage(
+            addMessage("team_lead",
               choice === "connect"
-                ? "Now, to look up orders and process refunds, I'll need access to your store. Are you on Shopify?"
-                : "No problem, you can connect it anytime in **Playbook → Integrations**.\n\nNext — to look up orders and process refunds, I'll need access to your store. Are you on Shopify?",
+                ? "Now, to look up orders and process actions, I'll need access to your store. Are you on Shopify?"
+                : "No problem, you can connect it anytime in **Playbook → Integrations**.\n\nNext — to look up orders, I'll need access to your store. Are you on Shopify?",
               {
                 choices: [
                   { label: "Connect Shopify", value: "connect" },
@@ -279,55 +289,45 @@ export default function Inbox() {
           case "connect_shopify":
             if (choice === "connect") {
               await delay(1200);
-              addAIMessage("Connected to **Shopify** — coastalliving.myshopify.com. I can see 3,842 products and recent orders.");
+              addMessage("team_lead", "Connected to **Shopify** — coastalliving.myshopify.com. I can see 3,842 products and recent orders.");
               await delay(800);
             } else {
               setSkippedSteps((prev) => [...prev, "shopify"]);
             }
             setObPhase("upload_doc");
-            addAIMessage(
-              "Now the important part — **your policies**. I need to learn your rules so I don't go rogue.\n\nDo you have a return policy, SOP doc, or any guidelines you can share?",
+            addMessage("team_lead",
+              "Now the important part — **your policies**. I need to learn your rules so the team knows how to handle things.\n\nDo you have a return policy, SOP doc, or any guidelines you can share?",
               { isFileUpload: true }
             );
             break;
 
           case "parse_done":
             setObPhase("conflicts");
-            addAIMessage(
-              `I found **3 conflicts** between your document and what I observed in past tickets. For each one, pick the rule I should follow — or choose "Decide later" and resolve it in **Playbook → Knowledge**.`,
+            addMessage("team_lead",
+              "I found **3 conflicts** between your document and what I observed in past tickets. For each one, pick the rule the team should follow — or choose \"Decide later\" and resolve it in **Playbook → Knowledge**.",
               { isConflictForm: true, conflicts: DEFAULT_CONFLICTS }
             );
             break;
 
           case "identity_tone":
-            setObPhase("scenario_wismo");
-            addAIMessage(
-              `Got it — I'll keep it **${choice}**. You can adjust my identity anytime in Playbook.\n\nNow, before I start, let me show you how I'd handle a few common scenarios. If anything looks off, just tell me and I'll adjust on the spot.`
-            );
-            await delay(1000);
-            addAIMessage(
-              `**Scenario 1 — "Where is my order?"**\n\nCustomer writes: *"Where is my order #DBH-29174? It's been a week and I haven't received anything."*\n\nHere's what I'd do:\n1. Look up **#DBH-29174** in Shopify\n2. I see it's **shipped** via Royal Mail, tracking RM29174UK, expected Mar 25\n3. I'd reply:\n\n> *Hi Emma! Your order #DBH-29174 shipped via Royal Mail (tracking: RM29174UK) and is expected to arrive by March 25th. You can track it here: [link]. Let me know if you need anything else!*\n\nThis is read-only — I'm just looking up info and replying. Does this look right?`,
-              {
-                choices: [
-                  { label: "That's right", value: "approve" },
-                  { label: "Needs adjustment", value: "adjust" },
-                ],
-                isScenario: true,
-              }
+            setObPhase("actions_form");
+            addMessage("team_lead",
+              `Got it — ${repName} will keep it **${choice}**.\n\nNow, what should ${repName} be allowed to do on their own? Toggle off anything you'd rather handle yourself.`,
+              { isActionsForm: true }
             );
             break;
 
           case "scenario_wismo":
             if (choice === "adjust") {
               setAwaitingFeedback(true);
-              addAIMessage("Sure — what would you change? Just type it out and I'll update my approach.", { scenarioFeedback: true });
+              addMessage("rep", "Sure — what would you change? Just type it out and I'll update my approach.", { scenarioFeedback: true });
               return;
             }
             setObPhase("scenario_refund");
-            addAIMessage("Great.");
+            addMessage("team_lead", `${repName} got that right. Next scenario:`);
             await delay(800);
-            addAIMessage(
-              `**Scenario 2 — "I want a refund"**\n\nCustomer writes: *"I received my ceramic vase yesterday and it's smaller than I expected. I'd like a refund."*\n\nHere's what I'd do:\n1. Check order — delivered 1 day ago, within return window\n2. Item is $42.99, change-of-mind return\n3. I'd reply and initiate the return:\n\n> *Hi! I'm sorry the vase wasn't what you expected. I've started a return for you — you'll receive a prepaid shipping label via email shortly. Once we receive the item, your refund of $34.04 ($42.99 minus $8.95 return shipping) will be processed within 3-5 business days.*\n\n${actionPerms["refund"] === "ask" ? "Since refunds need your approval, I'd send you an approval request in Zendesk before initiating." : "Since I have permission to process refunds, I'd handle this end-to-end."}\n\nLook good?`,
+            addMessage("rep",
+              `**Scenario 2 — "I want a refund"**\n\nCustomer writes: *"I received my ceramic vase yesterday and it's smaller than I expected. I'd like a refund."*\n\nHere's what I'd do:\n1. Check order — delivered 1 day ago, within return window\n2. Item is $42.99, change-of-mind return\n3. I'd reply and initiate the return:\n\n> *Hi! I'm sorry the vase wasn't what you expected. I've started a return for you — you'll receive a prepaid shipping label via email shortly. Once we receive the item, your refund of $34.04 ($42.99 minus $8.95 return shipping) will be processed within 3-5 business days.*\n\n${actionPerms["reply"] ? "I have permission to send replies, so I'd handle this end-to-end." : "I'd draft this and wait for your approval."}\n\nLook good?`,
               {
                 choices: [
                   { label: "That's right", value: "approve" },
@@ -341,13 +341,13 @@ export default function Inbox() {
           case "scenario_refund":
             if (choice === "adjust") {
               setAwaitingFeedback(true);
-              addAIMessage("What should I do differently here? I'll update the rule right away.", { scenarioFeedback: true });
+              addMessage("rep", "What should I do differently here? I'll update the rule right away.", { scenarioFeedback: true });
               return;
             }
             setObPhase("scenario_escalation");
-            addAIMessage("Perfect.");
+            addMessage("team_lead", "Nice. One more:");
             await delay(800);
-            addAIMessage(
+            addMessage("rep",
               `**Scenario 3 — Escalation**\n\nCustomer writes: *"This is the THIRD time I'm contacting you about this. I want to speak to a manager RIGHT NOW."*\n\nHere's what I'd do:\n1. Detect strong frustration + explicit request for manager\n2. I'd **escalate immediately**\n3. I'd reply:\n\n> *I completely understand your frustration, and I'm sorry for the repeated issues. I'm connecting you with a manager right now who can help resolve this directly.*\n\nThen I'd assign the ticket to you with an internal note summarizing the situation.\n\nDoes this feel right?`,
               {
                 choices: [
@@ -362,16 +362,16 @@ export default function Inbox() {
           case "scenario_escalation":
             if (choice === "adjust") {
               setAwaitingFeedback(true);
-              addAIMessage("What would you change about my escalation approach?", { scenarioFeedback: true });
+              addMessage("rep", "What would you change about my escalation approach?", { scenarioFeedback: true });
               return;
             }
             setObPhase("mode_select");
-            addAIMessage(
-              "Great — I'm confident I understand your policies.\n\nOne last question. **How do you want me to work?**"
+            addMessage("team_lead",
+              `Great — ${repName} passed the sanity check. I'm confident they understand your policies.\n\nOne last question. **How should ${repName} work?**`
             );
             await delay(800);
-            addAIMessage(
-              "**Training mode** — I draft my responses and actions, but I check with you before anything goes out to the customer. Good if you want to review my work for a while.\n\n**Production mode** — I handle tickets on my own. You can review everything after the fact. Good if you trust the sanity check and want me working immediately.",
+            addMessage("team_lead",
+              `**Training mode** — ${repName} drafts responses and actions, but checks with you before anything goes out to the customer. Good if you want to review their work for a while.\n\n**Production mode** — ${repName} handles tickets independently. You can review everything after the fact. Good if you trust the sanity check and want them working immediately.`,
               {
                 choices: [
                   { label: "Training — check with me first", value: "shadow" },
@@ -386,13 +386,13 @@ export default function Inbox() {
             const mode = choice === "shadow" ? "Training" : "Production";
             const incomplete = skippedSteps.length > 0;
 
-            let completionMsg = `**${mode} mode** it is. ${choice === "shadow" ? "I'll draft everything and wait for your approval before sending." : "I'll start handling tickets on my own right away."}\n\n---\n\n**You're all set!** Here's what happens next:\n\n`;
-            completionMsg += `- **Inbox** — I'll post here whenever I run into something I don't know, need your input on a rule, or have a weekly performance summary.\n`;
-            completionMsg += `- **Zendesk** — ${choice === "shadow" ? "Check the sidebar for my draft responses and approval requests." : "I'm handling tickets. Check the sidebar to review my work, takeover, or flag bad cases."}\n`;
-            completionMsg += `- **Playbook** — Your configuration hub. Adjust my permissions, escalation rules, identity, and knowledge anytime.`;
+            let completionMsg = `**${repName} is now in ${mode} mode.** ${choice === "shadow" ? "They'll draft everything and wait for your approval before sending." : "They'll start handling tickets on their own right away."}\n\n---\n\n**Here's how things work from here:**\n\n`;
+            completionMsg += `- **This conversation** — I'll message you here whenever ${repName} runs into something they don't know, needs your input on a rule, or has a weekly performance summary.\n`;
+            completionMsg += `- **Zendesk** — ${choice === "shadow" ? `Check the sidebar for ${repName}'s draft responses. You can approve, edit, or flag bad cases.` : `${repName} is handling tickets. Check the sidebar to review their work or flag bad cases.`}\n`;
+            completionMsg += `- **Playbook** — Your configuration hub. Adjust permissions, escalation rules, identity, and knowledge anytime.`;
 
             if (incomplete) {
-              completionMsg += `\n\n---\n\n**Before I start, you still need to:**`;
+              completionMsg += `\n\n---\n\n**Before ${repName} can start, you still need to:**`;
               if (skippedSteps.includes("zendesk")) {
                 completionMsg += `\n- Connect Zendesk`;
               }
@@ -401,12 +401,12 @@ export default function Inbox() {
               }
             }
 
-            addAIMessage(completionMsg, incomplete ? undefined : undefined);
+            addMessage("team_lead", completionMsg);
 
             if (incomplete) {
               setTimeout(() => {
-                addAIMessage(
-                  "Complete the remaining steps so I can start working:",
+                addMessage("team_lead",
+                  "Complete the remaining steps so the team can start working:",
                   {
                     isTakeMeThere: { label: "Go to Playbook → Integrations", href: "/playbook" },
                   }
@@ -428,54 +428,61 @@ export default function Inbox() {
 
       advance();
     },
-    [addAIMessage, addManagerMessage, obChoiceMade, actionPerms, skippedSteps]
+    [addMessage, obChoiceMade, actionPerms, skippedSteps, repName]
   );
 
   /* ── Scenario feedback handler ── */
   const handleScenarioFeedback = useCallback(() => {
     if (!scenarioFeedbackText.trim() || !awaitingFeedback) return;
     const feedback = scenarioFeedbackText.trim();
-    addManagerMessage(feedback);
+    addMessage("manager", feedback);
     setScenarioFeedbackText("");
     setAwaitingFeedback(false);
 
     setTimeout(() => {
-      addAIMessage(
+      addMessage("rep",
         `Got it — I've updated my approach based on your feedback:\n\n> "${feedback}"\n\nI'll apply this going forward. Let's continue.`
       );
 
       setTimeout(() => {
-        // Move to next scenario
         if (obPhase === "scenario_wismo") {
           setObPhase("scenario_refund");
-          addAIMessage(
-            `**Scenario 2 — "I want a refund"**\n\nCustomer writes: *"I received my ceramic vase yesterday and it's smaller than I expected. I'd like a refund."*\n\nHere's what I'd do:\n1. Check order — delivered 1 day ago, within return window\n2. Item is $42.99, change-of-mind return\n3. I'd reply and initiate the return:\n\n> *Hi! I'm sorry the vase wasn't what you expected. I've started a return for you — you'll receive a prepaid shipping label via email shortly. Once we receive the item, your refund of $34.04 ($42.99 minus $8.95 return shipping) will be processed within 3-5 business days.*\n\n${actionPerms["refund"] === "ask" ? "Since refunds need your approval, I'd send you an approval request in Zendesk before initiating." : "Since I have permission to process refunds, I'd handle this end-to-end."}\n\nLook good?`,
-            {
-              choices: [
-                { label: "That's right", value: "approve" },
-                { label: "Needs adjustment", value: "adjust" },
-              ],
-              isScenario: true,
-            }
-          );
+          addMessage("team_lead", `${repName} adjusted. Next scenario:`);
+          setTimeout(() => {
+            addMessage("rep",
+              `**Scenario 2 — "I want a refund"**\n\nCustomer writes: *"I received my ceramic vase yesterday and it's smaller than I expected. I'd like a refund."*\n\nHere's what I'd do:\n1. Check order — delivered 1 day ago, within return window\n2. Item is $42.99, change-of-mind return\n3. I'd reply and initiate the return:\n\n> *Hi! I'm sorry the vase wasn't what you expected. I've started a return for you — you'll receive a prepaid shipping label via email shortly. Once we receive the item, your refund of $34.04 ($42.99 minus $8.95 return shipping) will be processed within 3-5 business days.*\n\nLook good?`,
+              {
+                choices: [
+                  { label: "That's right", value: "approve" },
+                  { label: "Needs adjustment", value: "adjust" },
+                ],
+                isScenario: true,
+              }
+            );
+          }, 600);
         } else if (obPhase === "scenario_refund") {
           setObPhase("scenario_escalation");
-          addAIMessage(
-            `**Scenario 3 — Escalation**\n\nCustomer writes: *"This is the THIRD time I'm contacting you about this. I want to speak to a manager RIGHT NOW."*\n\nHere's what I'd do:\n1. Detect strong frustration + explicit request for manager\n2. I'd **escalate immediately**\n3. I'd reply:\n\n> *I completely understand your frustration, and I'm sorry for the repeated issues. I'm connecting you with a manager right now who can help resolve this directly.*\n\nThen I'd assign the ticket to you with an internal note summarizing the situation.\n\nDoes this feel right?`,
-            {
-              choices: [
-                { label: "That's right", value: "approve" },
-                { label: "Needs adjustment", value: "adjust" },
-              ],
-              isScenario: true,
-            }
-          );
+          addMessage("team_lead", `${repName} adjusted. Last scenario:`);
+          setTimeout(() => {
+            addMessage("rep",
+              `**Scenario 3 — Escalation**\n\nCustomer writes: *"This is the THIRD time I'm contacting you about this. I want to speak to a manager RIGHT NOW."*\n\nHere's what I'd do:\n1. Detect strong frustration + explicit request for manager\n2. I'd **escalate immediately**\n3. I'd reply:\n\n> *I completely understand your frustration, and I'm sorry for the repeated issues. I'm connecting you with a manager right now who can help resolve this directly.*\n\nThen I'd assign the ticket to you with an internal note summarizing the situation.\n\nDoes this feel right?`,
+              {
+                choices: [
+                  { label: "That's right", value: "approve" },
+                  { label: "Needs adjustment", value: "adjust" },
+                ],
+                isScenario: true,
+              }
+            );
+          }, 600);
         } else if (obPhase === "scenario_escalation") {
           setObPhase("mode_select");
-          addAIMessage("Great — I'm confident I understand your policies.\n\nOne last question. **How do you want me to work?**");
+          addMessage("team_lead",
+            `Great — ${repName} passed the sanity check. I'm confident they understand your policies.\n\nOne last question. **How should ${repName} work?**`
+          );
           setTimeout(() => {
-            addAIMessage(
-              "**Training mode** — I draft my responses and actions, but I check with you before anything goes out to the customer. Good if you want to review my work for a while.\n\n**Production mode** — I handle tickets on my own. You can review everything after the fact. Good if you trust the sanity check and want me working immediately.",
+            addMessage("team_lead",
+              `**Training mode** — ${repName} drafts responses and actions, but checks with you before anything goes out to the customer.\n\n**Production mode** — ${repName} handles tickets independently. You can review everything after the fact.`,
               {
                 choices: [
                   { label: "Training — check with me first", value: "shadow" },
@@ -483,107 +490,130 @@ export default function Inbox() {
                 ],
               }
             );
-          }, 800);
+          }, 600);
         }
       }, 800);
     }, 600);
-  }, [scenarioFeedbackText, awaitingFeedback, obPhase, addManagerMessage, addAIMessage, actionPerms]);
+  }, [scenarioFeedbackText, awaitingFeedback, obPhase, addMessage, repName]);
 
   /* ── File upload handler ── */
-  const handleFileUpload = useCallback((useDemoDoc = false) => {
-    if (fileUploaded) return;
+  const handleFileUpload = useCallback((isDemo: boolean) => {
     setFileUploaded(true);
-    addManagerMessage(useDemoDoc ? "📎 Seel_Return_Policy_2026.pdf (demo)" : "📎 Uploaded document");
-
     setIsParsing(true);
-    setObPhase("parsing");
+    addMessage("manager", isDemo ? "📄 Seel_Return_Policy_2026.pdf" : "📄 Document uploaded");
 
     setTimeout(() => {
       setIsParsing(false);
       setObPhase("parse_done");
-      addAIMessage(
-        "I've read through your return policy and extracted the rules. You can review all extracted rules anytime in **Playbook → Knowledge**.",
-        {
-          choices: [{ label: "Continue", value: "continue" }],
-          isTakeMeThere: { label: "View extracted rules in Playbook", href: "/playbook" },
-        }
+      addMessage("team_lead",
+        "Done reading. I've extracted your rules and organized them.\n\nYou can review the full knowledge base anytime:",
+        { isTakeMeThere: { label: "View in Playbook → Knowledge", href: "/playbook" } }
       );
+      setTimeout(() => {
+        advanceOnboarding("done", "Continue", "parse_done");
+      }, 600);
     }, 2500);
-  }, [fileUploaded, addManagerMessage, addAIMessage]);
+  }, [addMessage, advanceOnboarding]);
 
   /* ── Conflict resolution handler ── */
   const handleConflictResolve = useCallback((conflictId: string, resolution: "a" | "b" | "later") => {
-    setConflicts((prev) =>
-      prev.map((c) => c.id === conflictId ? { ...c, resolved: resolution } : c)
-    );
+    setConflicts((prev) => prev.map((c) => c.id === conflictId ? { ...c, resolved: resolution } : c));
   }, []);
 
   const handleConflictsSubmit = useCallback(() => {
-    const resolved = conflicts.filter((c) => c.resolved === "a" || c.resolved === "b");
-    const deferred = conflicts.filter((c) => c.resolved === "later" || !c.resolved);
-
-    let msg = `Got it — I've updated ${resolved.length} rule${resolved.length !== 1 ? "s" : ""}.`;
-    if (deferred.length > 0) {
-      msg += ` ${deferred.length} conflict${deferred.length !== 1 ? "s" : ""} deferred — you can resolve ${deferred.length === 1 ? "it" : "them"} in **Playbook → Knowledge**.`;
-    }
-
-    addManagerMessage(`Resolved ${resolved.length} conflicts, deferred ${deferred.length}`);
+    const resolved = conflicts.filter((c) => c.resolved && c.resolved !== "later").length;
+    const deferred = conflicts.filter((c) => !c.resolved || c.resolved === "later").length;
+    addMessage("manager", `Resolved ${resolved} conflict${resolved !== 1 ? "s" : ""}${deferred > 0 ? `, deferred ${deferred}` : ""}`);
     setTimeout(() => {
-      addAIMessage(msg);
-      setTimeout(() => {
-        setObPhase("actions_form");
-        addAIMessage(
-          "Next — **what can I do on my own, and what needs your OK?**\n\nHere are the actions I can take. For each one, choose whether I should handle it myself, ask you first, or not do it at all.",
-          { isActionsForm: true }
-        );
-      }, 800);
-    }, 600);
-  }, [conflicts, addManagerMessage, addAIMessage]);
-
-  /* ── Actions form submit ── */
-  const handleActionsSubmit = useCallback(() => {
-    const autoCount = Object.values(actionPerms).filter((v) => v === "auto").length;
-    const askCount = Object.values(actionPerms).filter((v) => v === "ask").length;
-    addManagerMessage(`Set ${autoCount} actions to auto, ${askCount} to ask permission`);
-    setTimeout(() => {
-      addAIMessage(
-        `Noted — I'll handle ${autoCount} actions on my own and check with you on ${askCount}. You can fine-tune these anytime.`,
-        { isTakeMeThere: { label: "Adjust in Playbook → Actions", href: "/playbook" } }
+      addMessage("team_lead",
+        deferred > 0
+          ? `Got it. ${deferred} conflict${deferred !== 1 ? "s" : ""} deferred — you can resolve ${deferred === 1 ? "it" : "them"} anytime.`
+          : "All conflicts resolved.",
+        deferred > 0 ? { isTakeMeThere: { label: "Resolve in Playbook → Knowledge", href: "/playbook" } } : undefined
       );
       setTimeout(() => {
         setObPhase("escalation_form");
-        addAIMessage(
-          "Now — **when should I hand off to you?**\n\nI'll always escalate if I genuinely don't know the answer. But here are some extra triggers you can turn on:",
+        addMessage("team_lead",
+          "Good. Now — **when should the team hand off to you?**\n\nThey'll always escalate if they genuinely don't know the answer. But here are some extra triggers you can turn on:",
           { isEscalationForm: true }
         );
       }, 800);
     }, 600);
-  }, [actionPerms, addManagerMessage, addAIMessage]);
+  }, [conflicts, addMessage]);
+
+  /* ── Actions form submit ── */
+  const handleActionsSubmit = useCallback(() => {
+    const enabled = Object.entries(actionPerms).filter(([, v]) => v);
+    const disabled = Object.entries(actionPerms).filter(([, v]) => !v);
+    addMessage("manager", `Enabled ${enabled.length} actions, disabled ${disabled.length}`);
+    setTimeout(() => {
+      addMessage("team_lead",
+        `Got it — ${repName} has ${enabled.length} actions enabled. You can adjust these anytime.`,
+        { isTakeMeThere: { label: "Adjust in Playbook → Actions", href: "/playbook" } }
+      );
+      setTimeout(() => {
+        setObPhase("scenario_wismo");
+        addMessage("team_lead",
+          `Now, let's see ${repName} in action. I'll run a few common scenarios — if anything looks off, just tell ${repName} directly and they'll adjust on the spot.`
+        );
+        setTimeout(() => {
+          addMessage("rep",
+            `**Scenario 1 — "Where is my order?"**\n\nCustomer writes: *"Where is my order #DBH-29174? It's been a week and I haven't received anything."*\n\nHere's what I'd do:\n1. Look up **#DBH-29174** in Shopify\n2. I see it's **shipped** via Royal Mail, tracking RM29174UK, expected Mar 25\n3. I'd reply:\n\n> *Hi Emma! Your order #DBH-29174 shipped via Royal Mail (tracking: RM29174UK) and is expected to arrive by March 25th. You can track it here: [link]. Let me know if you need anything else!*\n\nThis is read-only — I'm just looking up info and replying. Does this look right?`,
+            {
+              choices: [
+                { label: "That's right", value: "approve" },
+                { label: "Needs adjustment", value: "adjust" },
+              ],
+              isScenario: true,
+            }
+          );
+        }, 1000);
+      }, 800);
+    }, 600);
+  }, [actionPerms, addMessage, repName]);
 
   /* ── Escalation form submit ── */
   const handleEscalationSubmit = useCallback(() => {
     const enabledCount = Object.values(escalationToggles).filter(Boolean).length;
-    addManagerMessage(`Enabled ${enabledCount} escalation triggers`);
+    addMessage("manager", `Enabled ${enabledCount} escalation triggers`);
     setTimeout(() => {
-      addAIMessage(
+      addMessage("team_lead",
         `Got it — ${enabledCount} escalation triggers active. You can adjust these anytime.`,
         { isTakeMeThere: { label: "Change in Playbook → Escalation", href: "/playbook" } }
       );
       setTimeout(() => {
-        setObPhase("identity_tone");
-        addAIMessage(
-          `Almost there. I'm **${agentName}**. What tone should I use with customers?`,
+        // Phase 2 transition
+        setObPhase("phase2_intro");
+        addMessage("team_lead",
+          "**Team setup complete!** Your tools are connected, rules are loaded, and escalation triggers are set.\n\n---\n\nNow let's **hire your first rep**. They'll be the one actually handling customer tickets day-to-day. I'll manage them and keep you posted.",
           {
+            isPhaseTransition: true,
             choices: [
-              { label: "Friendly and warm", value: "friendly", description: `"Hey Emma! Let me look into that for you 😊"` },
-              { label: "Professional", value: "professional", description: `"Hello Emma, I'd be happy to assist you with this."` },
-              { label: "Casual", value: "casual", description: `"Hi Emma! Sure thing, let me check that real quick."` },
+              { label: "Let's hire a rep", value: "hire" },
             ],
           }
         );
       }, 800);
     }, 600);
-  }, [escalationToggles, agentName, addManagerMessage, addAIMessage]);
+  }, [escalationToggles, addMessage]);
+
+  /* ── Phase 2 intro handler ── */
+  useEffect(() => {
+    if (obPhase === "phase2_intro" && obChoiceMade["phase2_intro"]) {
+      // Already handled by advanceOnboarding
+    }
+  }, [obPhase, obChoiceMade]);
+
+  // Handle phase2_intro choice
+  const handlePhase2Start = useCallback(() => {
+    setObPhase("rep_name_input");
+    setTimeout(() => {
+      addMessage("team_lead",
+        "First — **what should your rep be called?** This is the name customers will see.",
+        { isNameInput: true }
+      );
+    }, 500);
+  }, [addMessage]);
 
   /* ── Regular topic handlers ── */
   const counts = {
@@ -704,11 +734,30 @@ export default function Inbox() {
 
   /* ── Find the last message with active choices ── */
   const lastChoiceMsg = obMessages.filter((m) => m.choices && m.choices.length > 0).at(-1);
-  const isLastChoiceActive = lastChoiceMsg && !obChoiceMade[obPhase] && obPhase !== "parsing" && obPhase !== "complete";
+  const isLastChoiceActive = lastChoiceMsg && !obChoiceMade[obPhase] && obPhase !== "parsing" && obPhase !== "complete" && obPhase !== "phase2_intro";
 
   /* ── Progress bar ── */
   const currentStageIdx = getStageIndex(obPhase);
-  const progressPct = obPhase === "complete" ? 100 : Math.round((currentStageIdx / (STAGES.length - 1)) * 100);
+  const progressPct = obPhase === "complete" ? 100 : Math.round(((currentStageIdx + 0.5) / STAGES.length) * 100);
+
+  /* ── Sender icon helper ── */
+  const getSenderIcon = (sender: "team_lead" | "manager" | "rep") => {
+    if (sender === "team_lead") return <Users className="w-3.5 h-3.5 text-primary" />;
+    if (sender === "rep") return <Bot className="w-3.5 h-3.5 text-violet-500" />;
+    return <User className="w-3.5 h-3.5 text-muted-foreground" />;
+  };
+
+  const getSenderBg = (sender: "team_lead" | "manager" | "rep") => {
+    if (sender === "team_lead") return "bg-primary/10";
+    if (sender === "rep") return "bg-violet-50";
+    return "bg-muted";
+  };
+
+  const getSenderName = (msg: OnboardingMessage) => {
+    if (msg.sender === "team_lead") return "Team Lead";
+    if (msg.sender === "rep") return repName;
+    return "You";
+  };
 
   /* ── Render ── */
   return (
@@ -768,7 +817,6 @@ export default function Inbox() {
                     isActive ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-muted/30 border-l-2 border-l-transparent"
                   )}
                 >
-                  {/* Row 1: title + time */}
                   <div className="flex items-center gap-2">
                     <span className={cn("text-[13px] truncate flex-1", isUnread || isOb ? "font-semibold text-foreground" : "font-medium text-foreground/80")}>
                       {isOb && <Sparkles className="w-3 h-3 text-primary inline mr-1.5 -mt-0.5" />}
@@ -777,13 +825,11 @@ export default function Inbox() {
                     <span className="text-[11px] text-muted-foreground shrink-0">{fmtTime(topic.updatedAt)}</span>
                     {isUnread && !isOb && <span className="w-2 h-2 rounded-full bg-primary shrink-0" />}
                   </div>
-                  {/* Row 2: preview */}
                   {topic.preview && (
                     <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-relaxed">
                       {topic.preview.slice(0, 80)}{topic.preview.length > 80 ? "..." : ""}
                     </p>
                   )}
-                  {/* Row 3: tag + status */}
                   <div className="flex items-center gap-1.5 mt-1">
                     {!isOb && (
                       <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none", TYPE_BG[topic.type])}>
@@ -818,7 +864,7 @@ export default function Inbox() {
               </div>
               <p className="text-sm font-medium text-foreground/70 mb-1">Select a topic</p>
               <p className="text-[13px] text-muted-foreground leading-relaxed">
-                {agentName} posts topics for knowledge gaps, performance reports, and questions.
+                Team Lead posts topics for knowledge gaps, performance reports, and questions.
               </p>
             </div>
           </div>
@@ -830,7 +876,7 @@ export default function Inbox() {
               <div className="h-11 px-5 flex items-center gap-3 border-b border-border">
                 <Sparkles className="w-4 h-4 text-primary shrink-0" />
                 <h2 className="text-[13px] font-medium text-foreground truncate flex-1">
-                  Welcome — meet your new rep
+                  Welcome — set up your AI team
                 </h2>
                 {obPhase === "complete" ? (
                   <Badge className="bg-emerald-50 text-emerald-600 border-emerald-200 text-[11px]">Complete</Badge>
@@ -839,28 +885,32 @@ export default function Inbox() {
                 )}
               </div>
 
-              {/* Progress bar */}
+              {/* Progress bar — two stages */}
               {obPhase !== "complete" && (
                 <div className="px-5 py-2 border-b border-border/50 bg-muted/20">
-                  <div className="flex items-center gap-3 max-w-[640px] mx-auto">
+                  <div className="flex items-center gap-4 max-w-[400px] mx-auto">
                     {STAGES.map((stage, i) => (
                       <div key={stage.id} className="flex items-center gap-2 flex-1">
                         <div className="flex items-center gap-1.5 flex-1">
                           <div className={cn(
-                            "w-1.5 h-1.5 rounded-full shrink-0 transition-colors",
-                            i < currentStageIdx ? "bg-primary" : i === currentStageIdx ? "bg-primary" : "bg-border"
-                          )} />
+                            "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all text-[10px] font-semibold",
+                            i < currentStageIdx ? "border-primary bg-primary text-white"
+                              : i === currentStageIdx ? "border-primary text-primary"
+                              : "border-muted-foreground/20 text-muted-foreground/40"
+                          )}>
+                            {i < currentStageIdx ? <Check className="w-3 h-3" /> : i + 1}
+                          </div>
                           <span className={cn(
-                            "text-[11px] whitespace-nowrap transition-colors",
-                            i <= currentStageIdx ? "text-foreground/70 font-medium" : "text-muted-foreground/50"
+                            "text-[12px] whitespace-nowrap transition-colors",
+                            i <= currentStageIdx ? "text-foreground font-medium" : "text-muted-foreground/50"
                           )}>
                             {stage.label}
                           </span>
                         </div>
                         {i < STAGES.length - 1 && (
                           <div className={cn(
-                            "h-px flex-1 min-w-[12px] transition-colors",
-                            i < currentStageIdx ? "bg-primary/40" : "bg-border/60"
+                            "h-px flex-1 min-w-[20px] transition-colors",
+                            i < currentStageIdx ? "bg-primary" : "bg-border"
                           )} />
                         )}
                       </div>
@@ -873,30 +923,49 @@ export default function Inbox() {
             <ScrollArea className="flex-1 px-5 py-4">
               <div className="max-w-[640px] mx-auto space-y-4">
                 {obMessages.map((msg) => {
-                  const isAI = msg.sender === "ai";
+                  const isManager = msg.sender === "manager";
                   const hasActiveChoices = msg.choices && msg.id === lastChoiceMsg?.id && isLastChoiceActive;
+                  const isPhase2Choice = msg.isPhaseTransition && obPhase === "phase2_intro" && !obChoiceMade["phase2_intro"];
 
                   return (
                     <div key={msg.id}>
-                      <div className={cn("flex gap-3", !isAI && "flex-row-reverse")}>
-                        <div className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5", isAI ? "bg-primary/10" : "bg-muted")}>
-                          {isAI ? <Bot className="w-3.5 h-3.5 text-primary" /> : <User className="w-3.5 h-3.5 text-muted-foreground" />}
+                      {/* Phase transition divider */}
+                      {msg.isPhaseTransition && (
+                        <div className="flex items-center gap-3 my-4">
+                          <div className="h-px flex-1 bg-border" />
+                          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Phase 2 — Hire a Rep</span>
+                          <div className="h-px flex-1 bg-border" />
                         </div>
-                        <div className={cn("flex-1 min-w-0", !isAI && "flex flex-col items-end")}>
+                      )}
+
+                      <div className={cn("flex gap-3", isManager && "flex-row-reverse")}>
+                        <div className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5", getSenderBg(msg.sender))}>
+                          {getSenderIcon(msg.sender)}
+                        </div>
+                        <div className={cn("flex-1 min-w-0", isManager && "flex flex-col items-end")}>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[12px] font-medium text-foreground/60">{isAI ? agentName : "You"}</span>
+                            <span className={cn(
+                              "text-[12px] font-medium",
+                              msg.sender === "team_lead" ? "text-primary/70" : msg.sender === "rep" ? "text-violet-500/70" : "text-foreground/60"
+                            )}>
+                              {getSenderName(msg)}
+                            </span>
                             <span className="text-[11px] text-muted-foreground/40">just now</span>
                           </div>
 
                           {/* Message content */}
                           <div className={cn(
                             "rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed max-w-full",
-                            isAI ? "bg-card border border-border text-foreground/85" : "bg-primary text-primary-foreground"
+                            isManager
+                              ? "bg-primary text-primary-foreground"
+                              : msg.sender === "rep"
+                              ? "bg-violet-50 border border-violet-200/60 text-foreground/85"
+                              : "bg-card border border-border text-foreground/85"
                           )}>
                             {msg.content.split("\n").map((line, i) => {
                               if (line.startsWith("> ")) {
                                 return (
-                                  <blockquote key={i} className={cn("border-l-2 pl-3 my-1.5 italic text-[12px]", isAI ? "border-primary/30 text-foreground/60" : "border-white/40 text-white/80")}>
+                                  <blockquote key={i} className={cn("border-l-2 pl-3 my-1.5 italic text-[12px]", isManager ? "border-white/40 text-white/80" : "border-primary/30 text-foreground/60")}>
                                     {line.slice(2)}
                                   </blockquote>
                                 );
@@ -909,14 +978,14 @@ export default function Inbox() {
                                   </div>
                                 );
                               }
-                              if (line === "---") return <hr key={i} className="my-2 border-border/50" />;
+                              if (line === "---") return <hr key={i} className={cn("my-2", isManager ? "border-white/20" : "border-border/50")} />;
                               if (line === "") return <div key={i} className="h-1.5" />;
                               return <p key={i}>{renderBold(line)}</p>;
                             })}
                           </div>
 
                           {/* Name input */}
-                          {msg.isNameInput && obPhase === "welcome" && (
+                          {msg.isNameInput && obPhase === "rep_name_input" && (
                             <div className="mt-3 flex gap-2 w-full max-w-[320px]">
                               <Input
                                 placeholder="e.g. Alex, Ava, Sam..."
@@ -968,50 +1037,37 @@ export default function Inbox() {
                                     Conflict {ci + 1}: {conflict.title}
                                   </p>
                                   <div className="space-y-1.5">
-                                    <button
-                                      onClick={() => handleConflictResolve(conflict.id, "a")}
-                                      className={cn(
-                                        "w-full text-left rounded-md px-3 py-2 text-[12px] border transition-all",
-                                        conflict.resolved === "a"
-                                          ? "border-primary bg-primary/5 text-foreground"
-                                          : "border-border hover:border-primary/40 text-foreground/80"
-                                      )}
-                                    >
-                                      <div className="flex items-start gap-2">
-                                        <div className={cn("w-3.5 h-3.5 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center", conflict.resolved === "a" ? "border-primary" : "border-muted-foreground/30")}>
-                                          {conflict.resolved === "a" && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                                    {[
+                                      { key: "a" as const, source: conflict.sourceA, label: conflict.sourceALabel },
+                                      { key: "b" as const, source: conflict.sourceB, label: conflict.sourceBLabel },
+                                    ].map((opt) => (
+                                      <button
+                                        key={opt.key}
+                                        onClick={() => handleConflictResolve(conflict.id, opt.key)}
+                                        className={cn(
+                                          "w-full text-left rounded-md px-3 py-2 text-[12px] border transition-all",
+                                          conflict.resolved === opt.key
+                                            ? "border-primary bg-primary/5 text-foreground"
+                                            : "border-border hover:border-primary/40 text-foreground/80"
+                                        )}
+                                      >
+                                        <div className="flex items-start gap-2">
+                                          <div className={cn("w-3.5 h-3.5 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center", conflict.resolved === opt.key ? "border-primary" : "border-muted-foreground/30")}>
+                                            {conflict.resolved === opt.key && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                                          </div>
+                                          <div>
+                                            <span className="font-medium">{opt.source}</span>
+                                            <span className="block text-[11px] text-muted-foreground mt-0.5">Source: {opt.label}</span>
+                                          </div>
                                         </div>
-                                        <div>
-                                          <span className="font-medium">{conflict.sourceA}</span>
-                                          <span className="block text-[11px] text-muted-foreground mt-0.5">Source: {conflict.sourceALabel}</span>
-                                        </div>
-                                      </div>
-                                    </button>
-                                    <button
-                                      onClick={() => handleConflictResolve(conflict.id, "b")}
-                                      className={cn(
-                                        "w-full text-left rounded-md px-3 py-2 text-[12px] border transition-all",
-                                        conflict.resolved === "b"
-                                          ? "border-primary bg-primary/5 text-foreground"
-                                          : "border-border hover:border-primary/40 text-foreground/80"
-                                      )}
-                                    >
-                                      <div className="flex items-start gap-2">
-                                        <div className={cn("w-3.5 h-3.5 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center", conflict.resolved === "b" ? "border-primary" : "border-muted-foreground/30")}>
-                                          {conflict.resolved === "b" && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                                        </div>
-                                        <div>
-                                          <span className="font-medium">{conflict.sourceB}</span>
-                                          <span className="block text-[11px] text-muted-foreground mt-0.5">Source: {conflict.sourceBLabel}</span>
-                                        </div>
-                                      </div>
-                                    </button>
+                                      </button>
+                                    ))}
                                     <button
                                       onClick={() => handleConflictResolve(conflict.id, "later")}
                                       className={cn(
-                                        "w-full text-center py-1.5 text-[11px] transition-colors rounded",
+                                        "w-full text-center rounded-md px-3 py-1.5 text-[11px] transition-all",
                                         conflict.resolved === "later"
-                                          ? "text-primary font-medium bg-primary/5"
+                                          ? "text-primary font-medium"
                                           : "text-muted-foreground hover:text-foreground"
                                       )}
                                     >
@@ -1020,53 +1076,45 @@ export default function Inbox() {
                                   </div>
                                 </div>
                               ))}
-                              <Button
-                                size="sm"
-                                className="w-full h-8 text-[12px]"
-                                disabled={conflicts.every((c) => !c.resolved)}
-                                onClick={handleConflictsSubmit}
-                              >
-                                Continue
+                              <Button size="sm" className="w-full h-8 text-[12px]" onClick={handleConflictsSubmit}>
+                                Continue <ArrowRight className="w-3 h-3 ml-1" />
                               </Button>
                             </div>
                           )}
 
-                          {/* Actions form */}
+                          {/* Actions form — toggle on/off */}
                           {msg.isActionsForm && obPhase === "actions_form" && (
-                            <div className="mt-3 w-full space-y-2">
+                            <div className="mt-3 w-full space-y-1.5">
                               {DEFAULT_ACTIONS.map((action) => (
-                                <div key={action.id} className="flex items-center justify-between border border-border rounded-lg px-3 py-2.5 bg-muted/20">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[12px] font-medium text-foreground">{action.label}</p>
-                                    <p className="text-[11px] text-muted-foreground">{action.description}</p>
+                                <button
+                                  key={action.id}
+                                  onClick={() => setActionPerms((prev) => ({ ...prev, [action.id]: !prev[action.id] }))}
+                                  className={cn(
+                                    "w-full flex items-center gap-3 rounded-md px-3 py-2 text-[12px] border transition-all text-left",
+                                    actionPerms[action.id]
+                                      ? "border-primary/30 bg-primary/5"
+                                      : "border-border text-foreground/60"
+                                  )}
+                                >
+                                  <div className={cn(
+                                    "w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
+                                    actionPerms[action.id] ? "border-primary bg-primary" : "border-muted-foreground/30"
+                                  )}>
+                                    {actionPerms[action.id] && <Check className="w-2.5 h-2.5 text-white" />}
                                   </div>
-                                  <div className="flex gap-1 shrink-0 ml-3">
-                                    {(["auto", "ask", "off"] as const).map((perm) => (
-                                      <button
-                                        key={perm}
-                                        onClick={() => setActionPerms((prev) => ({ ...prev, [action.id]: perm }))}
-                                        className={cn(
-                                          "px-2 py-1 rounded text-[11px] font-medium transition-all",
-                                          actionPerms[action.id] === perm
-                                            ? perm === "auto" ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                                              : perm === "ask" ? "bg-amber-100 text-amber-700 border border-amber-200"
-                                              : "bg-red-100 text-red-700 border border-red-200"
-                                            : "bg-muted/50 text-muted-foreground border border-transparent hover:bg-muted"
-                                        )}
-                                      >
-                                        {perm === "auto" ? "Auto" : perm === "ask" ? "Ask me" : "Off"}
-                                      </button>
-                                    ))}
+                                  <div className="flex-1">
+                                    <span className={cn("font-medium", actionPerms[action.id] ? "text-foreground" : "text-foreground/60")}>{action.label}</span>
+                                    <span className="block text-[11px] text-muted-foreground">{action.description}</span>
                                   </div>
-                                </div>
+                                </button>
                               ))}
-                              <Button size="sm" className="w-full h-8 text-[12px]" onClick={handleActionsSubmit}>
-                                Continue
+                              <Button size="sm" className="w-full h-8 text-[12px] mt-2" onClick={handleActionsSubmit}>
+                                Continue <ArrowRight className="w-3 h-3 ml-1" />
                               </Button>
                             </div>
                           )}
 
-                          {/* Escalation form */}
+                          {/* Escalation form — toggle on/off */}
                           {msg.isEscalationForm && obPhase === "escalation_form" && (
                             <div className="mt-3 w-full space-y-1.5">
                               {DEFAULT_ESCALATION.map((trigger) => (
@@ -1074,30 +1122,30 @@ export default function Inbox() {
                                   key={trigger.id}
                                   onClick={() => setEscalationToggles((prev) => ({ ...prev, [trigger.id]: !prev[trigger.id] }))}
                                   className={cn(
-                                    "w-full flex items-center gap-3 border rounded-lg px-3 py-2.5 text-left transition-all",
+                                    "w-full flex items-center gap-3 rounded-md px-3 py-2 text-[12px] border transition-all text-left",
                                     escalationToggles[trigger.id]
-                                      ? "border-primary/40 bg-primary/5"
-                                      : "border-border bg-muted/20 hover:border-border"
+                                      ? "border-primary/30 bg-primary/5"
+                                      : "border-border text-foreground/60"
                                   )}
                                 >
                                   <div className={cn(
-                                    "w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                                    "w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
                                     escalationToggles[trigger.id] ? "border-primary bg-primary" : "border-muted-foreground/30"
                                   )}>
                                     {escalationToggles[trigger.id] && <Check className="w-2.5 h-2.5 text-white" />}
                                   </div>
-                                  <span className="text-[12px] text-foreground/80">{trigger.label}</span>
+                                  <span className={cn("font-medium", escalationToggles[trigger.id] ? "text-foreground" : "text-foreground/60")}>{trigger.label}</span>
                                 </button>
                               ))}
                               <Button size="sm" className="w-full h-8 text-[12px] mt-2" onClick={handleEscalationSubmit}>
-                                Continue
+                                Continue <ArrowRight className="w-3 h-3 ml-1" />
                               </Button>
                             </div>
                           )}
 
                           {/* Scenario feedback input */}
                           {msg.scenarioFeedback && awaitingFeedback && (
-                            <div className="mt-2 flex gap-2 w-full">
+                            <div className="mt-2 flex gap-2 w-full max-w-[400px]">
                               <Input
                                 placeholder="Tell me what to change..."
                                 value={scenarioFeedbackText}
@@ -1135,6 +1183,32 @@ export default function Inbox() {
                           ))}
                         </div>
                       )}
+
+                      {/* Phase 2 intro choice */}
+                      {isPhase2Choice && msg.choices && (
+                        <div className="flex flex-col items-end gap-2 mt-3 ml-10">
+                          {msg.choices.map((choice, ci) => (
+                            <button
+                              key={ci}
+                              onClick={() => {
+                                setObChoiceMade((prev) => ({ ...prev, phase2_intro: choice.value }));
+                                addMessage("manager", choice.label);
+                                handlePhase2Start();
+                              }}
+                              className={cn(
+                                "text-left rounded-2xl px-4 py-2 text-[13px] transition-all max-w-[400px]",
+                                "border border-primary/30 text-primary hover:bg-primary hover:text-white",
+                                "bg-primary/5 border-primary/50 font-medium"
+                              )}
+                            >
+                              <span className="flex items-center gap-2">
+                                <UserPlus className="w-3.5 h-3.5" />
+                                {choice.label}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1143,11 +1217,11 @@ export default function Inbox() {
                 {isParsing && (
                   <div className="flex gap-3">
                     <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                      <Bot className="w-3.5 h-3.5 text-primary" />
+                      <Users className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[12px] font-medium text-foreground/60">{agentName}</span>
+                        <span className="text-[12px] font-medium text-primary/70">Team Lead</span>
                       </div>
                       <div className="bg-card border border-border rounded-lg px-3.5 py-3 inline-flex items-center gap-2">
                         <div className="flex gap-1">
@@ -1195,11 +1269,11 @@ export default function Inbox() {
                   return (
                     <div key={msg.id} className={cn("flex gap-3", !isAI && "flex-row-reverse")}>
                       <div className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5", isAI ? "bg-primary/10" : "bg-muted")}>
-                        {isAI ? <Bot className="w-3.5 h-3.5 text-primary" /> : <User className="w-3.5 h-3.5 text-muted-foreground" />}
+                        {isAI ? <Users className="w-3.5 h-3.5 text-primary" /> : <User className="w-3.5 h-3.5 text-muted-foreground" />}
                       </div>
                       <div className={cn("flex-1 min-w-0", !isAI && "flex flex-col items-end")}>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[12px] font-medium text-foreground/60">{isAI ? agentName : "You"}</span>
+                          <span className="text-[12px] font-medium text-foreground/60">{isAI ? "Team Lead" : "You"}</span>
                           <span className="text-[11px] text-muted-foreground/40">{fmtTime(msg.timestamp)}</span>
                         </div>
                         <div className={cn(
@@ -1257,7 +1331,7 @@ export default function Inbox() {
               <div className="px-5 py-2.5 border-t border-border shrink-0">
                 <div className="max-w-[640px] mx-auto flex gap-2">
                   <Input
-                    placeholder={`Reply to ${agentName}...`}
+                    placeholder="Reply to Team Lead..."
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
