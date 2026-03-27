@@ -205,13 +205,13 @@ export default function Inbox() {
   return (
     <div className="flex h-full">
       {/* ── Left Panel ── */}
-      <div className="w-[320px] border-r border-border flex flex-col bg-card shrink-0">
+      <div className="w-[300px] border-r border-border flex flex-col bg-white shrink-0">
         {/* Header: title + new button */}
-        <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
+        <div className="h-11 px-4 flex items-center justify-between border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-base font-semibold text-foreground">Inbox</h1>
+            <h1 className="text-[14px] font-semibold text-foreground">Inbox</h1>
             {counts.unread > 0 && (
-              <span className="bg-primary text-primary-foreground text-[11px] font-medium px-1.5 py-0.5 rounded-full leading-none">
+              <span className="bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none">
                 {counts.unread}
               </span>
             )}
@@ -297,7 +297,7 @@ export default function Inbox() {
       </div>
 
       {/* ── Right Panel: Conversation ── */}
-      <div className="flex-1 flex flex-col bg-background">
+      <div className="flex-1 flex flex-col bg-white">
         {!selected ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center max-w-[280px]">
@@ -313,12 +313,12 @@ export default function Inbox() {
         ) : (
           <>
             {/* Header */}
-            <div className="h-14 px-6 flex items-center gap-3 border-b border-border shrink-0">
+            <div className="h-11 px-5 flex items-center gap-3 border-b border-border shrink-0">
               {(() => {
                 const Icon = TYPE_ICON[selected.type];
                 return <Icon className={cn("w-4 h-4 shrink-0", TYPE_COLOR[selected.type])} />;
               })()}
-              <h2 className="text-sm font-semibold text-foreground truncate flex-1">
+              <h2 className="text-[13px] font-medium text-foreground truncate flex-1">
                 {selected.title}
               </h2>
               <div className="flex items-center gap-2 shrink-0">
@@ -339,7 +339,7 @@ export default function Inbox() {
             </div>
 
             {/* Messages */}
-            <ScrollArea className="flex-1 px-6 py-5">
+            <ScrollArea className="flex-1 px-5 py-4">
               <div className="max-w-[640px] mx-auto space-y-4">
                 {selected.messages.map((msg) => {
                   const isAI = msg.sender === "ai";
@@ -430,16 +430,16 @@ export default function Inbox() {
 
             {/* Reply */}
             {selected.status !== "resolved" && (
-              <div className="px-6 py-3 border-t border-border shrink-0">
+              <div className="px-5 py-2.5 border-t border-border shrink-0">
                 <div className="max-w-[640px] mx-auto flex gap-2">
                   <Input
                     placeholder="Reply to Alex..."
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                    className="flex-1 h-9 text-[13px]"
+                    className="flex-1 h-8 text-[12px]"
                   />
-                  <Button size="sm" className="h-9 px-3" disabled={!replyText.trim()} onClick={handleSend}>
+                  <Button size="sm" className="h-8 px-3" disabled={!replyText.trim()} onClick={handleSend}>
                     <Send className="w-3.5 h-3.5" />
                   </Button>
                 </div>

@@ -75,7 +75,7 @@ function KnowledgeTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-sans font-semibold text-foreground">Knowledge Base</h2>
+        <h2 className="text-[15px] font-semibold text-foreground">Knowledge Base</h2>
         <p className="text-[13px] text-muted-foreground mt-1">
           Manage source documents and view the rules Alex has learned.
         </p>
@@ -221,8 +221,8 @@ export default function SettingsPage() {
   return (
     <div className="flex h-full">
       {/* Tab sidebar */}
-      <div className="w-[220px] border-r border-border bg-card/30 py-6 px-3 shrink-0">
-        <h1 className="text-lg font-sans font-bold text-foreground px-3 mb-5">Settings</h1>
+      <div className="w-[200px] border-r border-border bg-white py-4 px-2.5 shrink-0">
+        <h1 className="text-[14px] font-semibold text-foreground px-2.5 mb-4">Settings</h1>
         <nav className="space-y-0.5">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -231,7 +231,7 @@ export default function SettingsPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors",
+                  "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
                   activeTab === tab.id
                     ? "bg-primary/8 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -247,13 +247,13 @@ export default function SettingsPage() {
 
       {/* Content */}
       <ScrollArea className="flex-1">
-        <div className="max-w-[720px] mx-auto px-8 py-8">
+        <div className="max-w-[680px] mx-auto px-6 py-6">
           {/* ── General Tab ── */}
           {activeTab === "general" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-lg font-sans font-semibold text-foreground">General Settings</h2>
-                <p className="text-[13px] text-muted-foreground mt-1">Manage agent mode and integrations.</p>
+                <h2 className="text-[15px] font-semibold text-foreground">General Settings</h2>
+                <p className="text-[12px] text-muted-foreground mt-1">Manage agent mode and integrations.</p>
               </div>
 
               {/* Agent Mode */}
@@ -355,7 +355,7 @@ export default function SettingsPage() {
           {activeTab === "actions" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-lg font-sans font-semibold text-foreground">Action Permissions</h2>
+                <h2 className="text-[15px] font-semibold text-foreground">Action Permissions</h2>
                 <p className="text-[13px] text-muted-foreground mt-1">
                   Control what Alex can do autonomously, what requires your approval, and what's disabled.
                 </p>
@@ -465,7 +465,7 @@ export default function SettingsPage() {
           {activeTab === "escalation" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-lg font-sans font-semibold text-foreground">Escalation Rules</h2>
+                <h2 className="text-[15px] font-semibold text-foreground">Escalation Rules</h2>
                 <p className="text-[13px] text-muted-foreground mt-1">
                   Define when Alex should escalate a ticket to a human agent instead of handling it.
                 </p>
@@ -550,7 +550,7 @@ export default function SettingsPage() {
           {activeTab === "identity" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-lg font-sans font-semibold text-foreground">Agent Identity</h2>
+                <h2 className="text-[15px] font-semibold text-foreground">Agent Identity</h2>
                 <p className="text-[13px] text-muted-foreground mt-1">
                   Customize how Alex presents itself to customers.
                 </p>

@@ -66,12 +66,34 @@ export default function Performance() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="max-w-[1080px] mx-auto px-8 py-8">
+      <div className="max-w-[1020px] mx-auto px-6 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        {/* Needs Your Attention — high-level action items */}
+        {ACTIONABLE_ITEMS.length > 0 && (
+          <div className="mb-5 p-3.5 rounded-lg border border-border bg-white">
+            <p className="text-[12px] font-medium text-foreground mb-2">Needs Your Attention</p>
+            <div className="space-y-1">
+              {ACTIONABLE_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => navigate(item.linkedTopicId ? `/inbox?topic=${item.linkedTopicId}` : '/inbox')}
+                  className="w-full flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-accent transition-colors group text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="text-[12px] text-foreground">{item.title}</span>
+                  </div>
+                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-xl font-sans font-bold text-foreground">Performance Review</h1>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
+            <h1 className="text-[16px] font-semibold text-foreground">Performance</h1>
+            <p className="text-[12px] text-muted-foreground mt-0.5">
               How Alex is performing across all customer interactions.
             </p>
           </div>
@@ -92,7 +114,7 @@ export default function Performance() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-4 gap-3 mb-6">
           {PERFORMANCE_SUMMARY.map((metric) => {
             const Icon = METRIC_ICONS[metric.label] || BarChart3;
             const isPositive =
@@ -101,15 +123,13 @@ export default function Performance() {
                 : metric.trend > 0;
             return (
               <Card key={metric.label} className="overflow-hidden">
-                <CardContent className="pt-5 pb-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-primary/8 flex items-center justify-center">
-                      <Icon className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="text-[12px] text-muted-foreground font-medium">{metric.label}</span>
+                <CardContent className="pt-4 pb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground font-medium">{metric.label}</span>
                   </div>
                   <div className="flex items-end gap-2">
-                    <span className="text-2xl font-sans font-bold text-foreground">
+                    <span className="text-xl font-semibold text-foreground">
                       {metric.value}
                       <span className="text-sm font-normal text-muted-foreground">{metric.unit}</span>
                     </span>
@@ -132,7 +152,7 @@ export default function Performance() {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-2 gap-3 mb-6">
           {/* Auto-Resolution & Escalation */}
           <Card>
             <CardHeader className="pb-2">
@@ -196,7 +216,7 @@ export default function Performance() {
         </div>
 
         {/* Intent Breakdown */}
-        <Card className="mb-8">
+        <Card className="mb-6">
           <CardHeader className="pb-2">
             <CardTitle className="text-[14px]">Performance by Intent</CardTitle>
           </CardHeader>
@@ -257,43 +277,8 @@ export default function Performance() {
           </CardContent>
         </Card>
 
-        {/* Actionable Items */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Lightbulb className="w-4 h-4 text-amber-500" />
-            <h3 className="text-[15px] font-sans font-semibold text-foreground">Actionable Items</h3>
-          </div>
-          <div className="space-y-3">
-            {ACTIONABLE_ITEMS.map((item) => (
-              <Card key={item.id} className="overflow-hidden border-l-2 border-l-amber-400">
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <h4 className="text-[13px] font-medium text-foreground mb-1">{item.title}</h4>
-                      <p className="text-[12px] text-muted-foreground leading-relaxed">{item.description}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge variant="secondary" className="h-[18px] px-1.5 text-[10px] bg-emerald-50 text-emerald-600">
-                          Impact: {item.impact}
-                        </Badge>
-                      </div>
-                    </div>
-                    {item.linkedTopicId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[11px] gap-1 shrink-0"
-                        onClick={() => navigate(`/instruct?topic=${item.linkedTopicId}`)}
-                      >
-                        View Topic
-                        <ArrowRight className="w-3 h-3" />
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+        {/* Bottom spacer */}
+        <div className="h-4" />
       </div>
     </ScrollArea>
   );
