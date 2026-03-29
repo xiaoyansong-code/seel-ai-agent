@@ -1,8 +1,8 @@
-/* ────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────
    AI Support → Communication tab.
    Left panel: Team Lead (fixed) + Reps section.
    Right area: conversation with selected entity.
-   - Team Lead: Topics (rule proposals, learning, performance) + Onboarding
+   - Team Lead: Feishu-style topic cards with reply previews + full thread panel
    - Rep: Onboarding greeting (scenarios + mode) → Escalation feed + Profile panel
    ──────────────────────────────────────────────────────────── */
 
@@ -58,25 +58,14 @@ import {
 // ── SHARED TYPES & HELPERS ──────────────────────────────
 // ══════════════════════════════════════════════════════════
 
-interface RuleChange {
+interface RuleProposal {
   type: "new" | "update";
   ruleName: string;
-  before?: string;
-  after: string;
-  source?: string;
-}
-
-interface ChatMessage {
-  id: string;
-  sender: "ai" | "manager";
-  content: string;
-  timestamp: string;
-  topicId: string;
-  topicTitle: string;
-  topicStatus: "waiting" | "done";
-  ruleChange?: RuleChange;
-  hasActions?: boolean;
-  isTopicStart?: boolean;
+  observation: string;
+  proposal: string;
+  ruleChange: string;
+  ruleBefore?: string;
+  sourceTickets: { id: string; label: string }[];
 }
 
 function formatTime(dateStr: string): string {
@@ -121,7 +110,7 @@ function renderMarkdown(text: string) {
       return (
         <div key={i} className="flex gap-1.5 ml-1">
           <span className="text-muted-foreground mt-0.5">·</span>
-          <span dangerouslySetInnerHTML={{ __html: line.slice(2).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+          <span dangerouslySetInnerHTML={{ __html: line.slice(2).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>") }} />
         </div>
       );
     }
@@ -131,7 +120,7 @@ function renderMarkdown(text: string) {
         return (
           <div key={i} className="flex gap-1.5 ml-1">
             <span className="text-muted-foreground shrink-0">{match[1]}.</span>
-            <span dangerouslySetInnerHTML={{ __html: match[2].replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+            <span dangerouslySetInnerHTML={{ __html: match[2].replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>") }} />
           </div>
         );
       }
@@ -147,105 +136,45 @@ function renderMarkdown(text: string) {
   });
 }
 
-// ── Build flat chat messages from TOPICS ────────────────────
+// ── Build RuleProposal from Topic ──
 
-function buildChatMessages(topics: Topic[]): ChatMessage[] {
-  const messages: ChatMessage[] = [];
-
-  for (const topic of topics) {
-    const isResolved = topic.status === "resolved";
-    const status: "waiting" | "done" = isResolved ? "done" : "waiting";
-
-    let ruleChange: RuleChange | undefined;
-
-    if (topic.proposedRule) {
-      ruleChange = {
-        type: "new",
-        ruleName: topic.proposedRule.category + " — " + topic.title,
-        after: topic.proposedRule.text,
-        source: topic.proposedRule.evidence.join(" | "),
-      };
-    }
-
-    if (topic.type === "escalation_review" && topic.id === "t-3") {
-      ruleChange = {
-        type: "update",
-        ruleName: "Damaged Item Handling",
-        before: "Require photo evidence for all damage claims regardless of order value.",
-        after: "For damage claims on items under $80, process replacement or refund without photo. For items $80+, still request photo.",
-        source: `Observed from ticket #${topic.sourceTicketId}`,
-      };
-    }
-
-    if (topic.id === "t-7") {
-      ruleChange = {
-        type: "update",
-        ruleName: "Return Shipping Cost",
-        before: "Customer pays $8.95 return shipping fee for all returns.",
-        after: "Defective/wrong items → free return shipping (we pay). Change of mind → customer pays ($8.95 deducted from refund).",
-        source: "Learned from denied approval on ticket #4498",
-      };
-    }
-
-    for (let i = 0; i < topic.messages.length; i++) {
-      const msg = topic.messages[i];
-      const isFirst = i === 0;
-
-      if (msg.sender === "ai" && topic.proposedRule &&
-        (msg.content.includes("Proposed rule:") || msg.content.includes("Should I adopt this rule?"))) {
-        if (!isFirst) continue;
-      }
-
-      let content = msg.content;
-      if (isFirst && ruleChange && topic.type !== "rule_update") {
-        content = content.split("\n").filter(line =>
-          !line.startsWith("> ") && !line.includes("Proposed rule:") && !line.includes("Proposed update:")
-        ).join("\n").trim();
-      }
-
-      let msgRuleChange: RuleChange | undefined;
-      if (topic.type === "rule_update" && msg.sender === "ai" && i === 1) {
-        msgRuleChange = {
-          type: "new",
-          ruleName: topic.title,
-          after: "Orders placed between March 15-31, 2026 have a 60-day return window (expires May 30, 2026). Applies to all customers.",
-          source: "Manager directive",
-        };
-      } else if (isFirst && ruleChange && topic.type !== "rule_update") {
-        msgRuleChange = ruleChange;
-      }
-
-      const hasActions = isFirst && msg.sender === "ai" && !isResolved &&
-        topic.status !== "read" && topic.type !== "performance_report" &&
-        ruleChange !== undefined;
-
-      messages.push({
-        id: msg.id,
-        sender: msg.sender,
-        content,
-        timestamp: msg.timestamp,
-        topicId: topic.id,
-        topicTitle: topic.title,
-        topicStatus: status,
-        ruleChange: msgRuleChange,
-        hasActions,
-        isTopicStart: isFirst,
-      });
-    }
+function buildRuleProposal(topic: Topic): RuleProposal | undefined {
+  if (topic.proposedRule) {
+    return {
+      type: "new",
+      ruleName: topic.proposedRule.category + " — " + topic.title,
+      observation: topic.messages[0]?.content.split("\n").filter(l => !l.startsWith("> ") && !l.includes("Proposed rule:") && !l.includes("Should I adopt")).join("\n").trim() || topic.preview,
+      proposal: topic.proposedRule.text,
+      ruleChange: topic.proposedRule.text,
+      sourceTickets: topic.proposedRule.evidence.map((e, i) => {
+        const ticketMatch = e.match(/#(\d+)/);
+        return { id: ticketMatch ? ticketMatch[1] : `src-${i}`, label: e };
+      }),
+    };
   }
-
-  const topicGroups = new Map<string, ChatMessage[]>();
-  for (const msg of messages) {
-    if (!topicGroups.has(msg.topicId)) topicGroups.set(msg.topicId, []);
-    topicGroups.get(msg.topicId)!.push(msg);
+  if (topic.type === "escalation_review" && topic.id === "t-3") {
+    return {
+      type: "update",
+      ruleName: "Damaged Item Handling",
+      observation: "I escalated ticket #4412 because the customer reported a damaged ceramic vase but didn't provide a photo. You processed a replacement immediately without asking for a photo. The order was $34.99.",
+      proposal: "Skip photo requirements for low-value items to reduce customer friction.",
+      ruleBefore: "Require photo evidence for all damage claims regardless of order value.",
+      ruleChange: "For damage claims on items under $80, process replacement or refund without photo. For items $80+, still request photo.",
+      sourceTickets: [{ id: "4412", label: "Ticket #4412 — damaged ceramic vase, no photo required" }],
+    };
   }
-  for (const group of Array.from(topicGroups.values())) {
-    group.sort((a: ChatMessage, b: ChatMessage) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  if (topic.id === "t-7") {
+    return {
+      type: "update",
+      ruleName: "Return Shipping Cost",
+      observation: "You denied my approval request on ticket #4498. I wanted to charge the customer $8.95 return shipping for a defective item.",
+      proposal: "Differentiate return shipping cost between defective items and change-of-mind returns.",
+      ruleBefore: "Customer pays $8.95 return shipping fee for all returns.",
+      ruleChange: "Defective/wrong items → free return shipping (we pay). Change of mind → customer pays ($8.95 deducted from refund).",
+      sourceTickets: [{ id: "4498", label: "Ticket #4498 — denied approval for defective item shipping charge" }],
+    };
   }
-  const sortedTopics = Array.from(topicGroups.entries()).sort(
-    ([, a], [, b]) => new Date(a[0].timestamp).getTime() - new Date(b[0].timestamp).getTime()
-  );
-  return sortedTopics.flatMap(([, msgs]) => msgs);
+  return undefined;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -267,238 +196,279 @@ function Tip({ text }: { text: string }) {
   );
 }
 
-function CollapsibleText({ text, maxLines = 4 }: { text: string; maxLines?: number }) {
-  const [expanded, setExpanded] = useState(false);
-  const lines = text.split("\n");
-  const isLong = lines.length > maxLines;
+// ══════════════════════════════════════════════════════════
+// ── PROPOSED RULE CARD (structured) ─────────────────────
+// ══════════════════════════════════════════════════════════
 
-  if (!isLong || expanded) {
-    return (
-      <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap">
-        {renderMarkdown(text)}
-        {isLong && (
-          <button onClick={() => setExpanded(false)} className="text-[10px] text-primary hover:underline mt-1 flex items-center gap-0.5">
-            <ChevronUp className="w-3 h-3" /> Show less
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap">
-      {renderMarkdown(lines.slice(0, maxLines).join("\n"))}
-      <button onClick={() => setExpanded(true)} className="text-[10px] text-primary hover:underline mt-1 flex items-center gap-0.5">
-        <ChevronDown className="w-3 h-3" /> Show more
-      </button>
-    </div>
-  );
-}
-
-// ── Topic Label ──
-
-function TopicLabel({ title, status }: { title: string; status: "waiting" | "done" }) {
-  return (
-    <div className="flex items-center gap-2 mb-1.5 mt-3">
-      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", status === "waiting" ? "bg-amber-400" : "bg-emerald-400")} />
-      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide truncate">{title}</span>
-    </div>
-  );
-}
-
-// ── Rule Change Card ────────────────────────────────────
-
-function RuleChangeCard({
-  change,
+function ProposedRuleCard({
+  proposal,
   hasActions,
-  onAction,
   topicId,
+  onAction,
 }: {
-  change: RuleChange;
+  proposal: RuleProposal;
   hasActions: boolean;
-  onAction?: (topicId: string, action: string) => void;
   topicId: string;
+  onAction?: (topicId: string, action: string) => void;
 }) {
+  const [showFullChange, setShowFullChange] = useState(false);
+
   return (
-    <div className="mt-2 rounded-lg border border-border bg-white overflow-hidden">
-      <div className="px-3 py-2 bg-muted/30 border-b border-border/50 flex items-center gap-2">
-        <div className={cn("w-1.5 h-1.5 rounded-full", change.type === "new" ? "bg-emerald-400" : "bg-amber-400")} />
-        <span className="text-[11px] font-semibold text-foreground">{change.ruleName}</span>
-        <Badge variant="secondary" className="h-4 text-[8px] px-1.5 ml-auto">
-          {change.type === "new" ? "NEW" : "UPDATE"}
+    <div className="rounded-lg border border-border bg-white overflow-hidden">
+      {/* Header */}
+      <div className="px-3.5 py-2 bg-muted/30 border-b border-border/50 flex items-center gap-2">
+        <div className={cn("w-1.5 h-1.5 rounded-full", proposal.type === "new" ? "bg-emerald-400" : "bg-amber-400")} />
+        <span className="text-[11.5px] font-semibold text-foreground flex-1 truncate">
+          {proposal.type === "new" ? "Proposed New Rule" : "Proposed Rule Update"}: {proposal.ruleName}
+        </span>
+        <Badge variant="secondary" className="h-4 text-[8px] px-1.5 shrink-0">
+          {proposal.type === "new" ? "NEW" : "UPDATE"}
         </Badge>
       </div>
-      <div className="px-3 py-2 space-y-1.5">
-        {change.before && (
-          <div className="flex gap-2">
-            <span className="text-[10px] font-medium text-red-400 w-10 shrink-0 mt-0.5">Before</span>
-            <p className="text-[11px] text-muted-foreground line-through leading-relaxed">{change.before}</p>
+
+      <div className="px-3.5 py-2.5 space-y-3">
+        {/* Observation */}
+        <div>
+          <p className="text-[9.5px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Observation</p>
+          <p className="text-[11.5px] text-foreground leading-relaxed">{proposal.observation}</p>
+        </div>
+
+        {/* Proposal rationale */}
+        <div>
+          <p className="text-[9.5px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Proposal</p>
+          <p className="text-[11.5px] text-foreground leading-relaxed">{proposal.proposal}</p>
+        </div>
+
+        {/* Rule Change */}
+        <div>
+          <p className="text-[9.5px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Rule Change</p>
+          <div className="rounded-md bg-muted/20 border border-border/40 px-3 py-2 space-y-1.5">
+            {proposal.ruleBefore && (
+              <div className="flex gap-2">
+                <span className="text-[10px] font-medium text-red-400 w-12 shrink-0 mt-0.5">Before</span>
+                <p className="text-[11px] text-muted-foreground line-through leading-relaxed">{proposal.ruleBefore}</p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <span className="text-[10px] font-medium text-emerald-500 w-12 shrink-0 mt-0.5">{proposal.ruleBefore ? "After" : "Rule"}</span>
+              <p className="text-[11px] text-foreground leading-relaxed">
+                {proposal.ruleChange.length > 200 && !showFullChange
+                  ? proposal.ruleChange.slice(0, 200) + "..."
+                  : proposal.ruleChange}
+              </p>
+            </div>
+            {proposal.ruleChange.length > 200 && (
+              <button
+                onClick={() => setShowFullChange(!showFullChange)}
+                className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+              >
+                {showFullChange ? <><ChevronUp className="w-3 h-3" /> Show less</> : <><ChevronDown className="w-3 h-3" /> Show full change</>}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Source tickets — shown as links */}
+        {proposal.sourceTickets.length > 0 && (
+          <div>
+            <p className="text-[9.5px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Source</p>
+            <div className="space-y-0.5">
+              {proposal.sourceTickets.map((src) => (
+                <a
+                  key={src.id}
+                  href={`https://coastalliving.zendesk.com/agent/tickets/${src.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[10.5px] text-primary hover:underline"
+                >
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                  {src.label}
+                </a>
+              ))}
+            </div>
           </div>
         )}
-        <div className="flex gap-2">
-          <span className="text-[10px] font-medium text-emerald-500 w-10 shrink-0 mt-0.5">{change.before ? "After" : "Rule"}</span>
-          <p className="text-[11px] text-foreground leading-relaxed">{change.after}</p>
-        </div>
-        {change.source && (
-          <p className="text-[9px] text-muted-foreground/60 mt-1">Source: {change.source}</p>
-        )}
       </div>
+
+      {/* Actions */}
       {hasActions && onAction && (
-        <div className="px-3 py-2 border-t border-border/50 bg-muted/10 flex items-center gap-1.5">
+        <div className="px-3.5 py-2 border-t border-border/50 bg-muted/10 flex items-center gap-1.5">
           <button
             onClick={() => onAction(topicId, "accept")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[10.5px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
             <Check className="w-3 h-3" /> Accept
           </button>
           <button
-            onClick={() => onAction(topicId, "modify_accept")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-          >
-            <Pencil className="w-3 h-3" /> Modify & Accept
-          </button>
-          <button
             onClick={() => onAction(topicId, "reject")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:bg-accent transition-colors ml-auto"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[10.5px] font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
           >
             <X className="w-3 h-3" /> Reject
           </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Message Bubble ──────────────────────────────────────
-
-function MessageBubble({
-  msg,
-  senderLabel,
-  senderAvatar,
-  onAction,
-  onReply,
-}: {
-  msg: ChatMessage;
-  senderLabel: string;
-  senderAvatar?: React.ReactNode;
-  onAction?: (topicId: string, action: string) => void;
-  onReply?: (topicId: string) => void;
-}) {
-  return (
-    <div className={cn("flex gap-2.5 group", msg.sender === "manager" && "flex-row-reverse")}>
-      {msg.sender === "ai" && (
-        senderAvatar || (
-          <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
-            <span className="text-[11px]">👔</span>
-          </div>
-        )
-      )}
-      <div className={cn("max-w-[85%] min-w-0", msg.sender === "manager" && "text-right")}>
-        <div className={cn("flex items-center gap-1.5 mb-0.5", msg.sender === "manager" && "justify-end")}>
-          <span className="text-[10px] font-medium text-foreground">{msg.sender === "ai" ? senderLabel : "You"}</span>
-          <span className="text-[9px] text-muted-foreground/50">{formatTime(msg.timestamp)}</span>
-        </div>
-        <div className={cn(
-          "rounded-xl px-3 py-2 inline-block text-left",
-          msg.sender === "ai" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
-        )}>
-          {msg.content && <CollapsibleText text={msg.content} maxLines={6} />}
-          {msg.ruleChange && (
-            <RuleChangeCard
-              change={msg.ruleChange}
-              hasActions={!!msg.hasActions}
-              onAction={onAction}
-              topicId={msg.topicId}
-            />
-          )}
-        </div>
-        {msg.sender === "ai" && onReply && (
           <button
-            onClick={() => onReply(msg.topicId)}
-            className="opacity-0 group-hover:opacity-100 mt-0.5 ml-0.5 text-[10px] text-muted-foreground hover:text-primary transition-all flex items-center gap-0.5"
+            onClick={() => onAction(topicId, "reply")}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[10.5px] font-medium text-muted-foreground hover:bg-accent transition-colors ml-auto"
           >
             <Reply className="w-3 h-3" /> Reply
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════
-// ── TOPICS PANEL (right side for Team Lead) ─────────────
+// ── TOPIC CARD (Feishu-style grouped) ───────────────────
 // ══════════════════════════════════════════════════════════
 
-interface TopicItem {
-  id: string;
-  title: string;
-  status: "waiting" | "done";
-  timestamp: string;
-  hasActions: boolean;
-  replyCount: number;
-}
-
-function TopicsPanel({
-  topics,
-  onSelectTopic,
-  onClose,
+function TopicCard({
+  topic,
+  onOpenThread,
+  onAction,
 }: {
-  topics: TopicItem[];
-  onSelectTopic: (id: string) => void;
-  onClose: () => void;
+  topic: Topic;
+  onOpenThread: (topicId: string) => void;
+  onAction: (topicId: string, action: string) => void;
 }) {
-  const [tab, setTab] = useState<"waiting" | "done">("waiting");
-  const waiting = topics.filter((t) => t.status === "waiting");
-  const done = topics.filter((t) => t.status === "done");
-  const list = tab === "waiting" ? waiting : done;
+  const isResolved = topic.status === "resolved";
+  const ruleProposal = buildRuleProposal(topic);
+  const hasActions = !isResolved && topic.status !== "read" && ruleProposal !== undefined;
+  const msgs = topic.messages;
+  const replyCount = msgs.length;
+
+  // Build reply preview: first 2 + last 3 (if many), or all if few
+  const hiddenCount = Math.max(0, replyCount - 5);
+  const previewReplies = useMemo(() => {
+    if (replyCount <= 5) return msgs;
+    return [...msgs.slice(0, 2), ...msgs.slice(-3)];
+  }, [msgs, replyCount]);
 
   return (
-    <div className="w-[280px] border-l border-border bg-white flex flex-col h-full shrink-0">
-      <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
-        <span className="text-[12px] font-semibold text-foreground">Topics</span>
-        <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
-          <X className="w-3.5 h-3.5 text-muted-foreground" />
-        </button>
-      </div>
-      <div className="flex px-4 pt-2 gap-1">
-        <button
-          onClick={() => setTab("waiting")}
-          className={cn("px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
-            tab === "waiting" ? "bg-amber-50 text-amber-700" : "text-muted-foreground hover:bg-accent")}
-        >
-          Waiting ({waiting.length})
-        </button>
-        <button
-          onClick={() => setTab("done")}
-          className={cn("px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
-            tab === "done" ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground hover:bg-accent")}
-        >
-          Done ({done.length})
-        </button>
-      </div>
-      <ScrollArea className="flex-1 px-3 pt-2">
-        <div className="space-y-0.5 pb-4">
-          {list.map((topic) => (
-            <button
-              key={topic.id}
-              onClick={() => onSelectTopic(topic.id)}
-              className="w-full text-left px-2.5 py-2 rounded-md hover:bg-accent/50 transition-colors"
-            >
-              <p className="text-[11.5px] font-medium text-foreground truncate">{topic.title}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[9px] text-muted-foreground">{formatRelativeTime(topic.timestamp)}</span>
-                <span className="text-[9px] text-muted-foreground">{topic.replyCount} msgs</span>
-              </div>
-            </button>
-          ))}
+    <div className="rounded-xl border border-border bg-white overflow-hidden hover:border-border/80 transition-colors">
+      {/* Topic header — first message as the topic body */}
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+            <span className="text-[11px]">👔</span>
+          </div>
+          <span className="text-[11px] font-semibold text-foreground">Alex (Team Lead)</span>
+          <span className="text-[9px] text-muted-foreground/50">{formatRelativeTime(topic.createdAt)}</span>
+          <div className="flex-1" />
+          <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", isResolved ? "bg-emerald-400" : "bg-amber-400")} />
         </div>
-      </ScrollArea>
+
+        {/* First message content */}
+        {msgs[0] && (
+          <div className="text-[12px] leading-relaxed text-foreground ml-8">
+            {ruleProposal ? (
+              <ProposedRuleCard
+                proposal={ruleProposal}
+                hasActions={hasActions}
+                topicId={topic.id}
+                onAction={onAction}
+              />
+            ) : (
+              <div className="rounded-lg bg-muted/20 px-3 py-2">
+                <div className="line-clamp-4 whitespace-pre-wrap">
+                  {renderMarkdown(msgs[0].content)}
+                </div>
+                {msgs[0].content.split("\n").length > 4 && (
+                  <button
+                    onClick={() => onOpenThread(topic.id)}
+                    className="text-[10px] text-primary hover:underline mt-1"
+                  >
+                    Read more
+                  </button>
+                )}
+                {/* Actions for non-rule topics that have message actions */}
+                {!isResolved && msgs[0].actions && msgs[0].actions.length > 0 && (
+                  <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/30">
+                    {msgs[0].actions.map((action) => (
+                      <button
+                        key={action.label}
+                        onClick={() => onAction(topic.id, action.type)}
+                        className={cn(
+                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
+                          action.type === "accept" ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" :
+                          action.type === "reject" ? "bg-red-50 text-red-600 hover:bg-red-100" :
+                          "text-muted-foreground hover:bg-accent"
+                        )}
+                      >
+                        {action.type === "accept" && <Check className="w-3 h-3" />}
+                        {action.type === "reject" && <X className="w-3 h-3" />}
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Reply previews — Feishu-style */}
+      {replyCount > 1 && (
+        <div className="px-4 pb-3 ml-8">
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => onOpenThread(topic.id)}
+              className="text-[10px] text-primary hover:underline mb-1.5 flex items-center gap-0.5"
+            >
+              View {hiddenCount} earlier {hiddenCount === 1 ? "reply" : "replies"}
+            </button>
+          )}
+          <div className="space-y-1">
+            {previewReplies.slice(1).map((msg) => (
+              <div key={msg.id} className="flex items-start gap-1.5">
+                {msg.sender === "ai" ? (
+                  <div className="w-4 h-4 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-[7px]">👔</span>
+                  </div>
+                ) : (
+                  <div className="w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-[7px] font-medium text-primary">JC</span>
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] font-medium text-foreground mr-1">
+                    {msg.sender === "ai" ? "Alex" : "You"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground line-clamp-1">
+                    {msg.content.replace(/\*\*/g, "").replace(/\n/g, " ").slice(0, 100)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Reply to topic link */}
+          <button
+            onClick={() => onOpenThread(topic.id)}
+            className="flex items-center gap-1 mt-2 text-[10px] text-muted-foreground hover:text-primary transition-colors"
+          >
+            <MessageCircle className="w-3 h-3" /> Reply to topic
+          </button>
+        </div>
+      )}
+
+      {/* Single-message topic: show reply link */}
+      {replyCount === 1 && (
+        <div className="px-4 pb-3 ml-8">
+          <button
+            onClick={() => onOpenThread(topic.id)}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors"
+          >
+            <MessageCircle className="w-3 h-3" /> Reply to topic
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════
-// ── THREAD SIDE PANEL ───────────────────────────────────
+// ── FULL THREAD PANEL (right side) ──────────────────────
 // ══════════════════════════════════════════════════════════
 
 interface ThreadReply {
@@ -508,24 +478,25 @@ interface ThreadReply {
   timestamp: string;
 }
 
-function ThreadSidePanel({
-  topicId,
-  topicTitle,
-  contextMsg,
+function FullThreadPanel({
+  topic,
   onClose,
+  onAction,
 }: {
-  topicId: string;
-  topicTitle: string;
-  contextMsg: string;
+  topic: Topic;
   onClose: () => void;
+  onAction: (topicId: string, action: string) => void;
 }) {
   const [input, setInput] = useState("");
-  const [replies, setReplies] = useState<ThreadReply[]>([]);
+  const [extraReplies, setExtraReplies] = useState<ThreadReply[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
+  const isResolved = topic.status === "resolved";
+  const ruleProposal = buildRuleProposal(topic);
+  const hasActions = !isResolved && topic.status !== "read" && ruleProposal !== undefined;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [replies.length]);
+  }, [extraReplies.length]);
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -535,15 +506,15 @@ function ThreadSidePanel({
       content: input.trim(),
       timestamp: new Date().toISOString(),
     };
-    setReplies((prev) => [...prev, newReply]);
+    setExtraReplies((prev) => [...prev, newReply]);
     setInput("");
     setTimeout(() => {
-      setReplies((prev) => [
+      setExtraReplies((prev) => [
         ...prev,
         {
           id: `tr-ai-${Date.now()}`,
           sender: "ai",
-          content: `Got it. I'll update the rule accordingly.\n\n**Updated rule:** ${input.trim()}\n\nPlease confirm this is correct.`,
+          content: "Got it. I'll take that into account and update the rule accordingly. Let me revise the proposal.",
           timestamp: new Date().toISOString(),
         },
       ]);
@@ -551,42 +522,90 @@ function ThreadSidePanel({
   };
 
   return (
-    <div className="w-[320px] border-l border-border bg-white flex flex-col h-full shrink-0">
+    <div className="w-[380px] border-l border-border bg-white flex flex-col h-full shrink-0">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <MessageCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-          <span className="text-[12px] font-semibold text-foreground truncate">{topicTitle}</span>
+          <span className="text-[12px] font-semibold text-foreground truncate">{topic.title}</span>
         </div>
         <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors shrink-0">
           <X className="w-3.5 h-3.5 text-muted-foreground" />
         </button>
       </div>
 
-      <div className="px-4 py-2 border-b border-border bg-muted/20">
-        <p className="text-[10.5px] text-muted-foreground leading-relaxed line-clamp-2">
-          {contextMsg.replace(/\*\*/g, "").slice(0, 150)}...
-        </p>
+      {/* Status bar */}
+      <div className="px-4 py-1.5 border-b border-border/50 bg-muted/10 flex items-center gap-2">
+        <div className={cn("w-1.5 h-1.5 rounded-full", isResolved ? "bg-emerald-400" : "bg-amber-400")} />
+        <span className="text-[10px] text-muted-foreground">{isResolved ? "Resolved" : "Waiting for your response"}</span>
+        <span className="text-[10px] text-muted-foreground/50 ml-auto">{topic.messages.length + extraReplies.length} messages</span>
       </div>
 
-      <ScrollArea className="flex-1 px-4">
-        <div className="py-3 space-y-3">
-          {replies.map((reply) => (
-            <div key={reply.id} className={cn("flex gap-2", reply.sender === "manager" && "flex-row-reverse")}>
-              {reply.sender === "ai" ? (
-                <div className="w-5 h-5 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[9px]">👔</span>
+      {/* Full conversation */}
+      <ScrollArea className="flex-1">
+        <div className="px-4 py-3 space-y-3">
+          {topic.messages.map((msg, idx) => (
+            <div key={msg.id} className={cn("flex gap-2", msg.sender === "manager" && "flex-row-reverse")}>
+              {msg.sender === "ai" ? (
+                <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[10px]">👔</span>
                 </div>
               ) : (
-                <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[8px] font-medium text-white">JC</span>
+                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[9px] font-medium text-primary">JC</span>
                 </div>
               )}
-              <div className={cn("max-w-[85%]", reply.sender === "manager" && "text-right")}>
+              <div className={cn("max-w-[85%] min-w-0", msg.sender === "manager" && "text-right")}>
+                <div className={cn("flex items-center gap-1.5 mb-0.5", msg.sender === "manager" && "justify-end")}>
+                  <span className="text-[10px] font-medium text-foreground">{msg.sender === "ai" ? "Alex" : "You"}</span>
+                  <span className="text-[9px] text-muted-foreground/50">{formatTime(msg.timestamp)}</span>
+                </div>
                 <div className={cn(
-                  "rounded-lg px-2.5 py-1.5 inline-block text-left",
-                  reply.sender === "ai" ? "bg-muted/40" : "bg-primary/6"
+                  "rounded-xl px-3 py-2 inline-block text-left",
+                  msg.sender === "ai" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
                 )}>
-                  <p className="text-[11.5px] leading-relaxed whitespace-pre-wrap">{reply.content}</p>
+                  <div className="text-[12px] leading-relaxed whitespace-pre-wrap">
+                    {renderMarkdown(msg.content)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Rule proposal card in thread */}
+          {ruleProposal && (
+            <div className="ml-8">
+              <ProposedRuleCard
+                proposal={ruleProposal}
+                hasActions={hasActions}
+                topicId={topic.id}
+                onAction={onAction}
+              />
+            </div>
+          )}
+
+          {/* Extra replies */}
+          {extraReplies.map((reply) => (
+            <div key={reply.id} className={cn("flex gap-2", reply.sender === "manager" && "flex-row-reverse")}>
+              {reply.sender === "ai" ? (
+                <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[10px]">👔</span>
+                </div>
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[9px] font-medium text-primary">JC</span>
+                </div>
+              )}
+              <div className={cn("max-w-[85%] min-w-0", reply.sender === "manager" && "text-right")}>
+                <div className={cn("flex items-center gap-1.5 mb-0.5", reply.sender === "manager" && "justify-end")}>
+                  <span className="text-[10px] font-medium text-foreground">{reply.sender === "ai" ? "Alex" : "You"}</span>
+                  <span className="text-[9px] text-muted-foreground/50">just now</span>
+                </div>
+                <div className={cn(
+                  "rounded-xl px-3 py-2 inline-block text-left",
+                  reply.sender === "ai" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
+                )}>
+                  <p className="text-[12px] leading-relaxed whitespace-pre-wrap">{reply.content}</p>
                 </div>
               </div>
             </div>
@@ -595,13 +614,14 @@ function ThreadSidePanel({
         </div>
       </ScrollArea>
 
+      {/* Reply input */}
       <div className="px-4 py-2.5 border-t border-border">
         <div className="flex items-center gap-2">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Type your modification..."
+            placeholder="Reply to this topic..."
             className="flex-1 text-[11px] bg-muted/30 border border-border rounded-md px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-primary/30"
           />
           <button
@@ -618,340 +638,308 @@ function ThreadSidePanel({
 }
 
 // ══════════════════════════════════════════════════════════
-// ── REP PROFILE PANEL (default: view mode) ──────────────
+// ── TOPICS LIST PANEL (right side) ──────────────────────
 // ══════════════════════════════════════════════════════════
 
-interface ConfigHistoryEntry {
-  id: string;
-  hash: string;
-  description: string;
-  author: string;
-  timestamp: string;
-}
-
-const CONFIG_HISTORY: ConfigHistoryEntry[] = [
-  {
-    id: "ch-1",
-    hash: "0413d17",
-    description: "Ava onboarded — WISMO Specialist, Training mode",
-    author: "Team Lead (Alex)",
-    timestamp: "2026-03-29T13:14:00Z",
-  },
-];
-
-function RepProfilePanel({
-  repName,
-  repMode,
+function TopicsPanel({
+  topics,
+  onSelectTopic,
   onClose,
-  onNavigatePerformance,
 }: {
-  repName: string;
-  repMode: AgentMode;
+  topics: Topic[];
+  onSelectTopic: (id: string) => void;
   onClose: () => void;
-  onNavigatePerformance: () => void;
 }) {
-  const [view, setView] = useState<"view" | "edit">("view");
-  const [agentMode, setAgentMode] = useState<AgentMode>(repMode);
-  const [permissions, setPermissions] = useState<ActionPermission[]>(ACTION_PERMISSIONS);
-  const [identity, setIdentity] = useState<AgentIdentity>(AGENT_IDENTITY);
+  const [tab, setTab] = useState<"waiting" | "done">("waiting");
+  const waiting = topics.filter((t) => t.status !== "resolved");
+  const done = topics.filter((t) => t.status === "resolved");
+  const list = tab === "waiting" ? waiting : done;
 
-  const togglePermission = (id: string) => {
-    setPermissions((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, permission: p.permission === "disabled" ? "autonomous" : "disabled" }
-          : p
-      )
-    );
-  };
-
-  const grouped = useMemo(() => {
-    return permissions.reduce<Record<string, ActionPermission[]>>((acc, p) => {
-      (acc[p.category] = acc[p.category] || []).push(p);
-      return acc;
-    }, {});
-  }, [permissions]);
-
-  const modeLabel = agentMode === "training" ? "TRAINING" : agentMode === "production" ? "PRODUCTION" : "OFF";
-  const modeColor = agentMode === "training" ? "bg-amber-100 text-amber-700" : agentMode === "production" ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-600";
-
-  if (view === "view") {
-    return (
-      <div className="w-[340px] border-l border-border bg-white flex flex-col h-full shrink-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
-          <span className="text-[12px] font-semibold text-foreground">Profile</span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setView("edit")}
-              className="px-2 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              Edit
-            </button>
-            <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
-              <X className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </div>
-        </div>
-
-        <ScrollArea className="flex-1">
-          <div className="p-4 space-y-5">
-            {/* Avatar + Name + Mode badge */}
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-violet-500 flex items-center justify-center shrink-0">
-                <span className="text-[16px] font-semibold text-white">{getInitials(repName)}</span>
-              </div>
-              <div>
-                <p className="text-[15px] font-semibold text-foreground">{repName}</p>
-                <Badge className={cn("text-[9px] px-1.5 h-4 font-semibold border-0", modeColor)}>
-                  {modeLabel}
-                </Badge>
-              </div>
-            </div>
-
-            {/* ── Details ── */}
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Details</p>
-              <div className="space-y-2">
-                {[
-                  { label: "Role", value: "L1 — WISMO Specialist" },
-                  { label: "Strategy", value: "Conservative" },
-                  { label: "Refund Cap", value: "$150" },
-                  { label: "Personality", value: identity.tone === "friendly" ? "Warm & Professional" : identity.tone === "professional" ? "Professional" : "Casual" },
-                  { label: "Language", value: "English" },
-                  { label: "Started", value: "Mar 29, 2026" },
-                ].map((row) => (
-                  <div key={row.label} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
-                    <span className="text-[12px] text-muted-foreground">{row.label}</span>
-                    <span className="text-[12px] font-medium text-foreground">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── Performance ── */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Performance</p>
-                <button
-                  onClick={onNavigatePerformance}
-                  className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
-                >
-                  View more <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-              <div className="space-y-2">
-                {[
-                  { label: "Tickets", value: "0 total / 0 today" },
-                  { label: "Resolution", value: "0%" },
-                  { label: "CSAT", value: "0" },
-                  { label: "Avg Response", value: "—" },
-                  { label: "Escalation", value: "0%" },
-                  { label: "Cost/Ticket", value: "—" },
-                ].map((row) => (
-                  <div key={row.label} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
-                    <span className="text-[12px] text-muted-foreground">{row.label}</span>
-                    <span className="text-[12px] font-medium text-foreground">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── Config History ── */}
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Config History ({CONFIG_HISTORY.length})
-              </p>
-              <div className="space-y-2.5">
-                {CONFIG_HISTORY.map((entry) => (
-                  <div key={entry.id} className="flex gap-2.5">
-                    <Badge variant="secondary" className="h-5 text-[9px] px-1.5 font-mono bg-violet-50 text-violet-600 border-violet-200 shrink-0 mt-0.5">
-                      {entry.hash}
-                    </Badge>
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-medium text-foreground leading-snug">{entry.description}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {entry.author} · {new Date(entry.timestamp).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}, {new Date(entry.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </ScrollArea>
-      </div>
-    );
-  }
-
-  // ── Edit mode ──
   return (
-    <div className="w-[380px] border-l border-border bg-white flex flex-col h-full shrink-0">
-      {/* Header */}
+    <div className="w-[280px] border-l border-border bg-white flex flex-col h-full shrink-0">
       <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setView("view")}
-            className="p-1 rounded hover:bg-accent transition-colors"
-          >
-            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground rotate-180" />
-          </button>
-          <span className="text-[12px] font-semibold text-foreground">Edit Profile</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => { toast.success("Changes saved"); setView("view"); }}
-            className="px-2.5 py-1 rounded-md text-[10px] font-medium bg-primary text-white hover:bg-primary/90 transition-colors"
-          >
-            Save
-          </button>
-          <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-        </div>
+        <span className="text-[12px] font-semibold text-foreground">Topics</span>
+        <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
+          <X className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
       </div>
-
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-5">
-          {/* ── Mode ── */}
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Mode</p>
-            <div className="flex gap-2">
-              {([
-                { mode: "production" as AgentMode, label: "Production", color: "emerald", desc: "Replies to customers" },
-                { mode: "training" as AgentMode, label: "Training", color: "amber", desc: "Drafts as internal notes" },
-                { mode: "off" as AgentMode, label: "Off", color: "zinc", desc: "Inactive" },
-              ]).map(({ mode, label, color, desc }) => (
-                <button
-                  key={mode}
-                  onClick={() => setAgentMode(mode)}
-                  className={cn(
-                    "flex-1 border rounded-md px-3 py-2 text-left transition-all",
-                    agentMode === mode
-                      ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                      : "border-border hover:border-primary/30"
-                  )}
-                >
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      color === "emerald" && "bg-emerald-400",
-                      color === "amber" && "bg-amber-400",
-                      color === "zinc" && "bg-zinc-400"
-                    )} />
-                    <span className="text-[11px] font-medium">{label}</span>
-                  </div>
-                  <p className="text-[9px] text-muted-foreground">{desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Identity ── */}
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Identity</p>
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-3">
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground mb-0.5 block">Name</Label>
-                  <Input
-                    value={identity.name}
-                    onChange={(e) => setIdentity({ ...identity, name: e.target.value })}
-                    className="h-7 text-[12px]"
-                  />
-                </div>
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground mb-0.5 block">Tone</Label>
-                  <Select value={identity.tone} onValueChange={(v) => setIdentity({ ...identity, tone: v as AgentIdentity["tone"] })}>
-                    <SelectTrigger className="h-7 text-[12px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="professional">Professional</SelectItem>
-                      <SelectItem value="friendly">Friendly</SelectItem>
-                      <SelectItem value="casual">Casual</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+      <div className="flex px-4 pt-2 gap-1">
+        <button
+          onClick={() => setTab("waiting")}
+          className={cn("px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
+            tab === "waiting" ? "bg-amber-50 text-amber-700" : "text-muted-foreground hover:bg-accent")}
+        >
+          Open ({waiting.length})
+        </button>
+        <button
+          onClick={() => setTab("done")}
+          className={cn("px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
+            tab === "done" ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground hover:bg-accent")}
+        >
+          Resolved ({done.length})
+        </button>
+      </div>
+      <ScrollArea className="flex-1 px-3 pt-2">
+        <div className="space-y-0.5 pb-4">
+          {list.map((topic) => (
+            <button
+              key={topic.id}
+              onClick={() => onSelectTopic(topic.id)}
+              className="w-full text-left px-2.5 py-2 rounded-md hover:bg-accent/50 transition-colors"
+            >
+              <p className="text-[11.5px] font-medium text-foreground truncate">{topic.title}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[9px] text-muted-foreground">{formatRelativeTime(topic.updatedAt)}</span>
+                <span className="text-[9px] text-muted-foreground">{topic.messages.length} msgs</span>
               </div>
-              <div>
-                <Label className="text-[10px] text-muted-foreground mb-0.5 block">Greeting</Label>
-                <Input
-                  value={identity.greeting}
-                  onChange={(e) => setIdentity({ ...identity, greeting: e.target.value })}
-                  className="h-7 text-[12px]"
-                />
-              </div>
-              <div>
-                <Label className="text-[10px] text-muted-foreground mb-0.5 block">Signature</Label>
-                <Input
-                  value={identity.signature}
-                  onChange={(e) => setIdentity({ ...identity, signature: e.target.value })}
-                  className="h-7 text-[12px]"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-[10px] text-muted-foreground">Disclose AI identity</Label>
-                <Switch
-                  checked={identity.transparentAboutAI}
-                  onCheckedChange={(checked) => setIdentity({ ...identity, transparentAboutAI: checked })}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* ── Actions (grouped by category, with guardrails) ── */}
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Actions</p>
-            {Object.entries(grouped).map(([category, actions]) => (
-              <div key={category} className="mb-3 last:mb-0">
-                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide mb-1.5">{category}</p>
-                <div className="space-y-0 divide-y divide-border/30">
-                  {actions.map((action) => {
-                    const isOn = action.permission !== "disabled";
-                    const enabledGuardrails = (action.guardrails || []).filter(g => g.enabled);
-                    return (
-                      <div key={action.id} className="py-2 first:pt-0 last:pb-0">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-[12px] font-medium text-foreground">{action.name}</span>
-                            <Tip text={action.description} />
-                          </div>
-                          <Switch
-                            checked={isOn}
-                            onCheckedChange={() => togglePermission(action.id)}
-                          />
-                        </div>
-                        {isOn && enabledGuardrails.length > 0 && (
-                          <div className="mt-1 ml-0.5 flex flex-wrap gap-x-3 gap-y-1">
-                            {enabledGuardrails.map((g) => (
-                              <div key={g.id} className="flex items-center gap-1">
-                                <span className="text-[9px] text-amber-600 font-medium">Guardrail:</span>
-                                <span className="text-[9px] text-muted-foreground">{g.label}</span>
-                                {g.type === "number" && (
-                                  <div className="flex items-center gap-0.5">
-                                    <Input
-                                      type="number"
-                                      defaultValue={g.value}
-                                      className="w-12 h-4 text-[9px] px-1"
-                                    />
-                                    {g.unit && <span className="text-[8px] text-muted-foreground">{g.unit}</span>}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+            </button>
+          ))}
         </div>
       </ScrollArea>
     </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ── SETUP TAB ───────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+
+type SetupPhase = "greeting" | "upload" | "processing" | "rules_review" | "conflicts" | "done";
+
+interface SetupMsg {
+  id: string;
+  sender: "ai" | "manager";
+  content: string;
+  widget?: "upload" | "rules_preview" | "conflict" | "hire_cta";
+}
+
+function SetupTab({ onHireRep }: { onHireRep: () => void }) {
+  const [phase, setPhase] = useState<SetupPhase>("greeting");
+  const [messages, setMessages] = useState<SetupMsg[]>([]);
+  const [conflictIdx, setConflictIdx] = useState(0);
+  const [showAllRules, setShowAllRules] = useState(false);
+  const [showHireDialog, setShowHireDialog] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  const addMsg = useCallback((sender: "ai" | "manager", content: string, widget?: SetupMsg["widget"]) => {
+    setMessages((prev) => [...prev, {
+      id: `sm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      sender,
+      content,
+      widget,
+    }]);
+  }, []);
+
+  // Initial greeting
+  useEffect(() => {
+    if (messages.length > 0) return;
+    setTimeout(() => {
+      addMsg("ai", "Welcome to Support Workforce! I'm Alex, your Team Lead. I manage your support reps so you don't have to deal with the details.\n\nYour Zendesk and Shopify are connected. I need two things from you before we can get your first rep on the floor.");
+    }, 300);
+    setTimeout(() => {
+      addMsg("ai", "**First — your training docs.**\n\nUpload the same playbooks, refund policies, and escalation rules you'd hand a new hire. I'll read them, extract the rules, and flag anything that's unclear.", "upload");
+      setPhase("upload");
+    }, 1200);
+  }, []);
+
+  const handleUpload = (isDemo: boolean) => {
+    addMsg("manager", isDemo ? "Try with Seel Return Guidelines" : "Uploaded: return-policy.pdf, refund-sop.docx");
+    setPhase("processing");
+    setTimeout(() => {
+      addMsg("ai", isDemo
+        ? "Got it — I'm reading through the Seel Return Guidelines now..."
+        : "Got it — I'm reading through your documents now...\n\n**Note:** For your own documents, processing typically takes 30-60 minutes. I'll notify you when it's done. Feel free to come back later.\n\nFor this demo, I'll speed things up so you can see the full flow.");
+    }, 500);
+    setTimeout(() => {
+      addMsg("ai", "Done! I extracted **7 rules** from your documents:\n\n1. Standard Return & Refund\n2. Damaged / Wrong Item Handling\n3. Return Shipping Cost\n4. International Returns\n5. Order Cancellation Policy\n6. Exchange Process\n7. Warranty Claims", "rules_preview");
+      setPhase("rules_review");
+    }, 2500);
+  };
+
+  const handleConfirmRules = () => {
+    addMsg("manager", "Looks good, continue");
+    setTimeout(() => {
+      addMsg("ai", "I found **1 conflict** in your documents that I need your help to clarify. Let me walk you through it.", "conflict");
+      setPhase("conflicts");
+    }, 800);
+  };
+
+  const handleDismissConflict = () => {
+    addMsg("manager", "Dismiss — I'll handle this later");
+    setTimeout(() => {
+      addMsg("ai", "No problem, I'll skip this for now. You can always clarify it later in the Playbook.\n\nYour playbook is set up! All 7 rules are ready to go.");
+    }, 500);
+    setTimeout(() => {
+      addMsg("ai", "**Second — let's hire your first support rep.**\n\nI'll start them on WISMO — order status, cancellations for unshipped orders, and address changes. Highest volume, lowest risk. Once they prove themselves, we expand their scope.\n\nI've pre-configured a rep based on your docs. Review the profile and hit Hire:", "hire_cta");
+      setPhase("done");
+    }, 1500);
+  };
+
+  const handleHireFromDialog = (name: string) => {
+    setShowHireDialog(false);
+    addMsg("manager", `Hired ${name} as WISMO Specialist`);
+    setTimeout(() => {
+      addMsg("ai", `${name} is on the team! Head over to their conversation to complete onboarding — they'll walk you through a few scenarios to make sure they understand your policies.`);
+      onHireRep();
+    }, 800);
+  };
+
+  const demoRules = [
+    "Standard Return & Refund",
+    "Damaged / Wrong Item Handling",
+    "Return Shipping Cost",
+    "International Returns",
+    "Order Cancellation Policy",
+    "Exchange Process",
+    "Warranty Claims",
+  ];
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="max-w-[620px] mx-auto px-5 py-6 space-y-3">
+          {messages.map((msg) => (
+            <div key={msg.id} className={cn("flex gap-2.5", msg.sender === "manager" && "flex-row-reverse")}>
+              {msg.sender === "ai" && (
+                <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[11px]">👔</span>
+                </div>
+              )}
+              <div className={cn("max-w-[85%] min-w-0", msg.sender === "manager" && "text-right")}>
+                <div className={cn("flex items-center gap-1.5 mb-0.5", msg.sender === "manager" && "justify-end")}>
+                  <span className="text-[10px] font-medium text-foreground">{msg.sender === "ai" ? "Alex (Team Lead)" : "You"}</span>
+                  <span className="text-[9px] text-muted-foreground/50">just now</span>
+                </div>
+                <div className={cn(
+                  "rounded-xl px-3 py-2 inline-block text-left",
+                  msg.sender === "ai" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
+                )}>
+                  <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap">
+                    {renderMarkdown(msg.content)}
+                  </div>
+                </div>
+
+                {/* Upload widget */}
+                {msg.widget === "upload" && phase === "upload" && (
+                  <div className="mt-3 space-y-3">
+                    <div
+                      onClick={() => handleUpload(false)}
+                      className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary/40 hover:bg-primary/2 transition-all"
+                    >
+                      <Upload className="w-5 h-5 text-muted-foreground/40 mx-auto mb-1.5" />
+                      <p className="text-[11.5px] font-medium text-foreground">Drop files here or click to upload</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">PDF, DOCX, TXT — up to 10 files</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[9px] text-muted-foreground">or paste a URL</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 flex items-center gap-2 border border-border rounded-md px-2.5 py-1.5 bg-white">
+                        <Globe className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+                        <input
+                          placeholder="https://help.example.com/policies"
+                          className="flex-1 text-[11px] bg-transparent outline-none placeholder:text-muted-foreground/40"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
+                              handleUpload(false);
+                            }
+                          }}
+                        />
+                      </div>
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] shrink-0" onClick={() => handleUpload(false)}>
+                        Import
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      Don't have files handy?{" "}
+                      <button onClick={() => handleUpload(true)} className="text-primary hover:underline font-medium">
+                        Try with Seel Return Guidelines
+                      </button>
+                    </p>
+                  </div>
+                )}
+
+                {/* Rules preview */}
+                {msg.widget === "rules_preview" && phase === "rules_review" && (
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg border border-border bg-white overflow-hidden">
+                      {(showAllRules ? demoRules : demoRules.slice(0, 5)).map((rule, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-border/30 last:border-b-0">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span className="text-[11.5px] text-foreground">{rule}</span>
+                        </div>
+                      ))}
+                      {!showAllRules && demoRules.length > 5 && (
+                        <button
+                          onClick={() => setShowAllRules(true)}
+                          className="w-full px-3 py-2 text-[10.5px] text-primary hover:bg-accent/30 transition-colors text-center"
+                        >
+                          Show {demoRules.length - 5} more rules
+                        </button>
+                      )}
+                    </div>
+                    <Button size="sm" className="h-7 text-[11px]" onClick={handleConfirmRules}>
+                      Looks good, continue
+                    </Button>
+                  </div>
+                )}
+
+                {/* Conflict */}
+                {msg.widget === "conflict" && phase === "conflicts" && (
+                  <div className="mt-3">
+                    <div className="rounded-lg border border-amber-200/60 bg-amber-50/30 overflow-hidden">
+                      <div className="px-3 py-2 border-b border-amber-200/40 flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                        <span className="text-[11px] font-semibold text-foreground">Conflict: Return Window Duration</span>
+                      </div>
+                      <div className="px-3 py-2.5 space-y-2">
+                        <p className="text-[11px] text-foreground leading-relaxed">
+                          Your <strong>Return Policy</strong> says 30-day return window, but your <strong>Customer FAQ</strong> mentions 45 days for loyalty members. Which should I follow?
+                        </p>
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <button
+                            onClick={handleDismissConflict}
+                            className="px-3 py-1.5 rounded-md text-[10.5px] font-medium text-muted-foreground hover:bg-accent transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Hire CTA */}
+                {msg.widget === "hire_cta" && phase === "done" && (
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      onClick={() => setShowHireDialog(true)}
+                      className="h-9 text-[12px] px-5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg"
+                    >
+                      Review & Hire Support Rep <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+      </ScrollArea>
+
+      {/* Hire Rep Dialog */}
+      <HireRepDialog
+        open={showHireDialog}
+        onOpenChange={setShowHireDialog}
+        onHire={handleHireFromDialog}
+      />
+    </>
   );
 }
 
@@ -968,85 +956,114 @@ function HireRepDialog({
   onOpenChange: (open: boolean) => void;
   onHire: (name: string) => void;
 }) {
-  const [repName, setRepName] = useState("Ava");
-  const [personality, setPersonality] = useState<"professional" | "friendly" | "casual">("friendly");
-  const [actions, setActions] = useState<Record<string, boolean>>(() => {
-    const map: Record<string, boolean> = {};
-    ACTION_PERMISSIONS.forEach((a) => {
-      map[a.id] = ["ap-2", "ap-4", "ap-6"].includes(a.id);
-    });
-    return map;
-  });
+  const [name, setName] = useState("Ava");
+  const [personality, setPersonality] = useState("warm");
+  const [language, setLanguage] = useState("en-gb");
 
-  const grouped = useMemo(() => {
-    return ACTION_PERMISSIONS.reduce<Record<string, ActionPermission[]>>((acc, p) => {
-      (acc[p.category] = acc[p.category] || []).push(p);
-      return acc;
-    }, {});
+  const actionCategories = useMemo(() => {
+    const cats = new Map<string, ActionPermission[]>();
+    ACTION_PERMISSIONS.forEach((ap) => {
+      if (!cats.has(ap.category)) cats.set(ap.category, []);
+      cats.get(ap.category)!.push(ap);
+    });
+    return cats;
   }, []);
+
+  const wismoActions = ["ap-2", "ap-4", "ap-6", "ap-9", "ap-10"];
+  const [enabledActions, setEnabledActions] = useState<Set<string>>(new Set(wismoActions));
+
+  const toggleAction = (id: string) => {
+    setEnabledActions((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px] max-h-[85vh] overflow-y-auto p-0">
-        <div className="bg-gradient-to-r from-teal-600 to-teal-500 px-6 py-5 rounded-t-lg">
-          <DialogTitle className="text-[18px] font-semibold text-white">Hire Support Rep</DialogTitle>
-          <DialogDescription className="text-[13px] text-white/80 mt-1">
+      <DialogContent className="sm:max-w-[520px] max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-[16px]">Hire Support Rep</DialogTitle>
+          <DialogDescription className="text-[12px]">
             Pre-configured based on your training docs. Review and confirm.
           </DialogDescription>
-        </div>
+        </DialogHeader>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="space-y-5 mt-3">
+          {/* Name */}
           <div>
-            <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Name</Label>
-            <Input
-              value={repName}
-              onChange={(e) => setRepName(e.target.value)}
-              className="mt-1.5 h-9 text-[13px]"
-            />
+            <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 h-8 text-[12px]" />
           </div>
 
+          {/* Personality */}
           <div>
-            <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Personality</Label>
-            <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
-              <SelectTrigger className="mt-1.5 h-9 text-[13px]">
+            <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Personality</Label>
+            <Select value={personality} onValueChange={setPersonality}>
+              <SelectTrigger className="mt-1 h-8 text-[12px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="professional">Professional</SelectItem>
-                <SelectItem value="friendly">Warm & Professional</SelectItem>
+                <SelectItem value="warm">Warm & Professional</SelectItem>
+                <SelectItem value="formal">Formal & Precise</SelectItem>
                 <SelectItem value="casual">Casual & Friendly</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
+          {/* Language */}
           <div>
-            <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Allowed Actions</Label>
+            <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Language</Label>
+            <Select value={language} onValueChange={setLanguage}>
+              <SelectTrigger className="mt-1 h-8 text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en-gb">English (British)</SelectItem>
+                <SelectItem value="en-us">English (American)</SelectItem>
+                <SelectItem value="es">Spanish</SelectItem>
+                <SelectItem value="fr">French</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Allowed Actions — grouped by category with guardrails */}
+          <div>
+            <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Allowed Actions</Label>
             <div className="mt-2 space-y-3">
-              {Object.entries(grouped).map(([category, catActions]) => (
-                <div key={category}>
-                  <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide mb-1">{category}</p>
-                  <div className="space-y-0">
-                    {catActions.map((action) => {
-                      const checked = actions[action.id] || false;
+              {Array.from(actionCategories.entries()).map(([cat, actions]) => (
+                <div key={cat}>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-1">{cat}</p>
+                  <div className="space-y-1">
+                    {actions.map((action) => {
+                      const enabled = enabledActions.has(action.id);
                       return (
-                        <label
-                          key={action.id}
-                          className={cn(
-                            "flex items-center gap-2.5 py-1.5 cursor-pointer",
-                            !checked && "opacity-60"
+                        <div key={action.id}>
+                          <label className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent/30 cursor-pointer transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={enabled}
+                              onChange={() => toggleAction(action.id)}
+                              className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/30"
+                            />
+                            <span className={cn("text-[11px]", enabled ? "text-foreground" : "text-muted-foreground")}>
+                              {action.name}
+                            </span>
+                          </label>
+                          {/* Guardrails */}
+                          {enabled && action.guardrails && action.guardrails.length > 0 && (
+                            <div className="ml-7 mt-0.5 mb-1 space-y-0.5">
+                              {action.guardrails.map((g) => (
+                                <div key={g.id} className="flex items-center gap-1.5 text-[9.5px] text-muted-foreground">
+                                  <div className="w-1 h-1 rounded-full bg-amber-400" />
+                                  <span>{g.label}{g.value !== undefined ? `: ${g.value}${g.unit || ""}` : ""}</span>
+                                </div>
+                              ))}
+                            </div>
                           )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => setActions(prev => ({ ...prev, [action.id]: !prev[action.id] }))}
-                            className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/30"
-                          />
-                          <span className={cn("text-[12px]", checked ? "text-foreground font-medium" : "text-muted-foreground")}>
-                            {action.name}
-                          </span>
-                          {!checked && <span className="text-[10px] text-muted-foreground/50 ml-auto">(not assigned)</span>}
-                        </label>
+                        </div>
                       );
                     })}
                   </div>
@@ -1056,451 +1073,13 @@ function HireRepDialog({
           </div>
         </div>
 
-        <div className="px-6 pb-5">
-          <Button
-            className="w-full h-11 text-[14px] font-semibold bg-teal-600 hover:bg-teal-700"
-            onClick={() => onHire(repName)}
-          >
+        <div className="mt-4">
+          <Button onClick={() => onHire(name)} className="w-full h-10 text-[13px] bg-teal-600 hover:bg-teal-700">
             Hire
           </Button>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// ── SETUP TAB (Onboarding — Team Lead conversation) ─────
-// ══════════════════════════════════════════════════════════
-
-type OBPhase = "greeting" | "upload_doc" | "importing" | "processing_notice" | "conflict_1" | "conflict_2" | "conflict_3" | "playbook_done" | "done";
-
-interface OnboardingMsg {
-  id: string;
-  sender: "ai" | "manager";
-  content: string;
-  choices?: { label: string; value: string; variant?: "primary" | "outline" }[];
-  widget?: string;
-  widgetData?: Record<string, unknown>;
-}
-
-interface ConflictItem {
-  id: number;
-  title: string;
-  description: string;
-  optionA: string;
-  optionB: string;
-  resolved: boolean;
-  choice?: string;
-}
-
-const DEMO_CONFLICTS: ConflictItem[] = [
-  {
-    id: 1,
-    title: "Return Window",
-    description: 'Your return policy says "30-day return window" but the FAQ page says "28 calendar days from delivery."',
-    optionA: "30 days from delivery",
-    optionB: "28 calendar days",
-    resolved: false,
-  },
-  {
-    id: 2,
-    title: "Refund Method",
-    description: 'Policy doc says "refund to original payment method only" but your FAQ mentions store credit as an option.',
-    optionA: "Original payment method only",
-    optionB: "Original method or store credit",
-    resolved: false,
-  },
-  {
-    id: 3,
-    title: "Return Shipping",
-    description: 'Policy says "free returns" but the terms page says "customer pays $8.95 for return shipping."',
-    optionA: "Free returns for all",
-    optionB: "Free for defective, $8.95 for others",
-    resolved: false,
-  },
-];
-
-const DEMO_EXTRACTED_RULES = [
-  "Standard Return & Refund",
-  "Where Is My Order (WISMO)",
-  "Damaged / Wrong Item",
-  "Order Cancellation",
-  "Return Shipping Cost",
-  "International Returns",
-  "VIP Customer Handling",
-  "Product Warranty Claims",
-  "Discount & Coupon Policy",
-  "Escalation Triggers",
-  "Shipping Delay Response",
-  "Final Sale Items",
-  "Exchange Process",
-];
-
-function SetupTab({ onHireRep }: { onHireRep: () => void }) {
-  const [, navigate] = useLocation();
-  const [phase, setPhase] = useState<OBPhase>("greeting");
-  const [messages, setMessages] = useState<OnboardingMsg[]>([]);
-  const [importProgress, setImportProgress] = useState(0);
-  const [urlInput, setUrlInput] = useState("");
-  const [showUrlInput, setShowUrlInput] = useState(false);
-  const [conflicts, setConflicts] = useState<ConflictItem[]>(DEMO_CONFLICTS);
-  const [currentConflictIdx, setCurrentConflictIdx] = useState(0);
-  const [showAllRules, setShowAllRules] = useState(false);
-  const [showHireDialog, setShowHireDialog] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, phase]);
-
-  const makeObMsg = (
-    sender: "ai" | "manager",
-    content: string,
-    extra?: Partial<OnboardingMsg>
-  ): OnboardingMsg => ({
-    id: `ob-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    sender,
-    content,
-    ...extra,
-  });
-
-  const addAiMessages = useCallback((msgs: OnboardingMsg[], delay = 400) => {
-    msgs.forEach((msg, i) => {
-      setTimeout(() => {
-        setMessages((prev) => [...prev, msg]);
-      }, delay * (i + 1));
-    });
-  }, []);
-
-  // ── Greeting ──
-  useEffect(() => {
-    if (messages.length === 0) {
-      addAiMessages([
-        makeObMsg("ai", "Welcome to Support Workforce! I'm Alex, your Team Lead. I manage your support reps so you don't have to deal with the details.\n\nYour Zendesk and Shopify are connected. I need two things from you before we can get your first rep on the floor."),
-        makeObMsg("ai", "**First — your training docs.**\n\nUpload the same playbooks, refund policies, and escalation rules you'd hand a new hire. I'll read them, extract the rules, and flag anything that's unclear.", {
-          widget: "upload_doc",
-        }),
-      ], 500);
-    }
-  }, []);
-
-  const handleUpload = (isDemo: boolean) => {
-    setMessages((prev) => [
-      ...prev,
-      makeObMsg("manager", isDemo ? "Try with Seel Return Guidelines" : "Uploaded: Return_Policy_v2.pdf"),
-    ]);
-    setPhase("importing");
-    setImportProgress(0);
-    addAiMessages([
-      makeObMsg("ai", isDemo
-        ? "Great choice! Let me analyze the **Seel Return Guidelines** and extract the rules..."
-        : "Got it! Reading through your document now...\n\nThis is your first upload, so processing may take a while. I'll notify you when it's ready — feel free to come back in **30–60 minutes**.",
-        { widget: "import_progress" }
-      ),
-    ]);
-  };
-
-  const handleUrlSubmit = () => {
-    if (!urlInput.trim()) return;
-    setMessages((prev) => [
-      ...prev,
-      makeObMsg("manager", `Shared link: ${urlInput.trim()}`),
-    ]);
-    setUrlInput("");
-    setShowUrlInput(false);
-    setPhase("importing");
-    setImportProgress(0);
-    addAiMessages([
-      makeObMsg("ai", "Got it! Fetching and analyzing the page content...\n\nThis is your first upload, so processing may take a while. I'll notify you when it's ready — feel free to come back in **30–60 minutes**.", { widget: "import_progress" }),
-    ]);
-  };
-
-  // ── Import progress simulation ──
-  useEffect(() => {
-    if (phase !== "importing") return;
-    const interval = setInterval(() => {
-      setImportProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setPhase("processing_notice");
-            addAiMessages([
-              makeObMsg("ai", `Done! I extracted **${DEMO_EXTRACTED_RULES.length} rules** from your document:`, {
-                widget: "parse_result",
-              }),
-              makeObMsg("ai", `I found **${DEMO_CONFLICTS.length} conflicts** that need your input. Let me walk you through each one.`, {
-                widget: "conflict_queue",
-              }),
-            ], 600);
-          }, 500);
-          return 100;
-        }
-        return prev + Math.random() * 15;
-      });
-    }, 180);
-    return () => clearInterval(interval);
-  }, [phase]);
-
-  const handleConflictDismiss = (conflictId: number) => {
-    const updated = conflicts.map((c) =>
-      c.id === conflictId ? { ...c, resolved: true, choice: "dismissed" } : c
-    );
-    setConflicts(updated);
-
-    setMessages((prev) => [
-      ...prev,
-      makeObMsg("manager", "Dismiss — I'll decide later"),
-    ]);
-
-    const nextUnresolved = updated.findIndex((c) => !c.resolved);
-    if (nextUnresolved === -1) {
-      setPhase("playbook_done");
-      addAiMessages([
-        makeObMsg("ai", "Playbook is ready! You can revisit dismissed conflicts anytime in the **Playbook** tab."),
-        makeObMsg("ai", "**Second — let's hire your first support rep.**\n\nI'll start them on WISMO — order status, cancellations for unshipped orders, and address changes. Highest volume, lowest risk. Once they prove themselves, we expand their scope.\n\nI've pre-configured a rep based on your docs. Review the profile and hit Hire:", {
-          choices: [
-            { label: "Review & Hire Support Rep →", value: "hire_rep", variant: "primary" },
-          ],
-        }),
-      ]);
-    } else {
-      setCurrentConflictIdx(nextUnresolved);
-      addAiMessages([
-        makeObMsg("ai", "No problem, you can resolve it later. Next conflict:"),
-      ]);
-    }
-  };
-
-  const handleChoice = (value: string) => {
-    if (value === "hire_rep") {
-      setShowHireDialog(true);
-    }
-  };
-
-  const handleHireFromDialog = (name: string) => {
-    setShowHireDialog(false);
-    setPhase("done");
-    setMessages((prev) => [
-      ...prev,
-      makeObMsg("manager", `Hired ${name}!`),
-    ]);
-    addAiMessages([
-      makeObMsg("ai", `**${name}** is now on the team! They'll start handling WISMO tickets right away. You can find them in the left panel under **Reps** — check their escalations and adjust their profile anytime.`),
-    ]);
-    onHireRep();
-  };
-
-  const renderWidget = (msg: OnboardingMsg) => {
-    switch (msg.widget) {
-      case "upload_doc":
-        return (
-          <div className="mt-2.5 space-y-2">
-            <div
-              onClick={() => handleUpload(false)}
-              className="p-4 rounded-lg border border-dashed border-border bg-white hover:border-primary/40 hover:bg-primary/[0.02] transition-all cursor-pointer"
-            >
-              <div className="text-center">
-                <Upload className="w-5 h-5 text-muted-foreground/40 mx-auto mb-1.5" />
-                <p className="text-[12px] font-medium text-foreground">Drop your document here, or click to browse</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">PDF, DOCX, TXT, or paste a URL below</p>
-              </div>
-            </div>
-
-            {showUrlInput ? (
-              <div className="flex items-center gap-2">
-                <div className="flex-1 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 focus-within:ring-1 focus-within:ring-primary/30">
-                  <Globe className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
-                  <input
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleUrlSubmit()}
-                    placeholder="https://your-store.com/return-policy"
-                    className="flex-1 text-[12px] bg-transparent outline-none placeholder:text-muted-foreground/40"
-                    autoFocus
-                  />
-                </div>
-                <button
-                  onClick={handleUrlSubmit}
-                  disabled={!urlInput.trim()}
-                  className="px-3 py-2 rounded-lg text-[11px] font-medium bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-40"
-                >
-                  Import
-                </button>
-                <button
-                  onClick={() => { setShowUrlInput(false); setUrlInput(""); }}
-                  className="p-2 rounded-lg text-muted-foreground hover:bg-accent transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setShowUrlInput(true)}
-                  className="text-[11px] text-primary hover:underline flex items-center gap-1"
-                >
-                  <Link2 className="w-3 h-3" /> Or paste a webpage URL
-                </button>
-                <span className="text-muted-foreground/30">|</span>
-                <button
-                  onClick={() => handleUpload(true)}
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  No doc handy? <span className="text-primary hover:underline">Try with Seel Return Guidelines</span>
-                </button>
-              </div>
-            )}
-          </div>
-        );
-
-      case "import_progress":
-        return (
-          <div className="mt-2 p-3 rounded-lg border border-border bg-white">
-            <div className="flex items-center gap-2.5 mb-2">
-              <Bot className="w-4 h-4 text-primary animate-pulse" />
-              <span className="text-[11px] text-muted-foreground">
-                {importProgress < 30 && "Reading document..."}
-                {importProgress >= 30 && importProgress < 60 && "Extracting business rules..."}
-                {importProgress >= 60 && importProgress < 90 && "Cross-referencing with FAQ..."}
-                {importProgress >= 90 && "Finalizing..."}
-              </span>
-            </div>
-            <Progress value={Math.min(importProgress, 100)} className="h-1" />
-          </div>
-        );
-
-      case "parse_result": {
-        const visibleRules = showAllRules ? DEMO_EXTRACTED_RULES : DEMO_EXTRACTED_RULES.slice(0, 5);
-        return (
-          <div className="mt-2 p-3 rounded-lg border border-border bg-white">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="text-[12px] font-medium">{DEMO_EXTRACTED_RULES.length} rules extracted</span>
-            </div>
-            <div className="space-y-0.5">
-              {visibleRules.map((name, i) => (
-                <div key={i} className="flex items-center gap-2 py-1 px-2 rounded-md hover:bg-muted/30">
-                  <div className="w-1 h-1 rounded-full bg-emerald-400 shrink-0" />
-                  <span className="text-[11px] text-foreground">{name}</span>
-                </div>
-              ))}
-            </div>
-            {DEMO_EXTRACTED_RULES.length > 5 && (
-              <button
-                onClick={() => setShowAllRules(!showAllRules)}
-                className="text-[10px] text-primary hover:underline mt-1.5 flex items-center gap-0.5"
-              >
-                {showAllRules ? (
-                  <><ChevronUp className="w-3 h-3" /> Show less</>
-                ) : (
-                  <><ChevronDown className="w-3 h-3" /> Show all {DEMO_EXTRACTED_RULES.length} rules</>
-                )}
-              </button>
-            )}
-          </div>
-        );
-      }
-
-      case "conflict_queue": {
-        const current = conflicts[currentConflictIdx];
-        if (!current || current.resolved) return null;
-        const resolvedCount = conflicts.filter((c) => c.resolved).length;
-
-        return (
-          <div className="mt-2.5 space-y-2">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] text-muted-foreground">
-                Conflict {resolvedCount + 1} of {conflicts.length}
-              </span>
-              <div className="flex-1 h-1 bg-muted/40 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary/60 rounded-full transition-all"
-                  style={{ width: `${(resolvedCount / conflicts.length) * 100}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-amber-100/60 bg-amber-50/20 overflow-hidden">
-              <div className="px-3.5 py-2.5">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-[12px] font-medium text-foreground">{current.title}</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">{current.description}</p>
-
-                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-amber-100/40">
-                  <button
-                    onClick={() => handleConflictDismiss(current.id)}
-                    className="px-3 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground hover:bg-accent transition-colors"
-                  >
-                    Dismiss — I'll decide later
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <>
-      <ScrollArea className="flex-1">
-        <div className="max-w-[620px] mx-auto px-5 py-6 space-y-3">
-          {messages.map((msg) => (
-            <div key={msg.id} className={cn("flex gap-2.5", msg.sender === "manager" && "flex-row-reverse")}>
-              {msg.sender === "ai" && (
-                <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[11px]">👔</span>
-                </div>
-              )}
-              <div className={cn("max-w-[85%] min-w-0", msg.sender === "manager" && "text-right")}>
-                <div className={cn("flex items-center gap-1.5 mb-0.5", msg.sender === "manager" && "justify-end")}>
-                  <span className="text-[10px] font-medium text-foreground">{msg.sender === "ai" ? "Alex (Team Lead)" : "You"}</span>
-                </div>
-                <div className={cn(
-                  "rounded-xl px-3 py-2 inline-block text-left",
-                  msg.sender === "ai" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
-                )}>
-                  {msg.content && <p className="text-[12.5px] leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />}
-                  {msg.widget && renderWidget(msg)}
-                </div>
-                {msg.choices && (
-                  <div className="flex flex-wrap gap-1.5 mt-2 ml-0.5">
-                    {msg.choices.map((c) => (
-                      <button
-                        key={c.value}
-                        onClick={() => handleChoice(c.value)}
-                        className={cn(
-                          "px-4 py-2 rounded-lg text-[12px] font-medium transition-colors",
-                          c.variant === "primary"
-                            ? "bg-teal-600 text-white hover:bg-teal-700"
-                            : "border border-border text-foreground hover:bg-accent"
-                        )}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          <div ref={endRef} />
-        </div>
-      </ScrollArea>
-
-      <HireRepDialog
-        open={showHireDialog}
-        onOpenChange={setShowHireDialog}
-        onHire={handleHireFromDialog}
-      />
-    </>
   );
 }
 
@@ -1652,6 +1231,162 @@ function RepOnboarding({
 }
 
 // ══════════════════════════════════════════════════════════
+// ── REP PROFILE PANEL (default: view mode) ──────────────
+// ══════════════════════════════════════════════════════════
+
+interface ConfigHistoryEntry {
+  id: string;
+  hash: string;
+  description: string;
+  author: string;
+  timestamp: string;
+}
+
+const CONFIG_HISTORY: ConfigHistoryEntry[] = [
+  {
+    id: "ch-1",
+    hash: "0413d17",
+    description: "Ava onboarded — WISMO Specialist, Training mode",
+    author: "Team Lead (Alex)",
+    timestamp: "2026-03-29T13:14:00Z",
+  },
+];
+
+function RepProfilePanel({
+  repName,
+  repMode,
+  onClose,
+  onNavigatePerformance,
+}: {
+  repName: string;
+  repMode: AgentMode;
+  onClose: () => void;
+  onNavigatePerformance: () => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const initials = getInitials(repName);
+
+  const detailRows = [
+    { label: "Role", value: "L1 — WISMO Specialist" },
+    { label: "Strategy", value: "Conservative" },
+    { label: "Refund Cap", value: "£100" },
+    { label: "Personality", value: "Warm & Professional" },
+    { label: "Language", value: "English (British)" },
+    { label: "Started", value: "Mar 29, 2026" },
+  ];
+
+  const perfRows = [
+    { label: "Tickets", value: "0 total / 0 today" },
+    { label: "Resolution", value: "0%" },
+    { label: "CSAT", value: "0" },
+    { label: "Avg Response", value: "—" },
+    { label: "Escalation", value: "0%" },
+    { label: "Cost/Ticket", value: "—" },
+  ];
+
+  return (
+    <div className="w-[300px] border-l border-border bg-white flex flex-col h-full shrink-0">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
+        <span className="text-[12px] font-semibold text-foreground">{repName}</span>
+        <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
+          <X className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="px-4 py-4 space-y-5">
+          {/* Avatar + mode badge */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-violet-500 flex items-center justify-center">
+              <span className="text-[18px] font-semibold text-white">{initials}</span>
+            </div>
+            <div>
+              <p className="text-[14px] font-semibold text-foreground">{repName}</p>
+              <Badge variant="outline" className={cn(
+                "text-[9px] px-1.5 h-4 mt-0.5 font-medium border",
+                repMode === "training" ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"
+              )}>
+                {repMode === "training" ? "TRAINING" : "PRODUCTION"}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Details */}
+          <div>
+            <p className="text-[9.5px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Details</p>
+            <div className="space-y-0">
+              {detailRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-b-0">
+                  <span className="text-[11px] text-muted-foreground">{row.label}</span>
+                  <span className="text-[11px] font-medium text-foreground">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Performance */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[9.5px] font-semibold text-muted-foreground uppercase tracking-wider">Performance</p>
+              <button
+                onClick={onNavigatePerformance}
+                className="text-[9px] text-primary hover:underline flex items-center gap-0.5"
+              >
+                <BarChart3 className="w-3 h-3" /> View more
+              </button>
+            </div>
+            <div className="space-y-0">
+              {perfRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-b-0">
+                  <span className="text-[11px] text-muted-foreground">{row.label}</span>
+                  <span className="text-[11px] font-medium text-foreground">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Config History */}
+          <div>
+            <p className="text-[9.5px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              Config History ({CONFIG_HISTORY.length})
+            </p>
+            <div className="space-y-2">
+              {CONFIG_HISTORY.map((entry) => (
+                <div key={entry.id} className="flex items-start gap-2">
+                  <Badge variant="outline" className="text-[8px] px-1.5 h-4 font-mono shrink-0 mt-0.5 bg-amber-50 text-amber-700 border-amber-200">
+                    {entry.hash}
+                  </Badge>
+                  <div className="min-w-0">
+                    <p className="text-[10.5px] text-foreground leading-snug">{entry.description}</p>
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      {entry.author} · {new Date(entry.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}, {new Date(entry.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Edit button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-7 text-[10.5px]"
+            onClick={() => {
+              setIsEditing(true);
+              toast.info("Edit mode — feature coming soon");
+            }}
+          >
+            <Pencil className="w-3 h-3 mr-1" /> Edit Profile
+          </Button>
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
 // ── MAIN PAGE COMPONENT ─────────────────────────────────
 // ══════════════════════════════════════════════════════════
 
@@ -1670,10 +1405,8 @@ export default function CommunicationPage() {
 
   // Team Lead conversation state
   const [activeTab, setActiveTab] = useState<"conversations" | "setup">("conversations");
-  const [inputValue, setInputValue] = useState("");
-  const [extraMessages, setExtraMessages] = useState<ChatMessage[]>([]);
   const [showTopics, setShowTopics] = useState(false);
-  const [threadPanel, setThreadPanel] = useState<{ topicId: string; topicTitle: string; contextMsg: string } | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
   // Rep state
   const [repHired, setRepHired] = useState(false);
@@ -1690,37 +1423,30 @@ export default function CommunicationPage() {
   // Integration status
   const zendeskConnected = false;
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Topics sorted by date (newest first for list view)
+  const sortedTopics = useMemo(() =>
+    [...TOPICS].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    []
+  );
 
-  // Build Team Lead messages
-  const baseMessages = useMemo(() => buildChatMessages(TOPICS), []);
-  const allMessages = useMemo(() => {
-    const combined = [...baseMessages, ...extraMessages];
-    combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return combined;
-  }, [baseMessages, extraMessages]);
-
-  // Topics list
-  const topicsList = useMemo(() => {
-    const topicMap = new Map<string, TopicItem>();
-    for (const msg of allMessages) {
-      if (!topicMap.has(msg.topicId)) {
-        topicMap.set(msg.topicId, {
-          id: msg.topicId,
-          title: msg.topicTitle,
-          status: msg.topicStatus,
-          timestamp: msg.timestamp,
-          hasActions: !!msg.hasActions,
-          replyCount: 0,
-        });
+  // Topics grouped by date for the main feed (oldest first within each day)
+  const topicsByDate = useMemo(() => {
+    const groups: { date: string; topics: Topic[] }[] = [];
+    const sorted = [...TOPICS].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    let currentDate = "";
+    for (const topic of sorted) {
+      const dateKey = new Date(topic.createdAt).toISOString().split("T")[0];
+      if (dateKey !== currentDate) {
+        currentDate = dateKey;
+        groups.push({ date: topic.createdAt, topics: [topic] });
+      } else {
+        groups[groups.length - 1].topics.push(topic);
       }
-      topicMap.get(msg.topicId)!.replyCount++;
-      topicMap.get(msg.topicId)!.timestamp = msg.timestamp;
     }
-    return Array.from(topicMap.values());
-  }, [allMessages]);
+    return groups;
+  }, []);
 
-  const waitingCount = topicsList.filter((t) => t.status === "waiting" && t.hasActions).length;
+  const waitingCount = TOPICS.filter((t) => t.status !== "resolved" && t.proposedRule?.status === "pending").length;
 
   // Escalation counts
   const needsAttentionCount = useMemo(() =>
@@ -1728,101 +1454,25 @@ export default function CommunicationPage() {
     [escalationStatuses]
   );
 
-  // Group messages by date
-  const groupedMessages = useMemo(() => {
-    const groups: { date: string; messages: ChatMessage[] }[] = [];
-    let currentDate = "";
-    for (const msg of allMessages) {
-      const dateKey = new Date(msg.timestamp).toISOString().split("T")[0];
-      if (dateKey !== currentDate) {
-        currentDate = dateKey;
-        groups.push({ date: msg.timestamp, messages: [msg] });
-      } else {
-        groups[groups.length - 1].messages.push(msg);
-      }
-    }
-    return groups;
-  }, [allMessages]);
+  const selectedThread = selectedThreadId ? TOPICS.find(t => t.id === selectedThreadId) : null;
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [allMessages.length]);
-
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
-    const topicId = `new-${Date.now()}`;
-    const now = new Date().toISOString();
-
-    const managerMsg: ChatMessage = {
-      id: `cm-${Date.now()}`,
-      sender: "manager",
-      content: inputValue.trim(),
-      timestamp: now,
-      topicId,
-      topicTitle: inputValue.trim().slice(0, 60),
-      topicStatus: "waiting",
-      isTopicStart: true,
-    };
-
-    setExtraMessages((prev) => [...prev, managerMsg]);
-    setInputValue("");
-
-    setTimeout(() => {
-      const aiMsg: ChatMessage = {
-        id: `cm-ai-${Date.now()}`,
-        sender: "ai",
-        content: "I understand. Let me update the rules to reflect this change.",
-        timestamp: new Date().toISOString(),
-        topicId,
-        topicTitle: managerMsg.topicTitle,
-        topicStatus: "waiting",
-        ruleChange: {
-          type: "new",
-          ruleName: managerMsg.topicTitle,
-          after: inputValue.trim(),
-          source: "Manager directive",
-        },
-        hasActions: false,
-      };
-      setExtraMessages((prev) => [...prev, aiMsg]);
-    }, 1500);
+  const handleCloseWelcome = () => {
+    localStorage.setItem("seel_ai_welcome_seen", "1");
+    setShowWelcome(false);
   };
 
   const handleAction = (topicId: string, action: string) => {
-    if (action === "modify_accept") {
-      const msgs = allMessages.filter((m) => m.topicId === topicId);
-      const first = msgs[0];
-      if (first) {
-        setThreadPanel({ topicId, topicTitle: first.topicTitle, contextMsg: first.content });
-        setShowTopics(false);
-        toast.info("Edit the rule in the thread, then confirm.");
-      }
+    if (action === "reply") {
+      setSelectedThreadId(topicId);
+      setShowTopics(false);
     } else {
       toast.success(action === "accept" ? "Rule accepted" : "Rule rejected");
     }
   };
 
-  const handleReply = (topicId: string) => {
-    const msgs = allMessages.filter((m) => m.topicId === topicId);
-    const first = msgs[0];
-    if (first) {
-      setThreadPanel({ topicId, topicTitle: first.topicTitle, contextMsg: first.content });
-      setShowTopics(false);
-    }
-  };
-
-  const handleSelectTopic = (topicId: string) => {
-    const el = document.getElementById(`msg-${topicId}-start`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("bg-primary/5");
-      setTimeout(() => el.classList.remove("bg-primary/5"), 2000);
-    }
-  };
-
-  const handleCloseWelcome = () => {
-    localStorage.setItem("seel_ai_welcome_seen", "1");
-    setShowWelcome(false);
+  const handleOpenThread = (topicId: string) => {
+    setSelectedThreadId(topicId);
+    setShowTopics(false);
   };
 
   const handleHireRep = () => {
@@ -1836,8 +1486,6 @@ export default function CommunicationPage() {
     setRepOnboarded(true);
     setRepMode(mode);
   };
-
-  const shownTopics = new Set<string>();
 
   // Escalation tickets sorted by time (chronological)
   const escalationTicketsSorted = useMemo(() =>
@@ -1996,7 +1644,7 @@ export default function CommunicationPage() {
                     <div className="h-4 w-px bg-border" />
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => setActiveTab("conversations")}
+                        onClick={() => { setActiveTab("conversations"); setSelectedThreadId(null); }}
                         className={cn(
                           "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
                           activeTab === "conversations"
@@ -2022,7 +1670,7 @@ export default function CommunicationPage() {
 
                   {activeTab === "conversations" && (
                     <button
-                      onClick={() => { setShowTopics(!showTopics); setThreadPanel(null); }}
+                      onClick={() => { setShowTopics(!showTopics); setSelectedThreadId(null); }}
                       className={cn(
                         "flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] transition-colors relative",
                         showTopics ? "bg-primary/8 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -2041,10 +1689,11 @@ export default function CommunicationPage() {
                 {/* Tab content */}
                 {activeTab === "conversations" ? (
                   <div className="flex flex-1 min-h-0">
+                    {/* Main feed: Feishu-style topic cards */}
                     <div className="flex-1 flex flex-col min-w-0">
                       <ScrollArea className="flex-1">
-                        <div className="max-w-[640px] mx-auto px-5 py-4 space-y-3">
-                          {groupedMessages.map((group, gi) => (
+                        <div className="max-w-[680px] mx-auto px-5 py-4 space-y-3">
+                          {topicsByDate.map((group, gi) => (
                             <div key={gi}>
                               <div className="flex items-center gap-3 my-4">
                                 <div className="flex-1 h-px bg-border" />
@@ -2055,68 +1704,41 @@ export default function CommunicationPage() {
                               </div>
 
                               <div className="space-y-3">
-                                {group.messages.map((msg) => {
-                                  const showTopicLabel = msg.isTopicStart && !shownTopics.has(msg.topicId);
-                                  if (msg.isTopicStart) shownTopics.add(msg.topicId);
-
-                                  return (
-                                    <div key={msg.id} id={msg.isTopicStart ? `msg-${msg.topicId}-start` : undefined} className="transition-colors duration-500 rounded-lg">
-                                      {showTopicLabel && (
-                                        <TopicLabel title={msg.topicTitle} status={msg.topicStatus} />
-                                      )}
-                                      <MessageBubble
-                                        msg={msg}
-                                        senderLabel="Alex (Team Lead)"
-                                        onAction={handleAction}
-                                        onReply={handleReply}
-                                      />
-                                    </div>
-                                  );
-                                })}
+                                {group.topics.map((topic) => (
+                                  <TopicCard
+                                    key={topic.id}
+                                    topic={topic}
+                                    onOpenThread={handleOpenThread}
+                                    onAction={handleAction}
+                                  />
+                                ))}
                               </div>
                             </div>
                           ))}
-                          <div ref={messagesEndRef} />
                         </div>
                       </ScrollArea>
 
-                      {/* Input */}
-                      <div className="px-5 py-3 border-t border-border bg-white">
-                        <div className="max-w-[640px] mx-auto">
-                          <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/40 transition-all">
-                            <input
-                              value={inputValue}
-                              onChange={(e) => setInputValue(e.target.value)}
-                              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-                              placeholder="Message Alex..."
-                              className="flex-1 text-[12.5px] bg-transparent outline-none placeholder:text-muted-foreground/50"
-                            />
-                            <button
-                              onClick={handleSendMessage}
-                              disabled={!inputValue.trim()}
-                              className="p-1.5 rounded-md text-primary hover:bg-primary/8 transition-colors disabled:opacity-30"
-                            >
-                              <Send className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
+                      {/* No direct input — encourage topic-level replies */}
+                      <div className="px-5 py-2.5 border-t border-border bg-muted/5">
+                        <p className="text-[10.5px] text-muted-foreground text-center">
+                          Click <MessageCircle className="w-3 h-3 inline-block mx-0.5" /> <strong>Reply to topic</strong> on any card above to respond within the thread.
+                        </p>
                       </div>
                     </div>
 
                     {/* Side panels */}
-                    {threadPanel && (
-                      <ThreadSidePanel
-                        topicId={threadPanel.topicId}
-                        topicTitle={threadPanel.topicTitle}
-                        contextMsg={threadPanel.contextMsg}
-                        onClose={() => setThreadPanel(null)}
+                    {selectedThread && (
+                      <FullThreadPanel
+                        topic={selectedThread}
+                        onClose={() => setSelectedThreadId(null)}
+                        onAction={handleAction}
                       />
                     )}
 
-                    {showTopics && !threadPanel && (
+                    {showTopics && !selectedThread && (
                       <TopicsPanel
-                        topics={topicsList}
-                        onSelectTopic={handleSelectTopic}
+                        topics={sortedTopics}
+                        onSelectTopic={(id) => { handleOpenThread(id); setShowTopics(false); }}
                         onClose={() => setShowTopics(false)}
                       />
                     )}
