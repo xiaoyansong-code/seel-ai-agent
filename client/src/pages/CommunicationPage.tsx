@@ -1,9 +1,9 @@
-/* ── CommunicationPage ─────────────────────────────────────────
+/* ────────────────────────────────────────────────────────────
    AI Support → Communication tab.
    Left panel: Team Lead (fixed) + Reps section.
    Right area: conversation with selected entity.
    - Team Lead: Topics (rule proposals, learning, performance) + Onboarding
-   - Rep: Escalation tickets (cards with status badges) + Config panel
+   - Rep: Onboarding greeting (scenarios + mode) → Escalation feed + Profile panel
    ──────────────────────────────────────────────────────────── */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -42,14 +42,16 @@ import {
   AlertTriangle, ExternalLink, Pencil, Upload,
   FileText, Sparkles, CheckCircle2, Link2, Eye,
   Rocket, Power, HelpCircle, Settings, Zap, User,
-  AlertCircleIcon, Globe, UserPlus, Clock,
+  AlertCircleIcon, Globe, UserPlus, Clock, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import {
   TOPICS, ESCALATION_TICKETS, ACTION_PERMISSIONS, AGENT_IDENTITY, AGENT_MODE,
+  PERFORMANCE_SUMMARY,
   type Topic, type EscalationTicket, type EscalationStatus,
   type ActionPermission, type AgentIdentity, type AgentMode,
+  type PerformanceMetric,
 } from "@/lib/mock-data";
 
 // ══════════════════════════════════════════════════════════
@@ -108,6 +110,10 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function getInitials(name: string): string {
+  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+}
+
 function renderMarkdown(text: string) {
   return text.split("\n").map((line, i) => {
     if (line.trim() === "") return <div key={i} className="h-1.5" />;
@@ -130,7 +136,14 @@ function renderMarkdown(text: string) {
         );
       }
     }
-    return <p key={i} dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />;
+    if (line.startsWith("> ")) {
+      return (
+        <div key={i} className="border-l-2 border-muted-foreground/20 pl-2.5 ml-1 my-1">
+          <span className="italic text-muted-foreground" dangerouslySetInnerHTML={{ __html: line.slice(2).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>") }} />
+        </div>
+      );
+    }
+    return <p key={i} dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>") }} />;
   });
 }
 
@@ -282,7 +295,7 @@ function CollapsibleText({ text, maxLines = 4 }: { text: string; maxLines?: numb
   );
 }
 
-// ── Topic Label ────────────────────────────────────────
+// ── Topic Label ──
 
 function TopicLabel({ title, status }: { title: string; status: "waiting" | "done" }) {
   return (
@@ -361,20 +374,24 @@ function RuleChangeCard({
 function MessageBubble({
   msg,
   senderLabel,
+  senderAvatar,
   onAction,
   onReply,
 }: {
   msg: ChatMessage;
   senderLabel: string;
+  senderAvatar?: React.ReactNode;
   onAction?: (topicId: string, action: string) => void;
   onReply?: (topicId: string) => void;
 }) {
   return (
     <div className={cn("flex gap-2.5 group", msg.sender === "manager" && "flex-row-reverse")}>
       {msg.sender === "ai" && (
-        <div className="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
-          <span className="text-[11px]">🎯</span>
-        </div>
+        senderAvatar || (
+          <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+            <span className="text-[11px]">👔</span>
+          </div>
+        )
       )}
       <div className={cn("max-w-[85%] min-w-0", msg.sender === "manager" && "text-right")}>
         <div className={cn("flex items-center gap-1.5 mb-0.5", msg.sender === "manager" && "justify-end")}>
@@ -401,70 +418,6 @@ function MessageBubble({
             className="opacity-0 group-hover:opacity-100 mt-0.5 ml-0.5 text-[10px] text-muted-foreground hover:text-primary transition-all flex items-center gap-0.5"
           >
             <Reply className="w-3 h-3" /> Reply
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Escalation Card ────────────────────────────────────
-
-function EscalationCard({
-  ticket,
-  onStatusChange,
-}: {
-  ticket: EscalationTicket & { status: EscalationStatus };
-  onStatusChange: (id: string, status: EscalationStatus) => void;
-}) {
-  return (
-    <div className={cn(
-      "rounded-lg border bg-white p-3 transition-all",
-      ticket.status === "needs_attention" ? "border-red-200/60 shadow-sm" :
-      ticket.status === "in_progress" ? "border-amber-200/60" : "border-border/40 opacity-70"
-    )}>
-      <div className="flex items-start gap-2.5">
-        <div className={cn(
-          "w-1.5 h-1.5 rounded-full mt-1.5 shrink-0",
-          ticket.status === "needs_attention" ? "bg-red-500" :
-          ticket.status === "in_progress" ? "bg-amber-400" : "bg-emerald-500"
-        )} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-[12px] font-medium text-foreground truncate">{ticket.subject}</p>
-            <span className="text-[9px] text-muted-foreground shrink-0">{formatRelativeTime(ticket.createdAt)}</span>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{ticket.reason}</p>
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[10px] text-muted-foreground/60">#{ticket.zendeskTicketId}</span>
-            <span className="text-[10px] text-muted-foreground/60">·</span>
-            <span className="text-[10px] text-muted-foreground/60">{ticket.customerName}</span>
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-border/30">
-        <a
-          href={ticket.zendeskUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-primary hover:bg-primary/8 transition-colors"
-        >
-          <ExternalLink className="w-3 h-3" /> Open in Zendesk
-        </a>
-        {ticket.status === "needs_attention" && (
-          <button
-            onClick={() => onStatusChange(ticket.id, "in_progress")}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground hover:bg-accent transition-colors ml-auto"
-          >
-            Mark as in progress
-          </button>
-        )}
-        {ticket.status === "in_progress" && (
-          <button
-            onClick={() => onStatusChange(ticket.id, "resolved")}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-emerald-600 hover:bg-emerald-50 transition-colors ml-auto"
-          >
-            <CheckCircle2 className="w-3 h-3" /> Mark resolved
           </button>
         )}
       </div>
@@ -500,52 +453,36 @@ function TopicsPanel({
   const list = tab === "waiting" ? waiting : done;
 
   return (
-    <div className="w-[260px] border-l border-border bg-white flex flex-col h-full shrink-0">
+    <div className="w-[280px] border-l border-border bg-white flex flex-col h-full shrink-0">
       <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
         <span className="text-[12px] font-semibold text-foreground">Topics</span>
         <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
           <X className="w-3.5 h-3.5 text-muted-foreground" />
         </button>
       </div>
-
-      <div className="flex border-b border-border">
+      <div className="flex px-4 pt-2 gap-1">
         <button
           onClick={() => setTab("waiting")}
-          className={cn(
-            "flex-1 py-2 text-[11px] font-medium text-center transition-colors relative",
-            tab === "waiting" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-          )}
+          className={cn("px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
+            tab === "waiting" ? "bg-amber-50 text-amber-700" : "text-muted-foreground hover:bg-accent")}
         >
-          Waiting
-          {waiting.length > 0 && (
-            <span className="ml-1 w-4 h-4 inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-medium">
-              {waiting.length}
-            </span>
-          )}
-          {tab === "waiting" && <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-foreground rounded-full" />}
+          Waiting ({waiting.length})
         </button>
         <button
           onClick={() => setTab("done")}
-          className={cn(
-            "flex-1 py-2 text-[11px] font-medium text-center transition-colors relative",
-            tab === "done" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-          )}
+          className={cn("px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
+            tab === "done" ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground hover:bg-accent")}
         >
-          Done <span className="text-[9px] text-muted-foreground">({done.length})</span>
-          {tab === "done" && <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-foreground rounded-full" />}
+          Done ({done.length})
         </button>
       </div>
-
-      <ScrollArea className="flex-1">
-        <div className="py-1">
-          {list.length === 0 && (
-            <p className="text-[11px] text-muted-foreground/50 text-center py-8">No topics</p>
-          )}
+      <ScrollArea className="flex-1 px-3 pt-2">
+        <div className="space-y-0.5 pb-4">
           {list.map((topic) => (
             <button
               key={topic.id}
               onClick={() => onSelectTopic(topic.id)}
-              className="w-full text-left px-4 py-2.5 hover:bg-accent/50 transition-colors border-b border-border/30"
+              className="w-full text-left px-2.5 py-2 rounded-md hover:bg-accent/50 transition-colors"
             >
               <p className="text-[11.5px] font-medium text-foreground truncate">{topic.title}</p>
               <div className="flex items-center gap-2 mt-0.5">
@@ -636,8 +573,8 @@ function ThreadSidePanel({
           {replies.map((reply) => (
             <div key={reply.id} className={cn("flex gap-2", reply.sender === "manager" && "flex-row-reverse")}>
               {reply.sender === "ai" ? (
-                <div className="w-5 h-5 rounded-full bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[9px]">🎯</span>
+                <div className="w-5 h-5 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[9px]">👔</span>
                 </div>
               ) : (
                 <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5">
@@ -681,18 +618,42 @@ function ThreadSidePanel({
 }
 
 // ══════════════════════════════════════════════════════════
-// ── REP CONFIG PANEL ────────────────────────────────────
+// ── REP PROFILE PANEL (default: view mode) ──────────────
 // ══════════════════════════════════════════════════════════
 
-function RepConfigPanel({
+interface ConfigHistoryEntry {
+  id: string;
+  hash: string;
+  description: string;
+  author: string;
+  timestamp: string;
+}
+
+const CONFIG_HISTORY: ConfigHistoryEntry[] = [
+  {
+    id: "ch-1",
+    hash: "0413d17",
+    description: "Ava onboarded — WISMO Specialist, Training mode",
+    author: "Team Lead (Alex)",
+    timestamp: "2026-03-29T13:14:00Z",
+  },
+];
+
+function RepProfilePanel({
+  repName,
+  repMode,
   onClose,
+  onNavigatePerformance,
 }: {
+  repName: string;
+  repMode: AgentMode;
   onClose: () => void;
+  onNavigatePerformance: () => void;
 }) {
-  const [agentMode, setAgentMode] = useState<AgentMode>(AGENT_MODE);
+  const [view, setView] = useState<"view" | "edit">("view");
+  const [agentMode, setAgentMode] = useState<AgentMode>(repMode);
   const [permissions, setPermissions] = useState<ActionPermission[]>(ACTION_PERMISSIONS);
   const [identity, setIdentity] = useState<AgentIdentity>(AGENT_IDENTITY);
-  const [activeSection, setActiveSection] = useState<"mode" | "identity" | "actions">("mode");
 
   const togglePermission = (id: string) => {
     setPermissions((prev) =>
@@ -704,23 +665,142 @@ function RepConfigPanel({
     );
   };
 
-  const modeConfig: { mode: AgentMode; icon: typeof Rocket; color: string; desc: string }[] = [
-    { mode: "production", icon: Rocket, color: "emerald", desc: "Replies directly to customers." },
-    { mode: "training", icon: Eye, color: "amber", desc: "Drafts as internal notes for review." },
-    { mode: "off", icon: Power, color: "zinc", desc: "Inactive — all tickets go to humans." },
-  ];
+  const grouped = useMemo(() => {
+    return permissions.reduce<Record<string, ActionPermission[]>>((acc, p) => {
+      (acc[p.category] = acc[p.category] || []).push(p);
+      return acc;
+    }, {});
+  }, [permissions]);
 
+  const modeLabel = agentMode === "training" ? "TRAINING" : agentMode === "production" ? "PRODUCTION" : "OFF";
+  const modeColor = agentMode === "training" ? "bg-amber-100 text-amber-700" : agentMode === "production" ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-600";
+
+  if (view === "view") {
+    return (
+      <div className="w-[340px] border-l border-border bg-white flex flex-col h-full shrink-0">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
+          <span className="text-[12px] font-semibold text-foreground">Profile</span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setView("edit")}
+              className="px-2 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              Edit
+            </button>
+            <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-5">
+            {/* Avatar + Name + Mode badge */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-violet-500 flex items-center justify-center shrink-0">
+                <span className="text-[16px] font-semibold text-white">{getInitials(repName)}</span>
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold text-foreground">{repName}</p>
+                <Badge className={cn("text-[9px] px-1.5 h-4 font-semibold border-0", modeColor)}>
+                  {modeLabel}
+                </Badge>
+              </div>
+            </div>
+
+            {/* ── Details ── */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Details</p>
+              <div className="space-y-2">
+                {[
+                  { label: "Role", value: "L1 — WISMO Specialist" },
+                  { label: "Strategy", value: "Conservative" },
+                  { label: "Refund Cap", value: "$150" },
+                  { label: "Personality", value: identity.tone === "friendly" ? "Warm & Professional" : identity.tone === "professional" ? "Professional" : "Casual" },
+                  { label: "Language", value: "English" },
+                  { label: "Started", value: "Mar 29, 2026" },
+                ].map((row) => (
+                  <div key={row.label} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
+                    <span className="text-[12px] text-muted-foreground">{row.label}</span>
+                    <span className="text-[12px] font-medium text-foreground">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Performance ── */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Performance</p>
+                <button
+                  onClick={onNavigatePerformance}
+                  className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                >
+                  View more <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { label: "Tickets", value: "0 total / 0 today" },
+                  { label: "Resolution", value: "0%" },
+                  { label: "CSAT", value: "0" },
+                  { label: "Avg Response", value: "—" },
+                  { label: "Escalation", value: "0%" },
+                  { label: "Cost/Ticket", value: "—" },
+                ].map((row) => (
+                  <div key={row.label} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
+                    <span className="text-[12px] text-muted-foreground">{row.label}</span>
+                    <span className="text-[12px] font-medium text-foreground">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Config History ── */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Config History ({CONFIG_HISTORY.length})
+              </p>
+              <div className="space-y-2.5">
+                {CONFIG_HISTORY.map((entry) => (
+                  <div key={entry.id} className="flex gap-2.5">
+                    <Badge variant="secondary" className="h-5 text-[9px] px-1.5 font-mono bg-violet-50 text-violet-600 border-violet-200 shrink-0 mt-0.5">
+                      {entry.hash}
+                    </Badge>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium text-foreground leading-snug">{entry.description}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {entry.author} · {new Date(entry.timestamp).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}, {new Date(entry.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // ── Edit mode ──
   return (
-    <div className="w-[360px] border-l border-border bg-white flex flex-col h-full shrink-0">
+    <div className="w-[380px] border-l border-border bg-white flex flex-col h-full shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
-          <Settings className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[12px] font-semibold text-foreground">Configure {identity.name}</span>
+          <button
+            onClick={() => setView("view")}
+            className="p-1 rounded hover:bg-accent transition-colors"
+          >
+            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground rotate-180" />
+          </button>
+          <span className="text-[12px] font-semibold text-foreground">Edit Profile</span>
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => { toast.success("Changes saved"); onClose(); }}
+            onClick={() => { toast.success("Changes saved"); setView("view"); }}
             className="px-2.5 py-1 rounded-md text-[10px] font-medium bg-primary text-white hover:bg-primary/90 transition-colors"
           >
             Save
@@ -731,111 +811,261 @@ function RepConfigPanel({
         </div>
       </div>
 
-      {/* Section tabs */}
-      <div className="flex border-b border-border px-4">
-        {(["mode", "identity", "actions"] as const).map((sec) => (
-          <button
-            key={sec}
-            onClick={() => setActiveSection(sec)}
-            className={cn(
-              "py-2 px-3 text-[11px] font-medium capitalize transition-colors relative",
-              activeSection === sec ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {sec}
-            {activeSection === sec && <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-foreground rounded-full" />}
-          </button>
-        ))}
-      </div>
-
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4">
-          {activeSection === "mode" && (
-            <div className="space-y-2">
-              {modeConfig.map(({ mode, icon: Icon, color, desc }) => (
+        <div className="p-4 space-y-5">
+          {/* ── Mode ── */}
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Mode</p>
+            <div className="flex gap-2">
+              {([
+                { mode: "production" as AgentMode, label: "Production", color: "emerald", desc: "Replies to customers" },
+                { mode: "training" as AgentMode, label: "Training", color: "amber", desc: "Drafts as internal notes" },
+                { mode: "off" as AgentMode, label: "Off", color: "zinc", desc: "Inactive" },
+              ]).map(({ mode, label, color, desc }) => (
                 <button
                   key={mode}
                   onClick={() => setAgentMode(mode)}
                   className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left",
+                    "flex-1 border rounded-md px-3 py-2 text-left transition-all",
                     agentMode === mode
-                      ? `border-${color}-300 bg-${color}-50/50 shadow-sm`
-                      : "border-border hover:bg-accent/50"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                      : "border-border hover:border-primary/30"
                   )}
                 >
-                  <div className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center",
-                    agentMode === mode ? `bg-${color}-100` : "bg-muted/50"
-                  )}>
-                    <Icon className={cn("w-4 h-4", agentMode === mode ? `text-${color}-600` : "text-muted-foreground")} />
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      color === "emerald" && "bg-emerald-400",
+                      color === "amber" && "bg-amber-400",
+                      color === "zinc" && "bg-zinc-400"
+                    )} />
+                    <span className="text-[11px] font-medium">{label}</span>
                   </div>
-                  <div>
-                    <p className="text-[12px] font-medium capitalize">{mode}</p>
-                    <p className="text-[10px] text-muted-foreground">{desc}</p>
-                  </div>
-                  {agentMode === mode && <Check className={`w-4 h-4 text-${color}-500 ml-auto`} />}
+                  <p className="text-[9px] text-muted-foreground">{desc}</p>
                 </button>
               ))}
             </div>
-          )}
+          </div>
 
-          {activeSection === "identity" && (
-            <div className="space-y-4">
+          {/* ── Identity ── */}
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Identity</p>
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <Label className="text-[10px] text-muted-foreground mb-0.5 block">Name</Label>
+                  <Input
+                    value={identity.name}
+                    onChange={(e) => setIdentity({ ...identity, name: e.target.value })}
+                    className="h-7 text-[12px]"
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label className="text-[10px] text-muted-foreground mb-0.5 block">Tone</Label>
+                  <Select value={identity.tone} onValueChange={(v) => setIdentity({ ...identity, tone: v as AgentIdentity["tone"] })}>
+                    <SelectTrigger className="h-7 text-[12px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="professional">Professional</SelectItem>
+                      <SelectItem value="friendly">Friendly</SelectItem>
+                      <SelectItem value="casual">Casual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div>
-                <Label className="text-[11px] font-medium">Name</Label>
+                <Label className="text-[10px] text-muted-foreground mb-0.5 block">Greeting</Label>
                 <Input
-                  value={identity.name}
-                  onChange={(e) => setIdentity({ ...identity, name: e.target.value })}
-                  className="mt-1 h-8 text-[12px]"
-                />
-              </div>
-              <div>
-                <Label className="text-[11px] font-medium">Tone</Label>
-                <Select value={identity.tone} onValueChange={(v) => setIdentity({ ...identity, tone: v as AgentIdentity["tone"] })}>
-                  <SelectTrigger className="mt-1 h-8 text-[12px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="friendly">Friendly</SelectItem>
-                    <SelectItem value="casual">Casual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-[11px] font-medium">Greeting</Label>
-                <Textarea
                   value={identity.greeting}
                   onChange={(e) => setIdentity({ ...identity, greeting: e.target.value })}
-                  className="mt-1 text-[12px] min-h-[60px]"
-                  rows={2}
+                  className="h-7 text-[12px]"
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground mb-0.5 block">Signature</Label>
+                <Input
+                  value={identity.signature}
+                  onChange={(e) => setIdentity({ ...identity, signature: e.target.value })}
+                  className="h-7 text-[12px]"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] text-muted-foreground">Disclose AI identity</Label>
+                <Switch
+                  checked={identity.transparentAboutAI}
+                  onCheckedChange={(checked) => setIdentity({ ...identity, transparentAboutAI: checked })}
                 />
               </div>
             </div>
-          )}
+          </div>
 
-          {activeSection === "actions" && (
-            <div className="space-y-3">
-              {permissions.map((action) => {
-                const isOn = action.permission === "autonomous";
-                return (
-                  <div key={action.id} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
-                    <div className="flex-1 min-w-0 mr-3">
-                      <p className="text-[12px] font-medium text-foreground">{action.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{action.description}</p>
-                    </div>
-                    <Switch
-                      checked={isOn}
-                      onCheckedChange={() => togglePermission(action.id)}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {/* ── Actions (grouped by category, with guardrails) ── */}
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Actions</p>
+            {Object.entries(grouped).map(([category, actions]) => (
+              <div key={category} className="mb-3 last:mb-0">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide mb-1.5">{category}</p>
+                <div className="space-y-0 divide-y divide-border/30">
+                  {actions.map((action) => {
+                    const isOn = action.permission !== "disabled";
+                    const enabledGuardrails = (action.guardrails || []).filter(g => g.enabled);
+                    return (
+                      <div key={action.id} className="py-2 first:pt-0 last:pb-0">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[12px] font-medium text-foreground">{action.name}</span>
+                            <Tip text={action.description} />
+                          </div>
+                          <Switch
+                            checked={isOn}
+                            onCheckedChange={() => togglePermission(action.id)}
+                          />
+                        </div>
+                        {isOn && enabledGuardrails.length > 0 && (
+                          <div className="mt-1 ml-0.5 flex flex-wrap gap-x-3 gap-y-1">
+                            {enabledGuardrails.map((g) => (
+                              <div key={g.id} className="flex items-center gap-1">
+                                <span className="text-[9px] text-amber-600 font-medium">Guardrail:</span>
+                                <span className="text-[9px] text-muted-foreground">{g.label}</span>
+                                {g.type === "number" && (
+                                  <div className="flex items-center gap-0.5">
+                                    <Input
+                                      type="number"
+                                      defaultValue={g.value}
+                                      className="w-12 h-4 text-[9px] px-1"
+                                    />
+                                    {g.unit && <span className="text-[8px] text-muted-foreground">{g.unit}</span>}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </ScrollArea>
     </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ── HIRE REP DIALOG ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+
+function HireRepDialog({
+  open,
+  onOpenChange,
+  onHire,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onHire: (name: string) => void;
+}) {
+  const [repName, setRepName] = useState("Ava");
+  const [personality, setPersonality] = useState<"professional" | "friendly" | "casual">("friendly");
+  const [actions, setActions] = useState<Record<string, boolean>>(() => {
+    const map: Record<string, boolean> = {};
+    ACTION_PERMISSIONS.forEach((a) => {
+      map[a.id] = ["ap-2", "ap-4", "ap-6"].includes(a.id);
+    });
+    return map;
+  });
+
+  const grouped = useMemo(() => {
+    return ACTION_PERMISSIONS.reduce<Record<string, ActionPermission[]>>((acc, p) => {
+      (acc[p.category] = acc[p.category] || []).push(p);
+      return acc;
+    }, {});
+  }, []);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[540px] max-h-[85vh] overflow-y-auto p-0">
+        <div className="bg-gradient-to-r from-teal-600 to-teal-500 px-6 py-5 rounded-t-lg">
+          <DialogTitle className="text-[18px] font-semibold text-white">Hire Support Rep</DialogTitle>
+          <DialogDescription className="text-[13px] text-white/80 mt-1">
+            Pre-configured based on your training docs. Review and confirm.
+          </DialogDescription>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          <div>
+            <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Name</Label>
+            <Input
+              value={repName}
+              onChange={(e) => setRepName(e.target.value)}
+              className="mt-1.5 h-9 text-[13px]"
+            />
+          </div>
+
+          <div>
+            <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Personality</Label>
+            <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
+              <SelectTrigger className="mt-1.5 h-9 text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="professional">Professional</SelectItem>
+                <SelectItem value="friendly">Warm & Professional</SelectItem>
+                <SelectItem value="casual">Casual & Friendly</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Allowed Actions</Label>
+            <div className="mt-2 space-y-3">
+              {Object.entries(grouped).map(([category, catActions]) => (
+                <div key={category}>
+                  <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide mb-1">{category}</p>
+                  <div className="space-y-0">
+                    {catActions.map((action) => {
+                      const checked = actions[action.id] || false;
+                      return (
+                        <label
+                          key={action.id}
+                          className={cn(
+                            "flex items-center gap-2.5 py-1.5 cursor-pointer",
+                            !checked && "opacity-60"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setActions(prev => ({ ...prev, [action.id]: !prev[action.id] }))}
+                            className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/30"
+                          />
+                          <span className={cn("text-[12px]", checked ? "text-foreground font-medium" : "text-muted-foreground")}>
+                            {action.name}
+                          </span>
+                          {!checked && <span className="text-[10px] text-muted-foreground/50 ml-auto">(not assigned)</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 pb-5">
+          <Button
+            className="w-full h-11 text-[14px] font-semibold bg-teal-600 hover:bg-teal-700"
+            onClick={() => onHire(repName)}
+          >
+            Hire
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -862,7 +1092,6 @@ interface ConflictItem {
   optionB: string;
   resolved: boolean;
   choice?: string;
-  note?: string;
 }
 
 const DEMO_CONFLICTS: ConflictItem[] = [
@@ -892,6 +1121,22 @@ const DEMO_CONFLICTS: ConflictItem[] = [
   },
 ];
 
+const DEMO_EXTRACTED_RULES = [
+  "Standard Return & Refund",
+  "Where Is My Order (WISMO)",
+  "Damaged / Wrong Item",
+  "Order Cancellation",
+  "Return Shipping Cost",
+  "International Returns",
+  "VIP Customer Handling",
+  "Product Warranty Claims",
+  "Discount & Coupon Policy",
+  "Escalation Triggers",
+  "Shipping Delay Response",
+  "Final Sale Items",
+  "Exchange Process",
+];
+
 function SetupTab({ onHireRep }: { onHireRep: () => void }) {
   const [, navigate] = useLocation();
   const [phase, setPhase] = useState<OBPhase>("greeting");
@@ -901,7 +1146,8 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [conflicts, setConflicts] = useState<ConflictItem[]>(DEMO_CONFLICTS);
   const [currentConflictIdx, setCurrentConflictIdx] = useState(0);
-  const [conflictNote, setConflictNote] = useState("");
+  const [showAllRules, setShowAllRules] = useState(false);
+  const [showHireDialog, setShowHireDialog] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -927,13 +1173,12 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
     });
   }, []);
 
-  // ── Greeting: introduce system + Team Lead role ──
+  // ── Greeting ──
   useEffect(() => {
     if (messages.length === 0) {
       addAiMessages([
-        makeObMsg("ai", "Hi! I'm **Sarah**, your Team Lead. I help you build and manage the **Playbook** — the set of rules, policies, and guidelines your AI Rep will follow when handling customer tickets."),
-        makeObMsg("ai", "Once your Playbook is ready, you can hire an AI Rep who'll start handling tickets based on these rules. The more precise your Playbook, the better your Rep performs."),
-        makeObMsg("ai", "Let's get started — share your return policy, SOP document, or any customer service guidelines, and I'll turn them into actionable rules.", {
+        makeObMsg("ai", "Welcome to Support Workforce! I'm Alex, your Team Lead. I manage your support reps so you don't have to deal with the details.\n\nYour Zendesk and Shopify are connected. I need two things from you before we can get your first rep on the floor."),
+        makeObMsg("ai", "**First — your training docs.**\n\nUpload the same playbooks, refund policies, and escalation rules you'd hand a new hire. I'll read them, extract the rules, and flag anything that's unclear.", {
           widget: "upload_doc",
         }),
       ], 500);
@@ -950,7 +1195,7 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
     addAiMessages([
       makeObMsg("ai", isDemo
         ? "Great choice! Let me analyze the **Seel Return Guidelines** and extract the rules..."
-        : "Got it! Reading through your document now...",
+        : "Got it! Reading through your document now...\n\nThis is your first upload, so processing may take a while. I'll notify you when it's ready — feel free to come back in **30–60 minutes**.",
         { widget: "import_progress" }
       ),
     ]);
@@ -967,7 +1212,7 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
     setPhase("importing");
     setImportProgress(0);
     addAiMessages([
-      makeObMsg("ai", "Got it! Fetching and analyzing the page content...", { widget: "import_progress" }),
+      makeObMsg("ai", "Got it! Fetching and analyzing the page content...\n\nThis is your first upload, so processing may take a while. I'll notify you when it's ready — feel free to come back in **30–60 minutes**.", { widget: "import_progress" }),
     ]);
   };
 
@@ -981,17 +1226,8 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
           setTimeout(() => {
             setPhase("processing_notice");
             addAiMessages([
-              makeObMsg("ai", "I've extracted the following rules:", {
+              makeObMsg("ai", `Done! I extracted **${DEMO_EXTRACTED_RULES.length} rules** from your document:`, {
                 widget: "parse_result",
-                widgetData: {
-                  rules: [
-                    { category: "Return Window", count: 3, example: "30-day return window from delivery date" },
-                    { category: "Refund Method", count: 2, example: "Refund to original payment method only" },
-                    { category: "Condition Rules", count: 4, example: "Items must be unused with tags attached" },
-                    { category: "Exceptions", count: 2, example: "Final sale items are non-returnable" },
-                    { category: "Shipping", count: 2, example: "Customer pays return shipping unless defective" },
-                  ],
-                },
               }),
               makeObMsg("ai", `I found **${DEMO_CONFLICTS.length} conflicts** that need your input. Let me walk you through each one.`, {
                 widget: "conflict_queue",
@@ -1006,62 +1242,25 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
     return () => clearInterval(interval);
   }, [phase]);
 
-  const handleConflictResolve = (conflictId: number, choice: string) => {
-    const updated = conflicts.map((c) =>
-      c.id === conflictId ? { ...c, resolved: true, choice, note: conflictNote || undefined } : c
-    );
-    setConflicts(updated);
-    setConflictNote("");
-
-    const choiceLabel = choice === "a"
-      ? conflicts.find((c) => c.id === conflictId)?.optionA
-      : conflicts.find((c) => c.id === conflictId)?.optionB;
-
-    setMessages((prev) => [
-      ...prev,
-      makeObMsg("manager", `${choiceLabel}${conflictNote ? ` — "${conflictNote}"` : ""}`),
-    ]);
-
-    const nextUnresolved = updated.findIndex((c) => !c.resolved);
-    if (nextUnresolved === -1) {
-      // All conflicts resolved
-      setPhase("playbook_done");
-      addAiMessages([
-        makeObMsg("ai", "All conflicts resolved! Your Playbook is ready."),
-        makeObMsg("ai", "You can review and edit rules anytime in the **Playbook** tab. When you're ready, hire your first AI Rep to start handling tickets.", {
-          choices: [
-            { label: "Hire a Rep", value: "hire_rep", variant: "primary" },
-          ],
-        }),
-      ]);
-    } else {
-      setCurrentConflictIdx(nextUnresolved);
-      addAiMessages([
-        makeObMsg("ai", `Got it — I'll use "${choiceLabel}". Next conflict:`),
-      ]);
-    }
-  };
-
   const handleConflictDismiss = (conflictId: number) => {
     const updated = conflicts.map((c) =>
-      c.id === conflictId ? { ...c, resolved: true, choice: "skipped" } : c
+      c.id === conflictId ? { ...c, resolved: true, choice: "dismissed" } : c
     );
     setConflicts(updated);
-    setConflictNote("");
 
     setMessages((prev) => [
       ...prev,
-      makeObMsg("manager", "Skipped — I'll decide later"),
+      makeObMsg("manager", "Dismiss — I'll decide later"),
     ]);
 
     const nextUnresolved = updated.findIndex((c) => !c.resolved);
     if (nextUnresolved === -1) {
       setPhase("playbook_done");
       addAiMessages([
-        makeObMsg("ai", "Playbook is ready! You can revisit skipped conflicts in the **Playbook** tab anytime."),
-        makeObMsg("ai", "When you're ready, hire your first AI Rep to start handling tickets.", {
+        makeObMsg("ai", "Playbook is ready! You can revisit dismissed conflicts anytime in the **Playbook** tab."),
+        makeObMsg("ai", "**Second — let's hire your first support rep.**\n\nI'll start them on WISMO — order status, cancellations for unshipped orders, and address changes. Highest volume, lowest risk. Once they prove themselves, we expand their scope.\n\nI've pre-configured a rep based on your docs. Review the profile and hit Hire:", {
           choices: [
-            { label: "Hire a Rep", value: "hire_rep", variant: "primary" },
+            { label: "Review & Hire Support Rep →", value: "hire_rep", variant: "primary" },
           ],
         }),
       ]);
@@ -1075,16 +1274,21 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
 
   const handleChoice = (value: string) => {
     if (value === "hire_rep") {
-      onHireRep();
-      setPhase("done");
-      setMessages((prev) => [
-        ...prev,
-        makeObMsg("manager", "Let's hire a Rep!"),
-      ]);
-      addAiMessages([
-        makeObMsg("ai", "Great! I've set up your first AI Rep. You can find them in the left panel under **Reps**. Configure their name, tone, and actions, then switch them to Production mode when ready."),
-      ]);
+      setShowHireDialog(true);
     }
+  };
+
+  const handleHireFromDialog = (name: string) => {
+    setShowHireDialog(false);
+    setPhase("done");
+    setMessages((prev) => [
+      ...prev,
+      makeObMsg("manager", `Hired ${name}!`),
+    ]);
+    addAiMessages([
+      makeObMsg("ai", `**${name}** is now on the team! They'll start handling WISMO tickets right away. You can find them in the left panel under **Reps** — check their escalations and adjust their profile anytime.`),
+    ]);
+    onHireRep();
   };
 
   const renderWidget = (msg: OnboardingMsg) => {
@@ -1092,7 +1296,6 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
       case "upload_doc":
         return (
           <div className="mt-2.5 space-y-2">
-            {/* File upload area */}
             <div
               onClick={() => handleUpload(false)}
               className="p-4 rounded-lg border border-dashed border-border bg-white hover:border-primary/40 hover:bg-primary/[0.02] transition-all cursor-pointer"
@@ -1104,7 +1307,6 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
               </div>
             </div>
 
-            {/* URL paste option */}
             {showUrlInput ? (
               <div className="flex items-center gap-2">
                 <div className="flex-1 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 focus-within:ring-1 focus-within:ring-primary/30">
@@ -1169,34 +1371,33 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
         );
 
       case "parse_result": {
-        const rules = (msg.widgetData?.rules as { category: string; count: number; example: string }[]) || [];
-        const totalRules = rules.reduce((sum, r) => sum + r.count, 0);
+        const visibleRules = showAllRules ? DEMO_EXTRACTED_RULES : DEMO_EXTRACTED_RULES.slice(0, 5);
         return (
           <div className="mt-2 p-3 rounded-lg border border-border bg-white">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="text-[12px] font-medium">{totalRules} rules extracted</span>
+              <span className="text-[12px] font-medium">{DEMO_EXTRACTED_RULES.length} rules extracted</span>
             </div>
-            <div className="space-y-1">
-              {rules.map((r) => (
-                <div key={r.category} className="flex items-start gap-2 py-1 px-2 rounded-md bg-muted/40">
-                  <span className="text-[11px] font-medium text-foreground w-24 shrink-0">{r.category}</span>
-                  <span className="text-[11px] text-muted-foreground flex-1">{r.example}</span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">{r.count}</span>
+            <div className="space-y-0.5">
+              {visibleRules.map((name, i) => (
+                <div key={i} className="flex items-center gap-2 py-1 px-2 rounded-md hover:bg-muted/30">
+                  <div className="w-1 h-1 rounded-full bg-emerald-400 shrink-0" />
+                  <span className="text-[11px] text-foreground">{name}</span>
                 </div>
               ))}
             </div>
-            {/* Processing time notice */}
-            <div className="mt-3 p-2.5 rounded-md bg-blue-50/60 border border-blue-100/60">
-              <div className="flex items-start gap-2">
-                <Clock className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-[11px] text-blue-800 leading-relaxed">
-                    <strong>Note:</strong> In production, processing your full document takes about 30–60 minutes. You'll get a notification when it's ready — feel free to come back later.
-                  </p>
-                </div>
-              </div>
-            </div>
+            {DEMO_EXTRACTED_RULES.length > 5 && (
+              <button
+                onClick={() => setShowAllRules(!showAllRules)}
+                className="text-[10px] text-primary hover:underline mt-1.5 flex items-center gap-0.5"
+              >
+                {showAllRules ? (
+                  <><ChevronUp className="w-3 h-3" /> Show less</>
+                ) : (
+                  <><ChevronDown className="w-3 h-3" /> Show all {DEMO_EXTRACTED_RULES.length} rules</>
+                )}
+              </button>
+            )}
           </div>
         );
       }
@@ -1208,7 +1409,6 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
 
         return (
           <div className="mt-2.5 space-y-2">
-            {/* Progress indicator */}
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] text-muted-foreground">
                 Conflict {resolvedCount + 1} of {conflicts.length}
@@ -1221,46 +1421,20 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
               </div>
             </div>
 
-            {/* Conflict card */}
-            <div className="rounded-lg border border-amber-100 bg-amber-50/30 overflow-hidden">
-              <div className="px-3.5 py-2.5 border-b border-amber-100/60">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <div className="rounded-lg border border-amber-100/60 bg-amber-50/20 overflow-hidden">
+              <div className="px-3.5 py-2.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span className="text-[12px] font-medium text-foreground">{current.title}</span>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{current.description}</p>
-              </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{current.description}</p>
 
-              <div className="px-3.5 py-2.5 space-y-2">
-                {/* Option buttons */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleConflictResolve(current.id, "a")}
-                    className="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium border border-border text-foreground hover:bg-accent/50 hover:border-primary/30 transition-all text-left"
-                  >
-                    {current.optionA}
-                  </button>
-                  <button
-                    onClick={() => handleConflictResolve(current.id, "b")}
-                    className="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium border border-border text-foreground hover:bg-accent/50 hover:border-primary/30 transition-all text-left"
-                  >
-                    {current.optionB}
-                  </button>
-                </div>
-
-                {/* Note input */}
-                <div className="flex items-center gap-2">
-                  <input
-                    value={conflictNote}
-                    onChange={(e) => setConflictNote(e.target.value)}
-                    placeholder="Add a note or clarification (optional)..."
-                    className="flex-1 text-[11px] bg-white border border-border/60 rounded-md px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/40"
-                  />
+                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-amber-100/40">
                   <button
                     onClick={() => handleConflictDismiss(current.id)}
-                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
+                    className="px-3 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground hover:bg-accent transition-colors"
                   >
-                    Skip
+                    Dismiss — I'll decide later
                   </button>
                 </div>
               </div>
@@ -1275,38 +1449,193 @@ function SetupTab({ onHireRep }: { onHireRep: () => void }) {
   };
 
   return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="max-w-[620px] mx-auto px-5 py-6 space-y-3">
+          {messages.map((msg) => (
+            <div key={msg.id} className={cn("flex gap-2.5", msg.sender === "manager" && "flex-row-reverse")}>
+              {msg.sender === "ai" && (
+                <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[11px]">👔</span>
+                </div>
+              )}
+              <div className={cn("max-w-[85%] min-w-0", msg.sender === "manager" && "text-right")}>
+                <div className={cn("flex items-center gap-1.5 mb-0.5", msg.sender === "manager" && "justify-end")}>
+                  <span className="text-[10px] font-medium text-foreground">{msg.sender === "ai" ? "Alex (Team Lead)" : "You"}</span>
+                </div>
+                <div className={cn(
+                  "rounded-xl px-3 py-2 inline-block text-left",
+                  msg.sender === "ai" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
+                )}>
+                  {msg.content && <p className="text-[12.5px] leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />}
+                  {msg.widget && renderWidget(msg)}
+                </div>
+                {msg.choices && (
+                  <div className="flex flex-wrap gap-1.5 mt-2 ml-0.5">
+                    {msg.choices.map((c) => (
+                      <button
+                        key={c.value}
+                        onClick={() => handleChoice(c.value)}
+                        className={cn(
+                          "px-4 py-2 rounded-lg text-[12px] font-medium transition-colors",
+                          c.variant === "primary"
+                            ? "bg-teal-600 text-white hover:bg-teal-700"
+                            : "border border-border text-foreground hover:bg-accent"
+                        )}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+      </ScrollArea>
+
+      <HireRepDialog
+        open={showHireDialog}
+        onOpenChange={setShowHireDialog}
+        onHire={handleHireFromDialog}
+      />
+    </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ── REP ONBOARDING CONVERSATION ─────────────────────────
+// ══════════════════════════════════════════════════════════
+
+interface RepMsg {
+  id: string;
+  sender: "rep" | "manager";
+  content: string;
+  choices?: { label: string; value: string }[];
+}
+
+type RepOBPhase = "greeting" | "scenario_1" | "scenario_2" | "scenario_3" | "mode_select" | "done";
+
+function RepOnboarding({
+  repName,
+  onComplete,
+}: {
+  repName: string;
+  onComplete: (mode: AgentMode) => void;
+}) {
+  const [phase, setPhase] = useState<RepOBPhase>("greeting");
+  const [messages, setMessages] = useState<RepMsg[]>([]);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  const addMsg = useCallback((sender: "rep" | "manager", content: string, extra?: Partial<RepMsg>) => {
+    setMessages((prev) => [...prev, {
+      id: `rm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      sender,
+      content,
+      ...extra,
+    }]);
+  }, []);
+
+  // Initial greeting
+  useEffect(() => {
+    if (messages.length > 0) return;
+    setTimeout(() => {
+      addMsg("rep", `Hi! I'm ${repName}. Alex brought me up to speed on your docs — I've studied your playbook, refund policy, and escalation rules.\n\nBefore I start handling real tickets, let me show you how I'd handle three scenarios. You tell me if I'm on the right track.`);
+    }, 300);
+    setTimeout(() => {
+      addMsg("rep", `**Scenario 1 — "Where is my order?"**\n\nCustomer writes: *"Where is my order #DBH-29174? It's been a week and I haven't received anything."*\n\nHere's what I'd do:\n1. Look up **#DBH-29174** in Shopify\n2. I see it's **shipped** via Royal Mail, tracking RM29174UK, expected Mar 25\n3. I'd reply:\n\n> *Hi Emma! Your order #DBH-29174 shipped via Royal Mail (tracking: RM29174UK) and is expected to arrive by March 25th. You can track it here: [link]. Let me know if you need anything else!*\n\nThis is read-only — I'm just looking up info and replying. Does this look right?`, {
+        choices: [
+          { label: "That's right", value: "approve" },
+          { label: "Needs adjustment", value: "adjust" },
+        ],
+      });
+      setPhase("scenario_1");
+    }, 1200);
+  }, []);
+
+  const handleChoice = (value: string) => {
+    if (phase === "scenario_1") {
+      addMsg("manager", value === "approve" ? "That's right" : "Needs adjustment");
+      setTimeout(() => {
+        addMsg("rep", `**Scenario 2 — "I want a refund"**\n\nCustomer writes: *"I received my ceramic vase yesterday and it's smaller than I expected. I'd like a refund."*\n\nHere's what I'd do:\n1. Check order — delivered 1 day ago, within return window\n2. Item is $42.99, change-of-mind return\n3. I'd reply and initiate the return:\n\n> *Hi! I'm sorry the vase wasn't what you expected. I've started a return for you — you'll receive a prepaid shipping label via email shortly. Once we receive the item, your refund of $34.04 ($42.99 minus $8.95 return shipping) will be processed within 3-5 business days.*\n\nI have permission to send replies, so I'd handle this end-to-end. Look good?`, {
+          choices: [
+            { label: "That's right", value: "approve" },
+            { label: "Needs adjustment", value: "adjust" },
+          ],
+        });
+        setPhase("scenario_2");
+      }, 800);
+    } else if (phase === "scenario_2") {
+      addMsg("manager", value === "approve" ? "That's right" : "Needs adjustment");
+      setTimeout(() => {
+        addMsg("rep", `**Scenario 3 — Escalation**\n\nCustomer writes: *"This is the THIRD time I'm contacting you about this. I want to speak to a manager RIGHT NOW."*\n\nHere's what I'd do:\n1. Detect strong frustration + explicit request for manager\n2. I'd **escalate immediately**\n3. I'd reply:\n\n> *I completely understand your frustration, and I'm sorry for the repeated issues. I'm connecting you with a manager right now who can help resolve this directly.*\n\nThen I'd assign the ticket to you with an internal note summarizing the situation.\n\nDoes this feel right?`, {
+          choices: [
+            { label: "That's right", value: "approve" },
+            { label: "Needs adjustment", value: "adjust" },
+          ],
+        });
+        setPhase("scenario_3");
+      }, 800);
+    } else if (phase === "scenario_3") {
+      addMsg("manager", value === "approve" ? "That's right" : "Needs adjustment");
+      setTimeout(() => {
+        addMsg("rep", `Great — I'm confident I understand your policies.\n\nOne last question. How do you want me to work?\n\n**Training mode** — I draft my responses and actions, but I check with you before anything goes out to the customer. Good if you want to review my work for a while.\n\n**Production mode** — I handle tickets on my own. You can review everything after the fact. Good if you trust the sanity check and want me working immediately.`, {
+          choices: [
+            { label: "Training — check with me first", value: "training" },
+            { label: "Production — handle it yourself", value: "production" },
+          ],
+        });
+        setPhase("mode_select");
+      }, 800);
+    } else if (phase === "mode_select") {
+      const mode = value === "training" ? "training" : "production";
+      const modeLabel = mode === "training" ? "Training" : "Production";
+      addMsg("manager", value === "training" ? "Training — check with me first" : "Production — handle it yourself");
+      setTimeout(() => {
+        addMsg("rep", `I'm live in **${modeLabel} mode**. I'll start picking up WISMO, cancellation, and address change tickets now.\n\n**Here's when I'll reach out to you:**\n- When a customer asks something I don't have a rule for\n- When I need to escalate (angry customer, high-value order, explicit manager request)\n- When I spot a pattern that might need a new rule\n\nYou can always check my work in the escalation feed below. Let's go!`);
+        setPhase("done");
+        onComplete(mode as AgentMode);
+      }, 800);
+    }
+  };
+
+  const initials = getInitials(repName);
+
+  return (
     <ScrollArea className="flex-1">
       <div className="max-w-[620px] mx-auto px-5 py-6 space-y-3">
         {messages.map((msg) => (
           <div key={msg.id} className={cn("flex gap-2.5", msg.sender === "manager" && "flex-row-reverse")}>
-            {msg.sender === "ai" && (
-              <div className="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-[11px]">🎯</span>
+            {msg.sender === "rep" && (
+              <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-[9px] font-semibold text-white">{initials}</span>
               </div>
             )}
             <div className={cn("max-w-[85%] min-w-0", msg.sender === "manager" && "text-right")}>
               <div className={cn("flex items-center gap-1.5 mb-0.5", msg.sender === "manager" && "justify-end")}>
-                <span className="text-[10px] font-medium text-foreground">{msg.sender === "ai" ? "Sarah" : "You"}</span>
+                <span className="text-[10px] font-medium text-foreground">{msg.sender === "rep" ? repName : "You"}</span>
+                <span className="text-[9px] text-muted-foreground/50">just now</span>
               </div>
               <div className={cn(
                 "rounded-xl px-3 py-2 inline-block text-left",
-                msg.sender === "ai" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
+                msg.sender === "rep" ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
               )}>
-                {msg.content && <p className="text-[12.5px] leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />}
-                {msg.widget && renderWidget(msg)}
+                <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap">
+                  {renderMarkdown(msg.content)}
+                </div>
               </div>
               {msg.choices && (
-                <div className="flex flex-wrap gap-1.5 mt-1.5 ml-0.5">
+                <div className="flex flex-wrap gap-1.5 mt-2 ml-0.5">
                   {msg.choices.map((c) => (
                     <button
                       key={c.value}
                       onClick={() => handleChoice(c.value)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors",
-                        c.variant === "primary"
-                          ? "bg-primary text-white hover:bg-primary/90"
-                          : "border border-border text-foreground hover:bg-accent"
-                      )}
+                      className="px-4 py-2 rounded-lg text-[12px] font-medium border border-violet-200 text-violet-700 hover:bg-violet-50 transition-colors"
                     >
                       {c.label}
                     </button>
@@ -1348,7 +1677,10 @@ export default function CommunicationPage() {
 
   // Rep state
   const [repHired, setRepHired] = useState(false);
-  const [showRepConfig, setShowRepConfig] = useState(false);
+  const [repName, setRepName] = useState("Ava");
+  const [showRepProfile, setShowRepProfile] = useState(false);
+  const [repOnboarded, setRepOnboarded] = useState(false);
+  const [repMode, setRepMode] = useState<AgentMode>("training");
   const [escalationStatuses, setEscalationStatuses] = useState<Record<string, EscalationStatus>>(() => {
     const map: Record<string, EscalationStatus> = {};
     ESCALATION_TICKETS.forEach((t) => { map[t.id] = t.status; });
@@ -1356,7 +1688,7 @@ export default function CommunicationPage() {
   });
 
   // Integration status
-  const zendeskConnected = false; // MVP: not connected
+  const zendeskConnected = false;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -1488,11 +1820,6 @@ export default function CommunicationPage() {
     }
   };
 
-  const handleEscalationStatusChange = (id: string, status: EscalationStatus) => {
-    setEscalationStatuses((prev) => ({ ...prev, [id]: status }));
-    toast.success(status === "resolved" ? "Marked as resolved" : "Marked as in progress");
-  };
-
   const handleCloseWelcome = () => {
     localStorage.setItem("seel_ai_welcome_seen", "1");
     setShowWelcome(false);
@@ -1500,17 +1827,39 @@ export default function CommunicationPage() {
 
   const handleHireRep = () => {
     setRepHired(true);
-    setSelected({ type: "rep", id: "rep-1", name: "Alex" });
-    toast.success("Your first AI Rep is ready! Configure them in the panel.");
+    setRepName("Ava");
+    setSelected({ type: "rep", id: "rep-1", name: "Ava" });
+    toast.success("Your first AI Rep is on the team!");
+  };
+
+  const handleRepOnboardComplete = (mode: AgentMode) => {
+    setRepOnboarded(true);
+    setRepMode(mode);
   };
 
   const shownTopics = new Set<string>();
 
-  // Escalation tickets with current statuses
-  const escalationTicketsWithStatus = useMemo(() =>
-    ESCALATION_TICKETS.map((t) => ({ ...t, status: escalationStatuses[t.id] || t.status })),
+  // Escalation tickets sorted by time (chronological)
+  const escalationTicketsSorted = useMemo(() =>
+    [...ESCALATION_TICKETS]
+      .map((t) => ({ ...t, status: escalationStatuses[t.id] || t.status }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [escalationStatuses]
   );
+
+  const repInitials = getInitials(repName);
+
+  const statusTagColor = (status: EscalationStatus) => {
+    if (status === "needs_attention") return "bg-red-50 text-red-600 border-red-200";
+    if (status === "in_progress") return "bg-amber-50 text-amber-600 border-amber-200";
+    return "bg-emerald-50 text-emerald-600 border-emerald-200";
+  };
+
+  const statusTagLabel = (status: EscalationStatus) => {
+    if (status === "needs_attention") return "Needs attention";
+    if (status === "in_progress") return "In progress";
+    return "Resolved";
+  };
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -1557,15 +1906,15 @@ export default function CommunicationPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => { setSelected({ type: "team_lead" }); setShowRepConfig(false); }}
+                  onClick={() => { setSelected({ type: "team_lead" }); setShowRepProfile(false); }}
                   className={cn(
                     "w-9 h-9 rounded-full flex items-center justify-center transition-all relative",
                     selected.type === "team_lead"
-                      ? "bg-indigo-100 ring-2 ring-indigo-400 ring-offset-1"
-                      : "bg-indigo-50 hover:bg-indigo-100"
+                      ? "bg-teal-100 ring-2 ring-teal-400 ring-offset-1"
+                      : "bg-teal-50 hover:bg-teal-100"
                   )}
                 >
-                  <span className="text-[14px]">🎯</span>
+                  <span className="text-[14px]">👔</span>
                   {waitingCount > 0 && selected.type !== "team_lead" && (
                     <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center font-medium">
                       {waitingCount}
@@ -1574,8 +1923,8 @@ export default function CommunicationPage() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" className="text-[11px]">
-                <p className="font-medium">Sarah — Team Lead</p>
-                <p className="text-muted-foreground text-[10px]">Manages your Playbook and rules</p>
+                <p className="font-medium">Alex — Team Lead</p>
+                <p className="text-muted-foreground text-[10px]">Manages your reps and playbook</p>
               </TooltipContent>
             </Tooltip>
 
@@ -1588,16 +1937,21 @@ export default function CommunicationPage() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={() => { setSelected({ type: "rep", id: "rep-1", name: "Alex" }); setShowRepConfig(false); }}
+                    onClick={() => { setSelected({ type: "rep", id: "rep-1", name: repName }); setShowRepProfile(false); }}
                     className={cn(
                       "w-9 h-9 rounded-full flex items-center justify-center transition-all relative",
                       selected.type === "rep"
-                        ? "bg-emerald-100 ring-2 ring-emerald-400 ring-offset-1"
-                        : "bg-emerald-50 hover:bg-emerald-100"
+                        ? "bg-violet-500 ring-2 ring-violet-400 ring-offset-1"
+                        : "bg-violet-100 hover:bg-violet-200"
                     )}
                   >
-                    <span className="text-[14px]">💬</span>
-                    {needsAttentionCount > 0 && (
+                    <span className={cn(
+                      "text-[11px] font-semibold",
+                      selected.type === "rep" ? "text-white" : "text-violet-600"
+                    )}>
+                      {repInitials}
+                    </span>
+                    {needsAttentionCount > 0 && selected.type !== "rep" && (
                       <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center font-medium">
                         {needsAttentionCount}
                       </span>
@@ -1605,7 +1959,7 @@ export default function CommunicationPage() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="text-[11px]">
-                  <p className="font-medium">Alex — AI Rep</p>
+                  <p className="font-medium">{repName} — AI Rep</p>
                   <p className="text-muted-foreground text-[10px]">Working · Handling tickets</p>
                 </TooltipContent>
               </Tooltip>
@@ -1618,7 +1972,7 @@ export default function CommunicationPage() {
                 </TooltipTrigger>
                 <TooltipContent side="right" className="text-[11px]">
                   <p>No reps yet</p>
-                  <p className="text-muted-foreground text-[10px]">Talk to Sarah to set up your Playbook first</p>
+                  <p className="text-muted-foreground text-[10px]">Talk to Alex to set up your Playbook first</p>
                 </TooltipContent>
               </Tooltip>
             )}
@@ -1635,8 +1989,8 @@ export default function CommunicationPage() {
                 <div className="flex items-center justify-between px-5 h-10 border-b border-border shrink-0 bg-white">
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px]">🎯</span>
-                      <span className="text-[13px] font-semibold text-foreground">Sarah</span>
+                      <span className="text-[13px]">👔</span>
+                      <span className="text-[13px] font-semibold text-foreground">Alex</span>
                       <span className="text-[11px] text-muted-foreground">Team Lead</span>
                     </div>
                     <div className="h-4 w-px bg-border" />
@@ -1712,7 +2066,7 @@ export default function CommunicationPage() {
                                       )}
                                       <MessageBubble
                                         msg={msg}
-                                        senderLabel="Sarah"
+                                        senderLabel="Alex (Team Lead)"
                                         onAction={handleAction}
                                         onReply={handleReply}
                                       />
@@ -1734,7 +2088,7 @@ export default function CommunicationPage() {
                               value={inputValue}
                               onChange={(e) => setInputValue(e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-                              placeholder="Message Sarah..."
+                              placeholder="Message Alex..."
                               className="flex-1 text-[12.5px] bg-transparent outline-none placeholder:text-muted-foreground/50"
                             />
                             <button
@@ -1780,7 +2134,7 @@ export default function CommunicationPage() {
                   </div>
                   <p className="text-[13px] font-medium text-foreground">No Rep hired yet</p>
                   <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-                    Talk to Sarah (your Team Lead) to set up your Playbook first, then hire your first AI Rep.
+                    Talk to Alex (your Team Lead) to set up your Playbook first, then hire your first AI Rep.
                   </p>
                   <Button
                     variant="outline"
@@ -1798,99 +2152,91 @@ export default function CommunicationPage() {
                 <div className="flex-1 flex flex-col min-w-0">
                   {/* Rep header */}
                   <div className="flex items-center justify-between px-5 h-10 border-b border-border shrink-0 bg-white">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[14px]">💬</span>
-                      <span className="text-[13px] font-semibold text-foreground">Alex</span>
-                      <Badge variant="secondary" className="h-4 text-[9px] px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200">Working</Badge>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center shrink-0">
+                        <span className="text-[9px] font-semibold text-white">{repInitials}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-semibold text-foreground">{repName}</span>
+                        <span className="text-[11px] text-muted-foreground">L1 — WISMO Specialist · {repOnboarded ? (repMode === "training" ? "Training" : "Production") : "Onboarding"} · Started Mar 29, 2026</span>
+                      </div>
                     </div>
                     <button
-                      onClick={() => setShowRepConfig(!showRepConfig)}
+                      onClick={() => setShowRepProfile(!showRepProfile)}
                       className={cn(
                         "flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-medium transition-colors",
-                        showRepConfig ? "bg-primary/8 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                        showRepProfile ? "bg-primary/8 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                       )}
                     >
-                      <Settings className="w-3.5 h-3.5" /> Configure
+                      <User className="w-3.5 h-3.5" /> Profile
                     </button>
                   </div>
 
-                  {/* Escalation tickets */}
-                  <ScrollArea className="flex-1">
-                    <div className="max-w-[640px] mx-auto px-5 py-4 space-y-3">
-                      {/* Section: Needs Attention */}
-                      {escalationTicketsWithStatus.filter((t) => t.status === "needs_attention").length > 0 && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                            <span className="text-[11px] font-semibold text-foreground">Needs Attention</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              ({escalationTicketsWithStatus.filter((t) => t.status === "needs_attention").length})
-                            </span>
+                  {/* Rep content: onboarding or escalation feed */}
+                  {!repOnboarded ? (
+                    <RepOnboarding repName={repName} onComplete={handleRepOnboardComplete} />
+                  ) : (
+                    <ScrollArea className="flex-1">
+                      <div className="max-w-[640px] mx-auto px-5 py-4 space-y-3">
+                        {escalationTicketsSorted.map((ticket) => (
+                          <div key={ticket.id} className="flex gap-2.5">
+                            {/* Rep avatar */}
+                            <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center shrink-0 mt-0.5">
+                              <span className="text-[9px] font-semibold text-white">{repInitials}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[10px] font-medium text-foreground">{repName}</span>
+                                <span className="text-[9px] text-muted-foreground/50">{formatRelativeTime(ticket.createdAt)}</span>
+                              </div>
+                              {/* Escalation card */}
+                              <div className="rounded-xl bg-muted/40 px-3 py-2.5 rounded-tl-sm">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[12px] font-medium text-foreground">
+                                      #{ticket.zendeskTicketId} · {ticket.subject}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{ticket.reason}</p>
+                                  </div>
+                                  <Badge variant="outline" className={cn("text-[8px] px-1.5 h-4 shrink-0 font-medium border", statusTagColor(ticket.status))}>
+                                    {statusTagLabel(ticket.status)}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30">
+                                  <a
+                                    href={ticket.zendeskUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
+                                  >
+                                    <ExternalLink className="w-3 h-3" /> Open in Zendesk
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="space-y-2.5">
-                            {escalationTicketsWithStatus
-                              .filter((t) => t.status === "needs_attention")
-                              .map((t) => (
-                                <EscalationCard key={t.id} ticket={t} onStatusChange={handleEscalationStatusChange} />
-                              ))}
-                          </div>
-                        </div>
-                      )}
+                        ))}
 
-                      {/* Section: In Progress */}
-                      {escalationTicketsWithStatus.filter((t) => t.status === "in_progress").length > 0 && (
-                        <div className="mt-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                            <span className="text-[11px] font-semibold text-foreground">In Progress</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              ({escalationTicketsWithStatus.filter((t) => t.status === "in_progress").length})
-                            </span>
+                        {escalationTicketsSorted.length === 0 && (
+                          <div className="text-center py-16">
+                            <CheckCircle2 className="w-8 h-8 text-emerald-300 mx-auto mb-2" />
+                            <p className="text-[13px] font-medium text-muted-foreground">All clear</p>
+                            <p className="text-[11px] text-muted-foreground/60 mt-0.5">No escalated tickets right now</p>
                           </div>
-                          <div className="space-y-2.5">
-                            {escalationTicketsWithStatus
-                              .filter((t) => t.status === "in_progress")
-                              .map((t) => (
-                                <EscalationCard key={t.id} ticket={t} onStatusChange={handleEscalationStatusChange} />
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Section: Resolved */}
-                      {escalationTicketsWithStatus.filter((t) => t.status === "resolved").length > 0 && (
-                        <div className="mt-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span className="text-[11px] font-semibold text-foreground">Resolved</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              ({escalationTicketsWithStatus.filter((t) => t.status === "resolved").length})
-                            </span>
-                          </div>
-                          <div className="space-y-2.5">
-                            {escalationTicketsWithStatus
-                              .filter((t) => t.status === "resolved")
-                              .map((t) => (
-                                <EscalationCard key={t.id} ticket={t} onStatusChange={handleEscalationStatusChange} />
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {escalationTicketsWithStatus.length === 0 && (
-                        <div className="text-center py-16">
-                          <CheckCircle2 className="w-8 h-8 text-emerald-300 mx-auto mb-2" />
-                          <p className="text-[13px] font-medium text-muted-foreground">All clear</p>
-                          <p className="text-[11px] text-muted-foreground/60 mt-0.5">No escalated tickets right now</p>
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  )}
                 </div>
 
-                {/* Rep Config Panel */}
-                {showRepConfig && (
-                  <RepConfigPanel onClose={() => setShowRepConfig(false)} />
+                {/* Rep Profile Panel */}
+                {showRepProfile && (
+                  <RepProfilePanel
+                    repName={repName}
+                    repMode={repMode}
+                    onClose={() => setShowRepProfile(false)}
+                    onNavigatePerformance={() => navigate("/performance")}
+                  />
                 )}
               </div>
             )}
