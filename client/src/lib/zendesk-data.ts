@@ -29,6 +29,8 @@ export interface ZendeskTicket {
   currentStep?: string;
   // Escalation metadata
   escalationReason?: string;
+  // Suggested reply for manager to copy
+  suggestedReply?: string;
 }
 
 export const ZENDESK_TICKETS: ZendeskTicket[] = [
@@ -125,6 +127,7 @@ export const ZENDESK_TICKETS: ZendeskTicket[] = [
     state: "escalated",
     escalationReason: "Customer explicitly requested human agent. Sentiment: very frustrated. High-value order ($450).",
     internalNote: "Customer ordered a coastal oak bookshelf ($450). Delivery attempted 3 times — customer was home each time but driver marked as 'not home'. Customer is understandably frustrated and demanding to speak with a manager. I verified the delivery failures in the carrier system. This needs human judgment on how to resolve the carrier issue.",
+    suggestedReply: "Hi Robert, I'm so sorry about the repeated delivery issues — that's completely unacceptable. I've escalated this directly with our carrier and scheduled a guaranteed delivery for tomorrow between 10am-12pm. As an apology, I'd also like to offer you a $50 store credit. Would that work for you?",
     messages: [
       {
         from: "customer",

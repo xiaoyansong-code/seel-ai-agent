@@ -2,7 +2,8 @@
    Compact Zendesk sidebar (320px). Two ticket states (MVP):
    1. handling  — AI handling, no attention needed
    2. escalated — AI can't handle, manager takes over
-   All states support "Notes to Rep" for teaching AI.
+   Sidebar shows: Handoff Notes + Suggested Reply (copyable).
+   Notes to Rep for teaching AI.
    ──────────────────────────────────────────────────────────── */
 
 import { useState } from "react";
@@ -11,17 +12,16 @@ import {
   ZENDESK_TICKETS,
   type ZendeskTicket,
 } from "@/lib/zendesk-data";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Bot,
   CheckCircle2,
   AlertTriangle,
-  ArrowLeft,
   MessageSquarePlus,
+  Copy,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -60,6 +60,15 @@ function SidebarContent({
   const [instructText, setInstructText] = useState("");
   const [showInstruct, setShowInstruct] = useState(false);
   const [instructSent, setInstructSent] = useState(!!ticket.instruction);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   return (
     <div className="space-y-3">
@@ -90,20 +99,31 @@ function SidebarContent({
         </div>
       )}
 
-      {/* Escalation Info */}
+      {/* Escalation: Handoff Notes only (no Reason) */}
       {ticket.state === "escalated" && ticket.internalNote && (
         <div className="rounded-md bg-[#f8f9fa] border border-[#e9ebed] p-2.5">
           <div className="flex items-center gap-1.5 mb-1.5">
             <Bot className="w-3 h-3 text-[#68737d]" />
-            <span className="text-[10px] font-semibold text-[#68737d] uppercase tracking-wider">Rep's Handoff Note</span>
+            <span className="text-[10px] font-semibold text-[#68737d] uppercase tracking-wider">Handoff Notes</span>
           </div>
           <p className="text-[11.5px] text-[#2f3941] leading-relaxed">{ticket.internalNote}</p>
-          {ticket.escalationReason && (
-            <div className="mt-2 pt-2 border-t border-[#e9ebed]">
-              <span className="text-[10px] font-semibold text-[#68737d] uppercase tracking-wider">Reason</span>
-              <p className="text-[11px] text-[#87929d] mt-0.5">{ticket.escalationReason}</p>
-            </div>
-          )}
+        </div>
+      )}
+
+      {/* Suggested Reply (only for escalated, not always present) */}
+      {ticket.state === "escalated" && ticket.suggestedReply && (
+        <div className="rounded-md bg-blue-50/60 border border-blue-200/60 p-2.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold text-blue-600/80 uppercase tracking-wider">Suggested Reply</span>
+            <button
+              onClick={() => handleCopy(ticket.suggestedReply!)}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-blue-600 hover:bg-blue-100/60 transition-colors"
+            >
+              {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="text-[11.5px] text-[#2f3941] leading-relaxed">{ticket.suggestedReply}</p>
         </div>
       )}
 
@@ -172,7 +192,6 @@ function SidebarContent({
 export default function ZendeskApp() {
   const [tickets, setTickets] = useState<ZendeskTicket[]>(ZENDESK_TICKETS);
   const [selectedTicketId, setSelectedTicketId] = useState<string>(ZENDESK_TICKETS[0]?.id || "");
-  const [, navigate] = useLocation();
 
   const selectedTicket = tickets.find((t) => t.id === selectedTicketId);
 
@@ -190,17 +209,9 @@ export default function ZendeskApp() {
       {/* Left: Simulated Zendesk ticket view */}
       <div className="flex-1 bg-white border-r border-[#d8dcde]">
         <div className="h-11 bg-[#03363D] flex items-center px-4 gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-white/70 hover:text-white hover:bg-white/10 gap-1 text-[11px]"
-            onClick={() => navigate("/messages")}
-          >
-            <ArrowLeft className="w-3 h-3" />
-            Back to Seel
-          </Button>
+          <span className="text-[12px] text-white/80 font-medium">Zendesk Support</span>
           <div className="flex-1" />
-          <span className="text-[10px] text-white/40 font-mono">Zendesk Simulation</span>
+          <span className="text-[10px] text-white/40 font-mono">Simulation</span>
         </div>
 
         <div className="flex h-[calc(100%-44px)]">
