@@ -1,8 +1,10 @@
 /* ── PlaybookPage ─────────────────────────────────────────
    Full-page Knowledge view: Documents tab + Rules tab.
-   Rules: one-line preview, detail sheet with version history,
-   actions, invocation count. No conflicts/tags/source links.
-   Documents: In Use toggle, 3-dot menu, upload dialog.
+   Rules: one-line preview, detail sheet with Content + Stats tabs.
+   Content: long-form policy text (no separate Exception/Escalation sections).
+   Stats: invocations, avg CSAT, deflection rate.
+   Documents: search + Add in same row, In Use toggle, 3-dot menu.
+   No tags anywhere.
    ──────────────────────────────────────────────────────────── */
 
 import { useState, useMemo } from "react";
@@ -61,13 +63,14 @@ import {
   History,
   Zap,
   MessageCircle,
-  ArrowRight,
   ChevronDown,
   ChevronUp,
-  ShieldAlert,
-  ListChecks,
   Globe,
   Plus,
+  BarChart3,
+  TrendingUp,
+  Star,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -78,7 +81,7 @@ function getActionName(actionId: string): string {
   return action?.name ?? actionId;
 }
 
-/* ── Rule Card (list item — simplified) ── */
+/* ── Rule Card (list item — simplified, no tags) ── */
 function RuleCard({
   rule,
   idx,
@@ -108,12 +111,6 @@ function RuleCard({
             <span className="text-[13px] font-medium text-foreground">
               {rule.name}
             </span>
-            <Badge
-              variant="secondary"
-              className="h-[16px] px-1.5 text-[9px] shrink-0"
-            >
-              {rule.intent}
-            </Badge>
             <span className="text-[10px] text-muted-foreground/50 ml-auto shrink-0">
               {rule.invocationCount} uses
             </span>
@@ -122,20 +119,13 @@ function RuleCard({
           <p className="text-[12px] text-muted-foreground leading-relaxed mt-1 line-clamp-1">
             {preview}
           </p>
-          <span className="text-[10px] text-muted-foreground/50 mt-1 inline-block">
-            Updated{" "}
-            {new Date(rule.lastUpdated).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            })}
-          </span>
         </div>
       </div>
     </button>
   );
 }
 
-/* ── Rule Detail Sheet ── */
+/* ── Rule Detail Sheet (Content + Stats tabs, no Version in detail) ── */
 function RuleDetailSheet({
   rule,
   open,
@@ -145,22 +135,46 @@ function RuleDetailSheet({
   open: boolean;
   onClose: () => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"content" | "stats">("content");
   const [showVersions, setShowVersions] = useState(false);
 
   if (!rule) return null;
 
   const actionNames = (rule.actions ?? []).map(getActionName);
 
+  // Build full long-form content from policy + exceptions + escalation
+  // All rendered as continuous prose, no special formatting
+  const buildFullContent = () => {
+    const paragraphs: string[] = [];
+
+    // Main policy
+    paragraphs.push(rule.policy);
+
+    // Exceptions woven in as prose
+    if (rule.exceptions.length > 0) {
+      const exceptionText = rule.exceptions.length === 1
+        ? `There is one exception to this rule: ${rule.exceptions[0]}`
+        : `There are exceptions to this rule. ${rule.exceptions.map((ex, i) => `${i + 1}. ${ex}`).join(" ")}`;
+      paragraphs.push(exceptionText);
+    }
+
+    // Escalation woven in as prose
+    if (rule.escalation) {
+      paragraphs.push(
+        `When ${rule.escalation.trigger.toLowerCase()}, the recommended action is to ${rule.escalation.action.toLowerCase()}.`
+      );
+    }
+
+    return paragraphs;
+  };
+
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-[520px] p-0 overflow-hidden">
+      <SheetContent side="right" className="w-full sm:max-w-[560px] p-0 overflow-hidden">
         <div className="h-full flex flex-col">
           {/* Header */}
           <SheetHeader className="px-6 pt-6 pb-4 border-b border-border/40">
             <div className="flex items-center gap-2 mb-1">
-              <Badge variant="secondary" className="text-[10px] px-1.5 h-[18px]">
-                {rule.intent}
-              </Badge>
               <span className="text-[10px] text-muted-foreground/60">
                 Updated{" "}
                 {new Date(rule.lastUpdated).toLocaleDateString("en-US", {
@@ -172,132 +186,182 @@ function RuleDetailSheet({
             </div>
             <SheetTitle className="text-[16px]">{rule.name}</SheetTitle>
             <SheetDescription className="sr-only">Rule details</SheetDescription>
+
+            {/* Content / Stats tabs */}
+            <div className="flex gap-1 mt-3 p-0.5 bg-muted/50 rounded-lg self-start">
+              <button
+                onClick={() => setActiveTab("content")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-colors",
+                  activeTab === "content"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <FileText className="w-3 h-3" />
+                Content
+              </button>
+              <button
+                onClick={() => setActiveTab("stats")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-colors",
+                  activeTab === "stats"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <BarChart3 className="w-3 h-3" />
+                Stats
+              </button>
+            </div>
           </SheetHeader>
 
           {/* Content */}
           <ScrollArea className="flex-1">
-            <div className="px-6 py-5 space-y-5">
-              {/* Stats row */}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/40">
-                  <Zap className="w-3 h-3 text-primary" />
-                  <span className="text-[11px] font-medium text-foreground">
-                    {rule.invocationCount}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    invocations
-                  </span>
+            {activeTab === "content" ? (
+              <div className="px-6 py-5 space-y-5">
+                {/* Long-form policy content */}
+                <div className="space-y-4">
+                  {buildFullContent().map((paragraph, i) => (
+                    <p
+                      key={i}
+                      className="text-[13px] text-foreground leading-[1.8] tracking-[0.01em]"
+                    >
+                      {paragraph}
+                    </p>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/40">
-                  <History className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-[11px] font-medium text-foreground">
-                    {rule.versions.length}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    version{rule.versions.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-              </div>
 
-              {/* Policy (full text) */}
-              <div>
-                <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Guidance
-                </h4>
-                <p className="text-[12.5px] text-foreground leading-relaxed">
-                  {rule.policy}
-                </p>
-              </div>
-
-              {/* Exceptions */}
-              {rule.exceptions.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <ListChecks className="w-3 h-3 text-amber-500" />
-                    <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      Exceptions
+                {/* Actions */}
+                {actionNames.length > 0 && (
+                  <div className="pt-3 border-t border-border/30">
+                    <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
+                      Actions
                     </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {actionNames.map((name) => (
+                        <span
+                          key={name}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/5 border border-primary/10 text-[11px] text-primary font-medium"
+                        >
+                          <Zap className="w-2.5 h-2.5" />
+                          {name}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <ul className="space-y-1">
-                    {rule.exceptions.map((ex, i) => (
-                      <li
-                        key={i}
-                        className="text-[12px] text-muted-foreground leading-relaxed pl-4 relative before:content-['–'] before:absolute before:left-1 before:text-muted-foreground/40"
-                      >
-                        {ex}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                )}
 
-              {/* Escalation */}
-              {rule.escalation && (
-                <div className="p-3 rounded-md bg-red-50/40 border border-red-100/60">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <ShieldAlert className="w-3 h-3 text-red-400" />
-                    <h4 className="text-[11px] font-semibold text-red-500/80 uppercase tracking-wider">
-                      Escalation
-                    </h4>
-                  </div>
-                  <p className="text-[12px] text-foreground/80 leading-relaxed">
-                    <span className="font-medium">When:</span>{" "}
-                    {rule.escalation.trigger}
-                  </p>
-                  <p className="text-[12px] text-foreground/80 leading-relaxed mt-0.5">
-                    <span className="font-medium">Then:</span>{" "}
-                    {rule.escalation.action}
-                  </p>
-                </div>
-              )}
+                {/* Version History (collapsible) */}
+                <div className="pt-3 border-t border-border/30">
+                  <button
+                    onClick={() => setShowVersions(!showVersions)}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+                  >
+                    <History className="w-3 h-3" />
+                    Version History ({rule.versions.length})
+                    {showVersions ? (
+                      <ChevronUp className="w-3 h-3" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
 
-              {/* Actions */}
-              {actionNames.length > 0 && (
-                <div>
-                  <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    Actions
-                  </h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {actionNames.map((name) => (
-                      <span
-                        key={name}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/5 border border-primary/10 text-[11px] text-primary font-medium"
-                      >
-                        <Zap className="w-2.5 h-2.5" />
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+                  {showVersions && (
+                    <div className="mt-3 space-y-0 relative">
+                      {/* Timeline line */}
+                      <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border/60" />
 
-              {/* Version History */}
-              <div>
-                <button
-                  onClick={() => setShowVersions(!showVersions)}
-                  className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
-                >
-                  <History className="w-3 h-3" />
-                  Version History ({rule.versions.length})
-                  {showVersions ? (
-                    <ChevronUp className="w-3 h-3" />
-                  ) : (
-                    <ChevronDown className="w-3 h-3" />
+                      {rule.versions.map((v, i) => (
+                        <VersionItem key={v.version} version={v} isLatest={i === 0} />
+                      ))}
+                    </div>
                   )}
-                </button>
+                </div>
+              </div>
+            ) : (
+              /* ═══ Stats Tab ═══ */
+              <div className="px-6 py-5 space-y-6">
+                {/* Key metrics */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-lg bg-muted/30 border border-border/30">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Zap className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                        Used
+                      </span>
+                    </div>
+                    <p className="text-[22px] font-semibold text-foreground leading-none">
+                      {rule.invocationCount}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      times invoked
+                    </p>
+                  </div>
 
-                {showVersions && (
-                  <div className="mt-3 space-y-0 relative">
-                    {/* Timeline line */}
-                    <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border/60" />
+                  <div className="p-3.5 rounded-lg bg-muted/30 border border-border/30">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Star className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                        Avg CSAT
+                      </span>
+                    </div>
+                    <p className="text-[22px] font-semibold text-foreground leading-none">
+                      {rule.avgCsat.toFixed(1)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      out of 5.0
+                    </p>
+                  </div>
 
-                    {rule.versions.map((v, i) => (
-                      <VersionItem key={v.version} version={v} isLatest={i === 0} />
-                    ))}
+                  <div className="p-3.5 rounded-lg bg-muted/30 border border-border/30">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                        Deflection
+                      </span>
+                    </div>
+                    <p className="text-[22px] font-semibold text-foreground leading-none">
+                      {rule.deflectionRate}%
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      resolved without escalation
+                    </p>
+                  </div>
+                </div>
+
+                {/* Performance context */}
+                <div className="p-3.5 rounded-lg bg-muted/20 border border-border/20">
+                  <p className="text-[12px] text-muted-foreground leading-relaxed">
+                    This rule has been invoked <strong className="text-foreground">{rule.invocationCount} times</strong> across
+                    all conversations. Tickets handled using this rule have an average
+                    customer satisfaction score of <strong className="text-foreground">{rule.avgCsat.toFixed(1)}/5.0</strong> and
+                    a <strong className="text-foreground">{rule.deflectionRate}%</strong> deflection rate (resolved without
+                    human escalation).
+                  </p>
+                </div>
+
+                {/* Actions summary */}
+                {actionNames.length > 0 && (
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
+                      Linked Actions
+                    </h4>
+                    <div className="space-y-1.5">
+                      {actionNames.map((name) => (
+                        <div
+                          key={name}
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/20 border border-border/20"
+                        >
+                          <Zap className="w-3 h-3 text-primary shrink-0" />
+                          <span className="text-[12px] text-foreground">{name}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
-            </div>
+            )}
           </ScrollArea>
         </div>
       </SheetContent>
@@ -484,7 +548,7 @@ function UploadDocumentDialog({
   const handleSubmit = () => {
     if (activeMethod === "upload") {
       toast.success(
-        "Document uploaded. Processing will take 30-60 minutes — Sarah will notify you when rules are ready."
+        "Document uploaded. Processing will take 30-60 minutes — Alex will notify you when rules are ready."
       );
     } else if (activeMethod === "url") {
       if (!urlValue.trim()) {
@@ -492,7 +556,7 @@ function UploadDocumentDialog({
         return;
       }
       toast.success(
-        "URL imported. Processing will take 30-60 minutes — Sarah will notify you when rules are ready."
+        "URL imported. Processing will take 30-60 minutes — Alex will notify you when rules are ready."
       );
     } else {
       if (!manualTitle.trim() || !manualContent.trim()) {
@@ -500,7 +564,7 @@ function UploadDocumentDialog({
         return;
       }
       toast.success(
-        "Content saved. Processing will take 30-60 minutes — Sarah will notify you when rules are ready."
+        "Content saved. Processing will take 30-60 minutes — Alex will notify you when rules are ready."
       );
     }
     onClose();
@@ -599,7 +663,7 @@ function UploadDocumentDialog({
         <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/40 mt-1">
           <Bot className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            After importing, Sarah (Team Lead) will process the content and
+            After importing, Alex (Team Lead) will process the content and
             extract rules. This typically takes 30-60 minutes. You'll be
             notified when it's ready for review.
           </p>
@@ -638,22 +702,28 @@ function UploadDocumentDialog({
 
 export default function PlaybookPage() {
   const [activeTab, setActiveTab] = useState<"documents" | "rules">("rules");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [ruleSearch, setRuleSearch] = useState("");
+  const [docSearch, setDocSearch] = useState("");
   const [showGuide, setShowGuide] = useState(true);
   const [selectedRule, setSelectedRule] = useState<SOPRule | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [documents, setDocuments] = useState(KNOWLEDGE_DOCUMENTS);
 
   const filteredRules = useMemo(() => {
-    if (!searchQuery.trim()) return RULES;
-    const q = searchQuery.toLowerCase();
+    if (!ruleSearch.trim()) return RULES;
+    const q = ruleSearch.toLowerCase();
     return RULES.filter(
       (rule) =>
         rule.name.toLowerCase().includes(q) ||
-        rule.policy.toLowerCase().includes(q) ||
-        rule.intent.toLowerCase().includes(q)
+        rule.policy.toLowerCase().includes(q)
     );
-  }, [searchQuery]);
+  }, [ruleSearch]);
+
+  const filteredDocs = useMemo(() => {
+    if (!docSearch.trim()) return documents;
+    const q = docSearch.toLowerCase();
+    return documents.filter((d) => d.name.toLowerCase().includes(q));
+  }, [docSearch, documents]);
 
   const toggleDocInUse = (docId: string) => {
     setDocuments((prev) =>
@@ -702,18 +772,6 @@ export default function PlaybookPage() {
               </button>
             </div>
           </div>
-
-          {/* Header actions */}
-          {activeTab === "documents" && (
-            <Button
-              size="sm"
-              onClick={() => setUploadDialogOpen(true)}
-              className="h-8 text-[12px] gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Document
-            </Button>
-          )}
         </div>
       </div>
 
@@ -749,14 +807,14 @@ export default function PlaybookPage() {
         {/* ═══ Rules Tab ═══ */}
         {activeTab === "rules" && (
           <div>
-            {/* Search bar only */}
+            {/* Search bar */}
             <div className="flex items-center gap-3 mb-4">
               <div className="relative flex-1 max-w-[280px]">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
                   placeholder="Search rules..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={ruleSearch}
+                  onChange={(e) => setRuleSearch(e.target.value)}
                   className="h-8 text-[12px] pl-8"
                 />
               </div>
@@ -803,16 +861,39 @@ export default function PlaybookPage() {
         {/* ═══ Documents Tab ═══ */}
         {activeTab === "documents" && (
           <div>
+            {/* Search + Add Document in same row */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="relative flex-1 max-w-[280px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search documents..."
+                  value={docSearch}
+                  onChange={(e) => setDocSearch(e.target.value)}
+                  className="h-8 text-[12px] pl-8"
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setUploadDialogOpen(true)}
+                className="h-8 text-[12px] gap-1.5 ml-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Document
+              </Button>
+            </div>
+
             <div className="bg-white rounded-lg border border-border/60">
-              {documents.length === 0 ? (
+              {filteredDocs.length === 0 ? (
                 <div className="p-8 text-center">
                   <p className="text-[13px] text-muted-foreground">
-                    No documents yet. Add your first document to get started.
+                    {docSearch.trim()
+                      ? "No documents match your search."
+                      : "No documents yet. Add your first document to get started."}
                   </p>
                 </div>
               ) : (
                 <div className="divide-y divide-border/30">
-                  {documents.map((doc) => (
+                  {filteredDocs.map((doc) => (
                     <DocumentRow
                       key={doc.id}
                       doc={doc}

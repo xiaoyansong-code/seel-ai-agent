@@ -98,6 +98,8 @@ export interface SOPRule {
   tags?: string[];
   actions?: string[];        // action IDs this rule can invoke
   invocationCount: number;   // how many times this rule was matched
+  avgCsat: number;           // average CSAT score for tickets using this rule
+  deflectionRate: number;    // % of tickets fully resolved without escalation
   versions: RuleVersion[];   // version history
 }
 
@@ -340,6 +342,8 @@ export const RULES: SOPRule[] = [
     tags: ["Returns", "Refunds", "VIP"],
     actions: ["ap-1", "ap-3"],
     invocationCount: 156,
+    avgCsat: 4.5,
+    deflectionRate: 82,
     versions: [
       { version: 3, text: "Process full refund for items returned within 30 days of delivery in original condition. Refund to original payment method only. For VIP customers (3+ completed orders), extend return window to 45 days.", changedAt: "2026-03-20T09:00:00Z", conversationId: "t-4", conversationTitle: "VIP customer refund window extension", changeDescription: "Added VIP 45-day return window" },
       { version: 2, text: "Process full refund for items returned within 30 days of delivery in original condition. Refund to original payment method only.", changedAt: "2026-03-10T14:00:00Z", conversationId: "t-6", conversationTitle: "Holiday return policy extension", changeDescription: "Added Spring Sale 60-day exception" },
@@ -364,6 +368,8 @@ export const RULES: SOPRule[] = [
     tags: ["Shipping", "WISMO"],
     actions: ["ap-4"],
     invocationCount: 243,
+    avgCsat: 4.6,
+    deflectionRate: 91,
     versions: [
       { version: 1, text: "Look up order in Shopify, retrieve shipment tracking. If shipped, share tracking link and estimated delivery date.", changedAt: "2026-03-01T09:00:00Z", changeDescription: "Initial rule extracted from Customer Service SOP" },
     ],
@@ -387,6 +393,8 @@ export const RULES: SOPRule[] = [
     tags: ["Product Issues", "Damage"],
     actions: ["ap-1", "ap-3", "ap-7"],
     invocationCount: 89,
+    avgCsat: 4.2,
+    deflectionRate: 68,
     versions: [
       { version: 2, text: "For items under $80, process replacement or refund without requiring photo evidence. For items $80+, request photo evidence before processing.", changedAt: "2026-03-12T14:00:00Z", conversationId: "t-3", conversationTitle: "Learned: Damaged item photo not always needed", changeDescription: "Added $80 threshold — low-value items skip photo" },
       { version: 1, text: "For all damage claims, request photo evidence before processing replacement or refund.", changedAt: "2026-03-01T09:00:00Z", changeDescription: "Initial rule extracted from Customer Service SOP" },
@@ -409,6 +417,8 @@ export const RULES: SOPRule[] = [
     tags: ["Cancellations"],
     actions: ["ap-2", "ap-1"],
     invocationCount: 67,
+    avgCsat: 4.4,
+    deflectionRate: 75,
     versions: [
       { version: 1, text: "Cancel unfulfilled orders immediately with full refund. For fulfilled/shipped orders, guide customer to the return process instead.", changedAt: "2026-03-01T09:00:00Z", changeDescription: "Initial rule extracted from Customer Service SOP" },
     ],
@@ -431,6 +441,8 @@ export const RULES: SOPRule[] = [
     tags: ["Returns", "Shipping"],
     actions: ["ap-3"],
     invocationCount: 42,
+    avgCsat: 4.1,
+    deflectionRate: 58,
     versions: [
       { version: 2, text: "Defective/wrong items: free return shipping. Change-of-mind returns: customer pays $8.95.", changedAt: "2026-03-20T09:00:00Z", conversationId: "t-7", conversationTitle: "Return shipping cost for defective items", changeDescription: "Clarified defective vs change-of-mind shipping cost" },
       { version: 1, text: "Return shipping costs $8.95 for all returns.", changedAt: "2026-03-01T09:00:00Z", changeDescription: "Initial rule extracted from Return Policy document" },
@@ -454,6 +466,8 @@ export const RULES: SOPRule[] = [
     tags: ["Returns", "International"],
     actions: ["ap-3", "ap-1"],
     invocationCount: 18,
+    avgCsat: 4.3,
+    deflectionRate: 72,
     versions: [
       { version: 1, text: "Return shipping is customer's responsibility for international orders. Customs duties are non-refundable.", changedAt: "2026-03-25T16:00:00Z", conversationId: "t-8", conversationTitle: "International order return complications", changeDescription: "New rule created from Team Lead conversation" },
     ],
