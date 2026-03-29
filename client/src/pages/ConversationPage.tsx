@@ -1,23 +1,30 @@
 /* ── Messages Page ────────────────────────────────────────────
-   DM-style conversation flow. Each message is a chat bubble.
-   Topics are marked with lightweight inline labels.
-   Rule proposals are embedded cards within AI messages.
-   No onboarding — that lives at /onboarding.
+   Two tabs: Conversations (DM-style + ticket actions) and Setup (onboarding).
+   Conversations: chat bubbles with topic labels, rule proposals, and
+   pending ticket actions from Zendesk.
+   Setup: embedded onboarding flow (Connect → Playbook → Hire Rep).
    ──────────────────────────────────────────────────────────── */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Send, Check, X, XCircle, Reply, Bot, List, Plus,
   ArrowRight, ChevronDown, ChevronUp, MessageCircle,
+  AlertTriangle, Copy, CheckCircle2, Link2, Upload,
+  FileText, Sparkles, Eye, Rocket, Settings, BookOpen,
+  ExternalLink, Shield, Clock,
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 import { TOPICS, type Topic } from "@/lib/mock-data";
+import { ZENDESK_TICKETS, type ZendeskTicket, type SuggestedAction } from "@/lib/zendesk-data";
 
-// ── Types ──────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// ── SHARED TYPES & HELPERS ──────────────────────────────
+// ══════════════════════════════════════════════════════════
 
 interface RuleChange {
   type: "new" | "update";
@@ -39,8 +46,6 @@ interface ChatMessage {
   hasActions?: boolean;
   isTopicStart?: boolean;
 }
-
-// ── Helpers ────────────────────────────────────────────────
 
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
@@ -84,12 +89,16 @@ function renderMarkdown(text: string) {
         </div>
       );
     }
-    if (line.startsWith("> ")) {
-      return (
-        <div key={i} className="border-l-2 border-primary/20 pl-2 my-0.5 text-muted-foreground italic text-[11px]">
-          {line.slice(2)}
-        </div>
-      );
+    if (/^\d+\.\s/.test(line)) {
+      const match = line.match(/^(\d+)\.\s(.+)/);
+      if (match) {
+        return (
+          <div key={i} className="flex gap-1.5 ml-1">
+            <span className="text-muted-foreground shrink-0">{match[1]}.</span>
+            <span dangerouslySetInnerHTML={{ __html: match[2].replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+          </div>
+        );
+      }
     }
     return <p key={i} dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />;
   });
@@ -104,7 +113,6 @@ function buildChatMessages(topics: Topic[]): ChatMessage[] {
     const isResolved = topic.status === "resolved";
     const status: "waiting" | "done" = isResolved ? "done" : "waiting";
 
-    // Determine rule change for this topic
     let ruleChange: RuleChange | undefined;
 
     if (topic.proposedRule) {
@@ -136,18 +144,15 @@ function buildChatMessages(topics: Topic[]): ChatMessage[] {
       };
     }
 
-    // Process messages
     for (let i = 0; i < topic.messages.length; i++) {
       const msg = topic.messages[i];
       const isFirst = i === 0;
 
-      // Skip duplicate rule text messages (e.g. t-1's m-1-2)
       if (msg.sender === "ai" && topic.proposedRule &&
         (msg.content.includes("Proposed rule:") || msg.content.includes("Should I adopt this rule?"))) {
         if (!isFirst) continue;
       }
 
-      // Clean content: strip rule-related lines from anchor if we have a ruleChange
       let content = msg.content;
       if (isFirst && ruleChange && topic.type !== "rule_update") {
         content = content.split("\n").filter(line =>
@@ -155,9 +160,6 @@ function buildChatMessages(topics: Topic[]): ChatMessage[] {
         ).join("\n").trim();
       }
 
-      // Determine if this message should carry the rule card
-      // For rule_update (t-6): AI's second message carries the rule
-      // For others: first AI message carries it
       let msgRuleChange: RuleChange | undefined;
       if (topic.type === "rule_update" && msg.sender === "ai" && i === 1) {
         msgRuleChange = {
@@ -170,7 +172,6 @@ function buildChatMessages(topics: Topic[]): ChatMessage[] {
         msgRuleChange = ruleChange;
       }
 
-      // Determine if this message should show actions
       const hasActions = isFirst && msg.sender === "ai" && !isResolved &&
         topic.status !== "read" && topic.type !== "performance_report" &&
         ruleChange !== undefined;
@@ -190,25 +191,24 @@ function buildChatMessages(topics: Topic[]): ChatMessage[] {
     }
   }
 
-  // Group by topic, sort topics by their first message, keep messages within topic in order
+  // Group by topic, sort topics by first message, keep messages within topic in order
   const topicGroups = new Map<string, ChatMessage[]>();
   for (const msg of messages) {
     if (!topicGroups.has(msg.topicId)) topicGroups.set(msg.topicId, []);
     topicGroups.get(msg.topicId)!.push(msg);
   }
-  // Sort each topic's messages internally
   for (const group of Array.from(topicGroups.values())) {
     group.sort((a: ChatMessage, b: ChatMessage) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
-  // Sort topics by their first message timestamp
   const sortedTopics = Array.from(topicGroups.entries()).sort(
     ([, a], [, b]) => new Date(a[0].timestamp).getTime() - new Date(b[0].timestamp).getTime()
   );
-  // Flatten: all messages of topic A, then all of topic B, etc.
   return sortedTopics.flatMap(([, msgs]) => msgs);
 }
 
-// ── Collapsible Text ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// ── CONVERSATION TAB COMPONENTS ─────────────────────────
+// ══════════════════════════════════════════════════════════
 
 function CollapsibleText({ text, maxLines = 4 }: { text: string; maxLines?: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -271,61 +271,52 @@ function RuleChangeCard({ change }: { change: RuleChange }) {
         {change.type === "new" ? (
           <Plus className="w-3 h-3 text-emerald-600" />
         ) : (
-          <ArrowRight className="w-3 h-3 text-blue-600" />
+          <ArrowRight className="w-3 h-3 text-amber-600" />
         )}
         <span className="text-[11px] font-semibold text-foreground">
           {change.type === "new" ? "New Rule" : "Rule Update"}
         </span>
-        <span className="text-[10px] text-muted-foreground truncate">{change.ruleName}</span>
+        <span className="text-[10px] text-muted-foreground">{change.ruleName}</span>
       </div>
 
       <div className="px-3 py-2 space-y-2">
         {change.type === "update" && change.before && (
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-400/60" />
-              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Current</span>
-            </div>
-            <div className="pl-3">
-              {renderRuleText(change.before, beforeExpanded, () => setBeforeExpanded(!beforeExpanded), true)}
-            </div>
+          <div>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-red-400/80">Current</span>
+            {renderRuleText(change.before, beforeExpanded, () => setBeforeExpanded(!beforeExpanded), true)}
           </div>
         )}
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-              {change.type === "update" ? "Proposed" : "Proposed Rule"}
-            </span>
-          </div>
-          <div className="pl-3">
-            {renderRuleText(change.after, afterExpanded, () => setAfterExpanded(!afterExpanded))}
-          </div>
+        <div>
+          <span className={cn(
+            "text-[9px] font-semibold uppercase tracking-wider",
+            change.type === "update" ? "text-emerald-500" : "text-emerald-500"
+          )}>
+            {change.type === "update" ? "Proposed" : "Proposed Rule"}
+          </span>
+          {renderRuleText(change.after, afterExpanded, () => setAfterExpanded(!afterExpanded))}
         </div>
         {change.source && (
-          <p className="text-[10px] text-muted-foreground/60 pt-1 border-t border-border/40 pl-3">
-            {change.source}
-          </p>
+          <p className="text-[10px] text-muted-foreground/70 italic">{change.source}</p>
         )}
       </div>
     </div>
   );
 }
 
-// ── Topic Label (lightweight inline divider) ────────────
+// ── Topic Label ─────────────────────────────────────────
 
 function TopicLabel({ title, status }: { title: string; status: "waiting" | "done" }) {
   return (
-    <div className="flex items-center gap-2 py-1">
-      <div className="flex-1 h-px bg-border/60" />
-      <div className="flex items-center gap-1.5 px-2">
-        <MessageCircle className="w-3 h-3 text-muted-foreground/50" />
-        <span className="text-[10px] font-medium text-muted-foreground">{title}</span>
-        {status === "done" && (
-          <span className="text-[9px] text-emerald-500 font-medium">Done</span>
-        )}
-      </div>
-      <div className="flex-1 h-px bg-border/60" />
+    <div className="flex items-center gap-2 mb-1.5 mt-3">
+      <MessageCircle className="w-3 h-3 text-muted-foreground/50" />
+      <span className="text-[11px] font-medium text-muted-foreground truncate max-w-[400px]">{title}</span>
+      <span className={cn(
+        "text-[9px] px-1.5 py-0.5 rounded-full font-medium",
+        status === "done" ? "bg-muted text-muted-foreground" : "bg-amber-50 text-amber-700"
+      )}>
+        {status === "done" ? "Done" : "Waiting"}
+      </span>
+      <div className="flex-1 h-px bg-border/50" />
     </div>
   );
 }
@@ -341,85 +332,50 @@ function MessageBubble({
   onAction: (topicId: string, action: string) => void;
   onReply: (topicId: string) => void;
 }) {
-  const [actioned, setActioned] = useState<string | null>(null);
   const isAi = msg.sender === "ai";
 
-  if (!isAi) {
-    // Manager message — right-aligned bubble
-    return (
-      <div className="flex justify-end group">
-        <div className="max-w-[75%]">
-          <div className="flex items-center gap-1.5 justify-end mb-0.5">
-            <span className="text-[9px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-              {formatTime(msg.timestamp)}
-            </span>
-          </div>
-          <div className="rounded-2xl rounded-tr-sm bg-primary/8 border border-primary/10 px-3.5 py-2 text-[12.5px] leading-relaxed text-foreground">
-            {renderMarkdown(msg.content)}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // AI message — left-aligned with avatar
   return (
-    <div className="flex gap-2.5 group max-w-[85%]">
-      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shrink-0 mt-0.5">
-        <Bot className="w-3.5 h-3.5 text-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="text-[11px] font-medium text-foreground">Rep</span>
+    <div className={cn("flex gap-2.5", !isAi && "flex-row-reverse")}>
+      {isAi && (
+        <div className="w-6 h-6 rounded-full bg-primary/8 flex items-center justify-center shrink-0 mt-0.5">
+          <Bot className="w-3 h-3 text-primary" />
+        </div>
+      )}
+
+      <div className={cn("max-w-[85%] min-w-0", !isAi && "text-right")}>
+        <div className={cn("flex items-center gap-1.5 mb-0.5", !isAi && "justify-end")}>
+          <span className="text-[10px] font-medium text-foreground">{isAi ? "Rep" : "You"}</span>
           <span className="text-[9px] text-muted-foreground">{formatTime(msg.timestamp)}</span>
         </div>
 
-        {/* Message content */}
-        {msg.content && (
-          <div className="text-[12.5px] leading-relaxed text-foreground/90">
-            <CollapsibleText text={msg.content} />
-          </div>
-        )}
+        <div className={cn(
+          "rounded-xl px-3 py-2 inline-block text-left",
+          isAi ? "bg-muted/40 text-foreground rounded-tl-sm" : "bg-primary/6 text-foreground rounded-tr-sm"
+        )}>
+          <CollapsibleText text={msg.content} />
+          {msg.ruleChange && <RuleChangeCard change={msg.ruleChange} />}
+        </div>
 
-        {/* Rule change card */}
-        {msg.ruleChange && <RuleChangeCard change={msg.ruleChange} />}
-
-        {/* Action buttons */}
-        {msg.hasActions && !actioned && (
-          <div className="flex items-center gap-1.5 mt-2.5">
-            <Button
-              size="sm"
-              className="h-7 text-[11px] px-3.5 rounded-full bg-primary text-white hover:bg-primary/90"
-              onClick={() => { setActioned("Accepted"); onAction(msg.topicId, "accept"); }}
+        {msg.hasActions && (
+          <div className="flex items-center gap-1.5 mt-1.5 ml-0.5">
+            <button
+              onClick={() => onAction(msg.topicId, "accept")}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
             >
-              <Check className="w-3 h-3 mr-1" /> Accept
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] px-3.5 rounded-full text-muted-foreground hover:text-foreground"
-              onClick={() => { setActioned("Rejected"); onAction(msg.topicId, "reject"); }}
+              <Check className="w-3 h-3" /> Accept
+            </button>
+            <button
+              onClick={() => onAction(msg.topicId, "reject")}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
             >
-              <XCircle className="w-3 h-3 mr-1" /> Reject
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] px-3.5 rounded-full text-muted-foreground hover:text-foreground"
+              <X className="w-3 h-3" /> Reject
+            </button>
+            <button
               onClick={() => onReply(msg.topicId)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:bg-accent transition-colors"
             >
-              <Reply className="w-3 h-3 mr-1" /> Reply
-            </Button>
-          </div>
-        )}
-
-        {actioned && (
-          <div className={cn(
-            "flex items-center gap-1.5 mt-2 text-[11px]",
-            actioned === "Accepted" ? "text-emerald-600" : "text-red-500"
-          )}>
-            {actioned === "Accepted" ? <Check className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-            {actioned}
+              <Reply className="w-3 h-3" /> Reply
+            </button>
           </div>
         )}
       </div>
@@ -427,15 +383,232 @@ function MessageBubble({
   );
 }
 
-// ── Topics Panel ─────────────────────────────────────────
+// ── Ticket Action Card (Zendesk approve/notes in Messages) ──
+
+function TicketActionCard({
+  ticket,
+  onApprove,
+  onDeny,
+  onInstruct,
+}: {
+  ticket: ZendeskTicket;
+  onApprove: (id: string) => void;
+  onDeny: (id: string) => void;
+  onInstruct: (id: string, note: string) => void;
+}) {
+  const [instructInput, setInstructInput] = useState("");
+  const [showInstruct, setShowInstruct] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<"pending" | "approved" | "denied">(
+    ticket.approvalStatus || "pending"
+  );
+
+  const handleApprove = () => {
+    setStatus("approved");
+    onApprove(ticket.id);
+    toast.success(`Approved: ${ticket.suggestedAction?.label}`);
+  };
+
+  const handleDeny = () => {
+    setStatus("denied");
+    onDeny(ticket.id);
+    toast.success("Denied. Rep will re-evaluate.");
+  };
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSendInstruct = () => {
+    if (!instructInput.trim()) return;
+    onInstruct(ticket.id, instructInput.trim());
+    toast.success("Note sent to Rep");
+    setInstructInput("");
+    setShowInstruct(false);
+  };
+
+  const isApproval = ticket.state === "approval";
+  const isEscalated = ticket.state === "escalated";
+
+  return (
+    <div className="flex gap-2.5">
+      <div className="w-6 h-6 rounded-full bg-primary/8 flex items-center justify-center shrink-0 mt-0.5">
+        <Bot className="w-3 h-3 text-primary" />
+      </div>
+
+      <div className="flex-1 min-w-0 max-w-[85%]">
+        {/* Header */}
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-[10px] font-medium text-foreground">Rep</span>
+          <span className="text-[9px] text-muted-foreground">
+            {formatTime(ticket.messages[0]?.timestamp || "2026-03-26T09:00:00Z")}
+          </span>
+        </div>
+
+        <div className="rounded-xl bg-muted/40 text-foreground rounded-tl-sm overflow-hidden">
+          {/* Status bar */}
+          <div className={cn(
+            "flex items-center gap-2 px-3 py-1.5 border-b border-border/50",
+            isApproval ? "bg-amber-50/50" : "bg-red-50/50"
+          )}>
+            {isApproval ? (
+              <Clock className="w-3 h-3 text-amber-600" />
+            ) : (
+              <AlertTriangle className="w-3 h-3 text-red-500" />
+            )}
+            <span className="text-[10px] font-semibold">
+              {isApproval ? "Approval Request" : "Escalated to You"}
+            </span>
+            <span className="text-[10px] text-muted-foreground ml-auto">
+              #{ticket.id.replace("zd-", "")} · {ticket.customerName}
+            </span>
+          </div>
+
+          <div className="px-3 py-2 space-y-2">
+            {/* Ticket subject */}
+            <p className="text-[12px] font-medium">{ticket.subject}</p>
+
+            {/* Rep's Note */}
+            {ticket.internalNote && (
+              <div className="rounded-md bg-white/60 border border-border/50 px-2.5 py-2">
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70 block mb-1">Rep's Note</span>
+                <p className="text-[11.5px] leading-relaxed text-foreground/80">{ticket.internalNote}</p>
+              </div>
+            )}
+
+            {/* Suggested Action */}
+            {isApproval && ticket.suggestedAction && (
+              <div className="rounded-md bg-white/60 border border-primary/20 px-2.5 py-2">
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-primary/70 block mb-1">Suggested Action</span>
+                {ticket.suggestedAction.type === "reply" && ticket.suggestedAction.draft ? (
+                  <div>
+                    <p className="text-[11.5px] leading-relaxed text-foreground/80 italic">
+                      "{ticket.suggestedAction.draft}"
+                    </p>
+                    <button
+                      onClick={() => handleCopy(ticket.suggestedAction!.draft!)}
+                      className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 transition-colors"
+                    >
+                      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copied ? "Copied" : "Copy draft"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[12px] font-medium text-foreground">{ticket.suggestedAction.label}</span>
+                    {ticket.suggestedAction.details && (
+                      <div className="flex gap-2">
+                        {Object.entries(ticket.suggestedAction.details).map(([k, v]) => (
+                          <span key={k} className="text-[10px] text-muted-foreground">
+                            {k}: <strong className="text-foreground">{v}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="px-3 py-2 border-t border-border/50 bg-muted/10">
+            {status === "pending" ? (
+              <div className="flex items-center gap-2">
+                {isApproval && (
+                  <>
+                    <button
+                      onClick={handleApprove}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                    >
+                      <Check className="w-3 h-3" /> Approve
+                    </button>
+                    <button
+                      onClick={handleDeny}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[11px] font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                    >
+                      <X className="w-3 h-3" /> Deny
+                    </button>
+                  </>
+                )}
+                {isEscalated && (
+                  <a
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); toast.info("Opening ticket in Zendesk..."); }}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[11px] font-medium bg-muted text-foreground hover:bg-accent transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Open in Zendesk
+                  </a>
+                )}
+                <button
+                  onClick={() => setShowInstruct(!showInstruct)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground hover:bg-accent transition-colors ml-auto"
+                >
+                  <Reply className="w-3 h-3" /> Notes to Rep
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "text-[11px] font-medium",
+                  status === "approved" ? "text-emerald-600" : "text-red-500"
+                )}>
+                  {status === "approved" ? "✓ Approved" : "✗ Denied"}
+                </span>
+                <button
+                  onClick={() => setShowInstruct(!showInstruct)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:bg-accent transition-colors ml-auto"
+                >
+                  <Reply className="w-3 h-3" /> Notes to Rep
+                </button>
+              </div>
+            )}
+
+            {showInstruct && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  value={instructInput}
+                  onChange={(e) => setInstructInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendInstruct()}
+                  placeholder="Leave a note for how to handle this in the future..."
+                  className="flex-1 text-[11px] bg-white border border-border rounded-md px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50"
+                />
+                <button
+                  onClick={handleSendInstruct}
+                  disabled={!instructInput.trim()}
+                  className="p-1.5 rounded-md text-primary hover:bg-primary/8 transition-colors disabled:opacity-30"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Topics Panel ────────────────────────────────────────
+
+interface TopicItem {
+  id: string;
+  title: string;
+  status: "waiting" | "done";
+  timestamp: string;
+  hasActions: boolean;
+  replyCount: number;
+}
 
 function TopicsPanel({
   topics,
   onSelectTopic,
   onClose,
 }: {
-  topics: { id: string; title: string; status: "waiting" | "done"; timestamp: string; hasActions: boolean; replyCount: number }[];
-  onSelectTopic: (topicId: string) => void;
+  topics: TopicItem[];
+  onSelectTopic: (id: string) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"waiting" | "done">("waiting");
@@ -444,60 +617,63 @@ function TopicsPanel({
   const list = tab === "waiting" ? waiting : done;
 
   return (
-    <div className="w-[260px] border-l border-border bg-white flex flex-col h-full shrink-0">
-      <div className="flex items-center justify-between px-3 h-11 border-b border-border shrink-0">
-        <div className="flex items-center gap-2">
-          <List className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[12px] font-semibold text-foreground">Topics</span>
-        </div>
+    <div className="w-[280px] border-l border-border bg-white flex flex-col h-full shrink-0">
+      <div className="flex items-center justify-between px-4 h-11 border-b border-border shrink-0">
+        <span className="text-[12px] font-semibold text-foreground">Topics</span>
         <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors">
           <X className="w-3.5 h-3.5 text-muted-foreground" />
         </button>
       </div>
-      <Tabs value={tab} onValueChange={(v) => setTab(v as "waiting" | "done")} className="flex-1 flex flex-col">
-        <TabsList className="mx-3 mt-2 h-8 bg-muted/50">
-          <TabsTrigger value="waiting" className="text-[11px] h-6 px-3 data-[state=active]:bg-white relative">
-            Waiting
-            {waiting.length > 0 && (
-              <span className="ml-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center font-medium">
-                {waiting.length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="done" className="text-[11px] h-6 px-3 data-[state=active]:bg-white">
-            Done
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value={tab} className="flex-1 mt-0">
-          <ScrollArea className="h-full">
-            <div className="py-1">
-              {list.length === 0 && (
-                <p className="text-[11px] text-muted-foreground text-center py-8">
-                  {tab === "waiting" ? "All caught up!" : "No resolved topics yet."}
-                </p>
-              )}
-              {list.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => onSelectTopic(t.id)}
-                  className="w-full flex items-start gap-2.5 px-3 py-2.5 hover:bg-accent/50 transition-colors text-left border-b border-border/30"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-medium text-foreground truncate">{t.title}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {formatRelativeTime(t.timestamp)}
-                      {t.replyCount > 0 && ` · ${t.replyCount} messages`}
-                    </p>
-                  </div>
-                  {t.status === "waiting" && t.hasActions && (
-                    <span className="w-2 h-2 rounded-full bg-red-400 shrink-0 mt-1.5" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-        </TabsContent>
-      </Tabs>
+
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => setTab("waiting")}
+          className={cn(
+            "flex-1 py-2 text-[11px] font-medium text-center transition-colors relative",
+            tab === "waiting" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Waiting
+          {waiting.length > 0 && (
+            <span className="ml-1 w-4 h-4 inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-medium">
+              {waiting.length}
+            </span>
+          )}
+          {tab === "waiting" && <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-foreground rounded-full" />}
+        </button>
+        <button
+          onClick={() => setTab("done")}
+          className={cn(
+            "flex-1 py-2 text-[11px] font-medium text-center transition-colors relative",
+            tab === "done" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Done
+          <span className="ml-1 text-[9px] text-muted-foreground">({done.length})</span>
+          {tab === "done" && <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-foreground rounded-full" />}
+        </button>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="py-1">
+          {list.length === 0 && (
+            <p className="text-[11px] text-muted-foreground/50 text-center py-8">No topics</p>
+          )}
+          {list.map((topic) => (
+            <button
+              key={topic.id}
+              onClick={() => onSelectTopic(topic.id)}
+              className="w-full text-left px-4 py-2.5 hover:bg-accent/50 transition-colors border-b border-border/30"
+            >
+              <p className="text-[11.5px] font-medium text-foreground truncate">{topic.title}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[9px] text-muted-foreground">{formatRelativeTime(topic.timestamp)}</span>
+                <span className="text-[9px] text-muted-foreground">{topic.replyCount} messages</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -565,7 +741,6 @@ function ThreadSidePanel({
         </button>
       </div>
 
-      {/* Original context */}
       <div className="px-4 py-2.5 border-b border-border bg-muted/20">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-4 h-4 rounded-full bg-primary/8 flex items-center justify-center">
@@ -628,14 +803,501 @@ function ThreadSidePanel({
 }
 
 // ══════════════════════════════════════════════════════════
-// ── MAIN PAGE ────────────────────────────────────────────
+// ── SETUP TAB (ONBOARDING) ──────────────────────────────
+// ══════════════════════════════════════════════════════════
+
+type OnboardingPhase =
+  | "welcome"
+  | "connect_zendesk"
+  | "connect_shopify"
+  | "upload_doc"
+  | "importing"
+  | "parse_result"
+  | "conflict"
+  | "go_live"
+  | "done";
+
+interface OnboardingMsg {
+  id: string;
+  role: "ai" | "manager";
+  content: string;
+  choices?: { label: string; value: string; variant?: "primary" | "outline" }[];
+  widget?: string;
+  widgetData?: Record<string, unknown>;
+}
+
+const SETUP_STEPS = [
+  { label: "Connect to your system", phases: ["welcome", "connect_zendesk", "connect_shopify"] },
+  { label: "Set up a playbook", phases: ["upload_doc", "importing", "parse_result", "conflict"] },
+  { label: "Hire a rep", phases: ["go_live", "done"] },
+];
+
+const ALL_OB_PHASES: OnboardingPhase[] = [
+  "welcome", "connect_zendesk", "connect_shopify", "upload_doc",
+  "importing", "parse_result", "conflict", "go_live", "done",
+];
+
+let obMsgCounter = 0;
+function makeObMsg(
+  role: "ai" | "manager",
+  content: string,
+  extras?: Partial<Pick<OnboardingMsg, "choices" | "widget" | "widgetData">>
+): OnboardingMsg {
+  obMsgCounter++;
+  return { id: `ob-${obMsgCounter}`, role, content, ...extras };
+}
+
+function SetupTab() {
+  const [phase, setPhase] = useState<OnboardingPhase>("welcome");
+  const [messages, setMessages] = useState<OnboardingMsg[]>([]);
+  const [importProgress, setImportProgress] = useState(0);
+  const [typing, setTyping] = useState(false);
+  const [, navigate] = useLocation();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const hasInit = useRef(false);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, typing]);
+
+  const addAiMessages = (msgs: OnboardingMsg[], delay = 500) => {
+    setTyping(true);
+    const copy = [...msgs];
+    let i = 0;
+    const next = () => {
+      if (i < copy.length) {
+        const m = copy[i];
+        if (m) setMessages((prev) => [...prev, m]);
+        i++;
+        if (i < copy.length) setTimeout(next, delay);
+        else setTyping(false);
+      }
+    };
+    setTimeout(next, 400);
+  };
+
+  useEffect(() => {
+    if (hasInit.current) return;
+    hasInit.current = true;
+    addAiMessages([
+      makeObMsg("ai", "Hey! I'm your setup assistant. Let's get your AI rep running — this takes about 3 minutes."),
+      makeObMsg("ai", "First, let's connect your Zendesk so the rep can read and respond to tickets.", {
+        choices: [
+          { label: "Connect Zendesk", value: "start_zendesk", variant: "primary" },
+          { label: "Skip for now", value: "skip_zendesk", variant: "outline" },
+        ],
+      }),
+    ]);
+  }, []);
+
+  const handleChoice = (value: string) => {
+    switch (phase) {
+      case "welcome":
+        if (value === "skip_zendesk") {
+          setPhase("connect_shopify");
+          addAiMessages([
+            makeObMsg("ai", "No problem — you can connect Zendesk later in Integrations."),
+            makeObMsg("ai", "How about Shopify? Connecting it lets the rep look up orders and process refunds.", {
+              choices: [
+                { label: "Connect Shopify", value: "start_shopify", variant: "primary" },
+                { label: "Skip for now", value: "skip_shopify", variant: "outline" },
+              ],
+            }),
+          ]);
+        } else {
+          setPhase("connect_zendesk");
+          addAiMessages([makeObMsg("ai", "", { widget: "connect_zendesk" })]);
+        }
+        break;
+
+      case "connect_zendesk":
+        setPhase("connect_shopify");
+        addAiMessages([
+          makeObMsg("ai", "Zendesk connected! Now let's hook up Shopify so the rep can look up orders and process refunds.", {
+            choices: [
+              { label: "Connect Shopify", value: "start_shopify", variant: "primary" },
+              { label: "Skip for now", value: "skip_shopify", variant: "outline" },
+            ],
+          }),
+        ]);
+        break;
+
+      case "connect_shopify":
+        setPhase("upload_doc");
+        addAiMessages([
+          makeObMsg("ai", "Now I need to learn your business rules. Upload a document — your SOP, return policy, or playbook — and I'll extract the rules from it."),
+          makeObMsg("ai", "Let me show you how it works with your **Seel Return Policy** as an example.", {
+            widget: "upload_doc",
+          }),
+        ]);
+        break;
+
+      case "upload_doc":
+        setPhase("importing");
+        setImportProgress(0);
+        addAiMessages([
+          makeObMsg("ai", "Got it! Reading through your return policy now...", { widget: "import_progress" }),
+        ]);
+        {
+          const interval = setInterval(() => {
+            setImportProgress((prev) => {
+              if (prev >= 100) {
+                clearInterval(interval);
+                setTimeout(() => {
+                  setPhase("conflict");
+                  addAiMessages([
+                    makeObMsg("ai", "I've gone through everything. Here's what I pulled out:", {
+                      widget: "parse_result",
+                      widgetData: {
+                        rules: [
+                          { category: "Return Window", count: 3, example: "30-day return window from delivery date" },
+                          { category: "Refund Method", count: 2, example: "Refund to original payment method only" },
+                          { category: "Condition Rules", count: 4, example: "Items must be unused with tags attached" },
+                          { category: "Exceptions", count: 2, example: "Final sale items are non-returnable" },
+                          { category: "Shipping", count: 2, example: "Customer pays return shipping unless defective" },
+                        ],
+                      },
+                    }),
+                    makeObMsg("ai", "One thing I need you to resolve:", { widget: "conflict" }),
+                  ], 600);
+                }, 500);
+                return 100;
+              }
+              return prev + Math.random() * 15;
+            });
+          }, 180);
+        }
+        break;
+
+      case "conflict": {
+        const choiceLabel = value === "30_days" ? "30 days from delivery" : "28 calendar days from delivery";
+        setMessages((prev) => [...prev, makeObMsg("manager", choiceLabel)]);
+        setPhase("go_live");
+        addAiMessages([
+          makeObMsg("ai", `Got it — I'll use "${choiceLabel}" as the rule. ✓`),
+          makeObMsg("ai", "That's the playbook set up! You can upload more documents and review extracted rules anytime in **Playbook**."),
+          makeObMsg("ai", "Now let's hire your rep. I recommend starting in **Training Mode** — the rep will draft replies as Internal Notes in Zendesk, but won't send anything until you approve.", {
+            choices: [
+              { label: "Start in Training Mode", value: "training", variant: "primary" },
+              { label: "Go live in Production", value: "production", variant: "outline" },
+            ],
+          }),
+        ]);
+        break;
+      }
+
+      case "go_live": {
+        setPhase("done");
+        const modeName = value === "training" ? "Training Mode" : "Production Mode";
+        addAiMessages([
+          makeObMsg("ai", `${modeName} activated! Your rep is now working on your Zendesk tickets.`),
+          makeObMsg("ai", "A few things you can set up when you're ready:", { widget: "go_live_summary" }),
+          makeObMsg("ai", "Where would you like to go?", {
+            choices: [
+              { label: "Go to Conversations", value: "conversations", variant: "primary" },
+              { label: "Open Playbook", value: "playbook", variant: "outline" },
+              { label: "Configure Agent", value: "agent", variant: "outline" },
+            ],
+          }),
+        ]);
+        break;
+      }
+
+      case "done":
+        if (value === "playbook") {
+          toast.success("Redirecting to Playbook...");
+          setTimeout(() => navigate("/playbook"), 600);
+        } else if (value === "agent") {
+          toast.success("Redirecting to Agent...");
+          setTimeout(() => navigate("/agent"), 600);
+        } else {
+          toast.success("Setup complete!");
+        }
+        break;
+    }
+  };
+
+  const currentPhaseIdx = ALL_OB_PHASES.indexOf(phase);
+
+  // Render widgets
+  const renderWidget = (msg: OnboardingMsg) => {
+    switch (msg.widget) {
+      case "connect_zendesk":
+        return (
+          <div className="mt-2 p-3 rounded-lg border border-border bg-white">
+            <div className="flex items-center gap-3 mb-2.5">
+              <div className="w-7 h-7 rounded-lg bg-[#03363D]/10 flex items-center justify-center">
+                <span className="text-xs font-bold text-[#03363D]">Z</span>
+              </div>
+              <div>
+                <p className="text-[12px] font-medium">Zendesk</p>
+                <p className="text-[10px] text-muted-foreground">Connect via OAuth</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleChoice("zendesk_connected")}
+              className="w-full py-2 rounded-lg bg-[#03363D] text-white text-[12px] font-medium hover:bg-[#03363D]/90 transition-colors flex items-center justify-center gap-2"
+            >
+              <Link2 className="w-3.5 h-3.5" /> Connect Zendesk Account
+            </button>
+          </div>
+        );
+
+      case "connect_shopify":
+        return (
+          <div className="mt-2 p-3 rounded-lg border border-border bg-white">
+            <div className="flex items-center gap-3 mb-2.5">
+              <div className="w-7 h-7 rounded-lg bg-[#96BF48]/10 flex items-center justify-center">
+                <span className="text-xs font-bold text-[#96BF48]">S</span>
+              </div>
+              <div>
+                <p className="text-[12px] font-medium">Shopify</p>
+                <p className="text-[10px] text-muted-foreground">Connect via OAuth</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleChoice("shopify_connected")}
+              className="w-full py-2 rounded-lg bg-[#96BF48] text-white text-[12px] font-medium hover:bg-[#96BF48]/90 transition-colors flex items-center justify-center gap-2"
+            >
+              <Link2 className="w-3.5 h-3.5" /> Connect Shopify Store
+            </button>
+          </div>
+        );
+
+      case "upload_doc":
+        return (
+          <div className="mt-2 p-3 rounded-lg border border-dashed border-border bg-white hover:border-primary/40 transition-colors">
+            <div className="text-center py-3">
+              <Upload className="w-5 h-5 text-muted-foreground/50 mx-auto mb-1.5" />
+              <p className="text-[12px] font-medium text-foreground">Drop your document here</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">PDF, DOCX, or TXT</p>
+            </div>
+            <button
+              onClick={() => handleChoice("uploaded")}
+              className="w-full mt-1.5 py-2 rounded-lg bg-primary text-white text-[12px] font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+            >
+              <FileText className="w-3.5 h-3.5" /> Upload Seel_Return_Policy_v2.pdf
+            </button>
+          </div>
+        );
+
+      case "import_progress":
+        return (
+          <div className="mt-2 p-3 rounded-lg border border-border bg-white">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+                <Bot className="w-3 h-3 text-primary animate-pulse" />
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                {importProgress < 30 && "Reading document..."}
+                {importProgress >= 30 && importProgress < 60 && "Extracting business rules..."}
+                {importProgress >= 60 && importProgress < 90 && "Cross-referencing with FAQ..."}
+                {importProgress >= 90 && "Finalizing..."}
+              </span>
+            </div>
+            <Progress value={Math.min(importProgress, 100)} className="h-1" />
+          </div>
+        );
+
+      case "parse_result": {
+        const rules = (msg.widgetData?.rules as { category: string; count: number; example: string }[]) || [];
+        const totalRules = rules.reduce((sum, r) => sum + r.count, 0);
+        return (
+          <div className="mt-2 p-3 rounded-lg border border-border bg-white">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="text-[12px] font-medium">{totalRules} rules extracted</span>
+            </div>
+            <div className="space-y-1">
+              {rules.map((r) => (
+                <div key={r.category} className="flex items-start gap-2 py-1 px-2 rounded-md bg-muted/40">
+                  <span className="text-[11px] font-medium text-foreground w-24 shrink-0">{r.category}</span>
+                  <span className="text-[11px] text-muted-foreground flex-1">{r.example}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{r.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      case "conflict":
+        return (
+          <div className="mt-2 p-3 rounded-lg border border-amber-200 bg-amber-50/50">
+            <div className="flex items-start gap-2 mb-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[12px] font-medium text-amber-900">Conflict: Return Window</p>
+                <p className="text-[11px] text-amber-800/80 mt-0.5 leading-relaxed">
+                  Your return policy says "30-day return window" but the FAQ page says "28 calendar days from delivery." Which one should I follow?
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={() => handleChoice("30_days")}
+                className="px-3 py-1.5 rounded-full text-[11px] font-medium border border-amber-300 text-amber-800 hover:bg-amber-100 transition-colors"
+              >
+                30 days from delivery
+              </button>
+              <button
+                onClick={() => handleChoice("28_days")}
+                className="px-3 py-1.5 rounded-full text-[11px] font-medium border border-amber-300 text-amber-800 hover:bg-amber-100 transition-colors"
+              >
+                28 calendar days
+              </button>
+            </div>
+          </div>
+        );
+
+      case "go_live_summary":
+        return (
+          <div className="mt-2 space-y-1">
+            {[
+              { label: "Action permissions", desc: "What your rep can do autonomously", where: "Agent → Actions" },
+              { label: "Agent identity & tone", desc: "Name, greeting, sign-off", where: "Agent → Identity" },
+              { label: "More documents", desc: "Upload additional SOPs or FAQs", where: "Playbook → Documents" },
+            ].map((item) => (
+              <div key={item.label} className="flex items-start gap-2 py-1.5 px-2.5 rounded-md border border-border bg-white">
+                <div className="w-1 h-1 rounded-full bg-muted-foreground/40 mt-2 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium text-foreground">{item.label}</p>
+                  <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+                </div>
+                <span className="text-[9px] text-primary/70 shrink-0 mt-0.5">{item.where}</span>
+              </div>
+            ))}
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="flex h-full">
+      {/* Left: Step progress */}
+      <div className="w-[200px] border-r border-border bg-muted/20 flex flex-col shrink-0">
+        <div className="px-4 pt-5 pb-3">
+          <p className="text-[11px] font-semibold text-foreground">Quick Start</p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">~3 min setup</p>
+        </div>
+        <nav className="flex-1 px-2">
+          {SETUP_STEPS.map((step, idx) => {
+            const isActive = step.phases.includes(phase);
+            const stepLastPhaseIdx = ALL_OB_PHASES.indexOf(step.phases[step.phases.length - 1] as OnboardingPhase);
+            const isCompleted = currentPhaseIdx > stepLastPhaseIdx;
+            return (
+              <div
+                key={idx}
+                className={cn(
+                  "flex items-center gap-2 px-2.5 py-2 rounded-md mb-0.5 transition-all text-[11px]",
+                  isActive && "bg-primary/8 text-primary font-medium",
+                  !isActive && isCompleted && "text-foreground/50",
+                  !isActive && !isCompleted && "text-muted-foreground/40"
+                )}
+              >
+                <div className={cn(
+                  "w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0 text-[9px] font-medium",
+                  isCompleted && "bg-emerald-500 text-white",
+                  isActive && !isCompleted && "bg-primary/15 text-primary border border-primary/30",
+                  !isActive && !isCompleted && "border border-border text-muted-foreground/40"
+                )}>
+                  {isCompleted ? <Check className="w-2.5 h-2.5" /> : idx + 1}
+                </div>
+                <span>{step.label}</span>
+              </div>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Right: Chat */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <ScrollArea className="flex-1">
+          <div className="max-w-[560px] mx-auto px-5 py-5 space-y-3" ref={scrollRef}>
+            {messages.map((msg) => (
+              <div key={msg.id} className={cn("flex gap-2.5", msg.role === "manager" && "justify-end")}>
+                {msg.role === "ai" && (
+                  <div className="w-6 h-6 rounded-full bg-primary/8 flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="w-3 h-3 text-primary" />
+                  </div>
+                )}
+                <div className={cn(
+                  msg.role === "ai" && "flex-1 max-w-[480px]",
+                  msg.role === "manager" && "max-w-[320px]",
+                )}>
+                  {msg.role === "manager" ? (
+                    <div className="bg-primary/8 text-foreground rounded-xl rounded-tr-sm px-3 py-2">
+                      <p className="text-[12px]">{msg.content}</p>
+                    </div>
+                  ) : (
+                    <div>
+                      {msg.content && (
+                        <p className="text-[12.5px] leading-relaxed text-foreground"
+                           dangerouslySetInnerHTML={{
+                             __html: msg.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                           }}
+                        />
+                      )}
+                      {msg.widget && renderWidget(msg)}
+                      {msg.choices && (
+                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                          {msg.choices.map((c) => (
+                            <button
+                              key={c.value}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all",
+                                c.variant === "primary"
+                                  ? "bg-primary text-white hover:bg-primary/90"
+                                  : "border border-border text-foreground hover:bg-accent"
+                              )}
+                              onClick={() => handleChoice(c.value)}
+                            >
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {typing && (
+              <div className="flex gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-primary/8 flex items-center justify-center shrink-0">
+                  <Bot className="w-3 h-3 text-primary" />
+                </div>
+                <div className="flex items-center gap-1 py-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ── MAIN PAGE ───────────────────────────────────────────
 // ══════════════════════════════════════════════════════════
 
 export default function MessagesPage() {
+  const [activeTab, setActiveTab] = useState<"conversations" | "setup">("conversations");
   const [threadPanel, setThreadPanel] = useState<{ topicId: string; topicTitle: string; contextMsg: string } | null>(null);
   const [showTopics, setShowTopics] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [extraMessages, setExtraMessages] = useState<ChatMessage[]>([]);
+  const [ticketActions, setTicketActions] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Build all messages
@@ -646,9 +1308,15 @@ export default function MessagesPage() {
     return combined;
   }, [baseMessages, extraMessages]);
 
+  // Pending tickets (approval + escalated)
+  const pendingTickets = useMemo(() =>
+    ZENDESK_TICKETS.filter(t => t.state === "approval" || t.state === "escalated"),
+    []
+  );
+
   // Build topics list for panel
   const topicsList = useMemo(() => {
-    const topicMap = new Map<string, { id: string; title: string; status: "waiting" | "done"; timestamp: string; hasActions: boolean; replyCount: number }>();
+    const topicMap = new Map<string, TopicItem>();
     for (const msg of allMessages) {
       if (!topicMap.has(msg.topicId)) {
         topicMap.set(msg.topicId, {
@@ -663,12 +1331,23 @@ export default function MessagesPage() {
       topicMap.get(msg.topicId)!.replyCount++;
       topicMap.get(msg.topicId)!.timestamp = msg.timestamp;
     }
+    // Add ticket topics
+    for (const t of pendingTickets) {
+      topicMap.set(`ticket-${t.id}`, {
+        id: `ticket-${t.id}`,
+        title: t.subject,
+        status: ticketActions[t.id] ? "done" : "waiting",
+        timestamp: t.messages[0]?.timestamp || "2026-03-26T09:00:00Z",
+        hasActions: !ticketActions[t.id],
+        replyCount: 1,
+      });
+    }
     return Array.from(topicMap.values());
-  }, [allMessages]);
+  }, [allMessages, pendingTickets, ticketActions]);
 
   const waitingCount = topicsList.filter((t) => t.status === "waiting" && t.hasActions).length;
 
-  // Group messages by date for date dividers
+  // Group messages by date
   const groupedMessages = useMemo(() => {
     const groups: { date: string; messages: ChatMessage[] }[] = [];
     let currentDate = "";
@@ -707,7 +1386,6 @@ export default function MessagesPage() {
     setExtraMessages((prev) => [...prev, managerMsg]);
     setInputValue("");
 
-    // AI responds
     setTimeout(() => {
       const aiMsg: ChatMessage = {
         id: `cm-ai-${Date.now()}`,
@@ -747,7 +1425,6 @@ export default function MessagesPage() {
   };
 
   const handleSelectTopic = (topicId: string) => {
-    // Find the first message of this topic and scroll to it
     const el = document.getElementById(`msg-${topicId}-start`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -756,104 +1433,165 @@ export default function MessagesPage() {
     }
   };
 
-  // Track which topic labels have been shown
+  const handleTicketApprove = (id: string) => {
+    setTicketActions(prev => ({ ...prev, [id]: "approved" }));
+  };
+  const handleTicketDeny = (id: string) => {
+    setTicketActions(prev => ({ ...prev, [id]: "denied" }));
+  };
+  const handleTicketInstruct = (id: string, note: string) => {
+    // Just toast for now
+  };
+
   const shownTopics = new Set<string>();
 
   return (
     <div className="flex h-full">
-      {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
+        {/* Header with tabs */}
         <div className="flex items-center justify-between px-5 h-11 border-b border-border shrink-0 bg-white">
-          <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center">
-              <Bot className="w-3 h-3 text-primary" />
-            </div>
-            <span className="text-[13px] font-semibold text-foreground">Rep</span>
-            <span className="text-[10px] text-muted-foreground">AI support agent</span>
-          </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
+            {/* Tab buttons */}
             <button
-              onClick={() => { setShowTopics(!showTopics); setThreadPanel(null); }}
+              onClick={() => setActiveTab("conversations")}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] transition-colors relative",
-                showTopics ? "bg-primary/8 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors",
+                activeTab === "conversations"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
               )}
             >
-              <List className="w-3.5 h-3.5" /> Topics
-              {waitingCount > 0 && !showTopics && (
-                <span className="w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center font-medium ml-0.5">
-                  {waitingCount}
-                </span>
+              <MessageCircle className="w-3.5 h-3.5" />
+              Conversations
+              {pendingTickets.filter(t => !ticketActions[t.id]).length > 0 && activeTab !== "conversations" && (
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
               )}
             </button>
+            <button
+              onClick={() => setActiveTab("setup")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors",
+                activeTab === "setup"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Setup
+            </button>
           </div>
-        </div>
 
-        {/* Messages */}
-        <ScrollArea className="flex-1">
-          <div className="max-w-[680px] mx-auto px-5 py-4 space-y-3">
-            {groupedMessages.map((group, gi) => (
-              <div key={gi}>
-                {/* Date divider */}
-                <div className="flex items-center gap-3 my-4">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-[10px] font-medium text-muted-foreground px-2">{formatDateGroup(group.date)}</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-
-                <div className="space-y-3">
-                  {group.messages.map((msg) => {
-                    // Show topic label before the first message of each topic
-                    const showTopicLabel = msg.isTopicStart && !shownTopics.has(msg.topicId);
-                    if (msg.isTopicStart) shownTopics.add(msg.topicId);
-
-                    return (
-                      <div key={msg.id} id={msg.isTopicStart ? `msg-${msg.topicId}-start` : undefined} className="transition-colors duration-500 rounded-lg">
-                        {showTopicLabel && (
-                          <TopicLabel title={msg.topicTitle} status={msg.topicStatus} />
-                        )}
-                        <MessageBubble
-                          msg={msg}
-                          onAction={handleAction}
-                          onReply={handleReply}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
-
-        {/* Input */}
-        <div className="px-5 py-3 border-t border-border bg-white">
-          <div className="max-w-[680px] mx-auto">
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/40 transition-all">
-              <input
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-                placeholder="Message Rep..."
-                className="flex-1 text-[12.5px] bg-transparent outline-none placeholder:text-muted-foreground/50"
-              />
+          {activeTab === "conversations" && (
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim()}
-                className="p-1.5 rounded-md text-primary hover:bg-primary/8 transition-colors disabled:opacity-30"
+                onClick={() => { setShowTopics(!showTopics); setThreadPanel(null); }}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] transition-colors relative",
+                  showTopics ? "bg-primary/8 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                )}
               >
-                <Send className="w-4 h-4" />
+                <List className="w-3.5 h-3.5" /> Topics
+                {waitingCount > 0 && !showTopics && (
+                  <span className="w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center font-medium ml-0.5">
+                    {waitingCount}
+                  </span>
+                )}
               </button>
             </div>
-          </div>
+          )}
         </div>
+
+        {/* Tab content */}
+        {activeTab === "conversations" ? (
+          <>
+            <ScrollArea className="flex-1">
+              <div className="max-w-[680px] mx-auto px-5 py-4 space-y-3">
+                {groupedMessages.map((group, gi) => (
+                  <div key={gi}>
+                    <div className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[10px] font-medium text-muted-foreground px-2">{formatDateGroup(group.date)}</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+
+                    <div className="space-y-3">
+                      {group.messages.map((msg) => {
+                        const showTopicLabel = msg.isTopicStart && !shownTopics.has(msg.topicId);
+                        if (msg.isTopicStart) shownTopics.add(msg.topicId);
+
+                        return (
+                          <div key={msg.id} id={msg.isTopicStart ? `msg-${msg.topicId}-start` : undefined} className="transition-colors duration-500 rounded-lg">
+                            {showTopicLabel && (
+                              <TopicLabel title={msg.topicTitle} status={msg.topicStatus} />
+                            )}
+                            <MessageBubble msg={msg} onAction={handleAction} onReply={handleReply} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Pending Ticket Actions */}
+                {pendingTickets.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[10px] font-medium text-muted-foreground px-2">
+                        Wednesday, Mar 26
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+
+                    <TopicLabel title="Pending ticket actions" status="waiting" />
+
+                    <div className="space-y-3">
+                      {pendingTickets.map((ticket) => (
+                        <TicketActionCard
+                          key={ticket.id}
+                          ticket={ticket}
+                          onApprove={handleTicketApprove}
+                          onDeny={handleTicketDeny}
+                          onInstruct={handleTicketInstruct}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+
+            {/* Input */}
+            <div className="px-5 py-3 border-t border-border bg-white">
+              <div className="max-w-[680px] mx-auto">
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/40 transition-all">
+                  <input
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                    placeholder="Message Rep..."
+                    className="flex-1 text-[12.5px] bg-transparent outline-none placeholder:text-muted-foreground/50"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!inputValue.trim()}
+                    className="p-1.5 rounded-md text-primary hover:bg-primary/8 transition-colors disabled:opacity-30"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <SetupTab />
+        )}
       </div>
 
-      {/* Thread side panel */}
-      {threadPanel && (
+      {/* Side panels (only for conversations tab) */}
+      {activeTab === "conversations" && threadPanel && (
         <ThreadSidePanel
           topicId={threadPanel.topicId}
           topicTitle={threadPanel.topicTitle}
@@ -862,8 +1600,7 @@ export default function MessagesPage() {
         />
       )}
 
-      {/* Topics panel */}
-      {showTopics && !threadPanel && (
+      {activeTab === "conversations" && showTopics && !threadPanel && (
         <TopicsPanel
           topics={topicsList}
           onSelectTopic={handleSelectTopic}
