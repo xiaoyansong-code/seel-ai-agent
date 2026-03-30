@@ -1,9 +1,10 @@
-/* ──────────────────────────────────────────────────────────
-   AI Support → Communication tab — v5
-   10 adjustments: narrow sidebar, separator, no hire more,
-   keep onboarding tab, topic grouping, unread badges,
-   adjustment flow, simplified profile, config collapsed,
-   performance fields.
+/* ────────────────────────────────────────────────────────────
+   AI Support → Communication tab — v6
+   Updated Onboarding: 9-step flow per latest spec.
+   Hire Dialog: 3 personalities, locked actions, no mode.
+   Sanity Check: structured scenario cards.
+   Go-live mode: Team Lead area with mode cards.
+   Sidebar install: conditional CTA.
    ──────────────────────────────────────────────────────────── */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -26,7 +27,8 @@ import {
 import {
   Send, Check, X, ArrowRight, ChevronDown, ChevronRight,
   MessageCircle, ExternalLink, Pencil, Upload, FileText,
-  CheckCircle2, Globe, Clock, BarChart3, List,
+  CheckCircle2, Globe, Clock, BarChart3, List, Link2,
+  AlertTriangle, Shield, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -80,6 +82,26 @@ function renderMd(text: string) {
   });
 }
 
+// ── Alex bubble helper ──
+function AlexBubble({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className="flex gap-2.5">
+      <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0 mt-0.5">
+        <span className="text-[12px]">&#x1F454;</span>
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[11px] font-semibold">Alex (Team Lead)</span>
+          <span className="text-[9px] text-muted-foreground/50">just now</span>
+        </div>
+        <div className={cn("rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5", className)}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════
 // ── TOPIC CARD (Feishu-style) ───────────────────────────
 // ══════════════════════════════════════════════════════════
@@ -107,12 +129,10 @@ function TopicCard({
 
   return (
     <div className="flex gap-2.5 group">
-      {/* Alex avatar */}
       <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0 mt-0.5">
         <span className="text-[12px]">&#x1F454;</span>
       </div>
       <div className="flex-1 min-w-0">
-        {/* Sender + time + badges */}
         <div className="flex items-center gap-1.5 mb-1">
           <span className="text-[11px] font-semibold text-foreground">Alex</span>
           <span className="text-[9px] text-muted-foreground/50">{formatRelativeTime(topic.createdAt)}</span>
@@ -124,7 +144,6 @@ function TopicCard({
           )}
         </div>
 
-        {/* Performance summary — bigger title */}
         {isPerfSummary && firstMsg && (
           <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5 mb-1.5">
             <p className="text-[14px] font-bold text-foreground mb-2">Weekly Performance Summary</p>
@@ -134,7 +153,6 @@ function TopicCard({
           </div>
         )}
 
-        {/* Regular message */}
         {firstMsg && !isRuleProposal && !isPerfSummary && (
           <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5 mb-1.5">
             <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap">
@@ -143,7 +161,6 @@ function TopicCard({
           </div>
         )}
 
-        {/* Rule Proposal — conversation context + card */}
         {isRuleProposal && (
           <>
             {firstMsg && (
@@ -162,7 +179,6 @@ function TopicCard({
               </div>
             )}
 
-            {/* Proposed Change card */}
             <div className="rounded-xl border border-border bg-white overflow-hidden mb-1.5">
               <div className="px-3.5 py-2 border-b border-border/50 bg-muted/20">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -221,7 +237,6 @@ function TopicCard({
           </>
         )}
 
-        {/* Reply previews */}
         {replies.length > 0 && (
           <div className="mt-1 ml-0.5">
             <div className="text-[9.5px] text-muted-foreground mb-1">
@@ -263,7 +278,6 @@ function TopicCard({
           </div>
         )}
 
-        {/* Reply to topic link */}
         <button
           onClick={() => onOpenThread(topic.id)}
           className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors"
@@ -331,7 +345,6 @@ function FullThreadPanel({
         </div>
       </ScrollArea>
 
-      {/* Reply input */}
       <div className="px-3 py-2.5 border-t border-border">
         <div className="flex items-end gap-2">
           <Textarea
@@ -425,49 +438,75 @@ function TopicsPanel({
 
 
 // ══════════════════════════════════════════════════════════
-// ── SETUP TAB (onboarding flow) ─────────────────────────
+// ── SETUP TAB (9-step onboarding flow) ──────────────────
 // ══════════════════════════════════════════════════════════
 
-const PERSONALITIES = [
-  { emoji: "👋", label: "Friendly" },
-  { emoji: "🏛️", label: "Neutral" },
-  { emoji: "📋", label: "Matter-of-fact" },
-  { emoji: "💼", label: "Professional" },
-  { emoji: "😄", label: "Humorous" },
+const HIRE_PERSONALITIES = [
+  { label: "Friendly" },
+  { label: "Professional" },
+  { label: "Casual" },
 ];
 
-type SetupStep = "greeting" | "upload" | "processing" | "rules_extracted" | "conflicts" | "done";
+type SetupStep =
+  | "welcome"
+  | "shopify_check"
+  | "zendesk_connect"
+  | "upload_sop"
+  | "processing"
+  | "parse_results"
+  | "conflicts"
+  | "hire_ready"
+  | "done";
 
-function SetupTab({ onSetupComplete }: { onSetupComplete: () => void }) {
-  const [step, setStep] = useState<SetupStep>("greeting");
+function SetupTab({
+  onHireRep,
+}: {
+  onHireRep: () => void;
+}) {
+  const [step, setStep] = useState<SetupStep>("welcome");
   const [useDemo, setUseDemo] = useState(false);
   const [conflictIdx, setConflictIdx] = useState(0);
+  const [shopifyConnected] = useState(true);
+  const [zendeskConnected, setZendeskConnected] = useState(false);
+  const [skippedZendesk, setSkippedZendesk] = useState(false);
+  const [, navigate] = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [step, conflictIdx]);
 
+  // Auto-advance from shopify_check when connected
+  useEffect(() => {
+    if (step === "shopify_check" && shopifyConnected) {
+      const timer = setTimeout(() => setStep("zendesk_connect"), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [step, shopifyConnected]);
+
   const demoRules = [
-    "Seel Return Protection — Full Refund Policy",
-    "Seel Return Protection — Partial Damage Handling",
-    "Seel Return Protection — Claim Window (30 days)",
-    "Seel Return Protection — Excluded Items",
-    "Seel Return Protection — Escalation to Claims Team",
-    "Seel Return Protection — Duplicate Claim Prevention",
-    "Seel Return Protection — Shipping Label Generation",
+    { name: "WISMO Handling", summary: "Look up order + tracking, provide estimated delivery date" },
+    { name: "Standard Return & Refund", summary: "Full refund for items returned within 30 days in original condition" },
+    { name: "Seel Protection Policy", summary: "Protection plans are non-refundable; direct to resolve.seel.com for claims" },
+    { name: "VIP Customer Handling", summary: "Extend return window to 45 days for customers with 3+ orders" },
+    { name: "Damaged Item Process", summary: "Request photos, assess damage level, process partial or full refund" },
+    { name: "Shipping Delay Escalation", summary: "Escalate if package is 7+ days past estimated delivery" },
+    { name: "Final Sale Policy", summary: "Final sale items are non-returnable and non-refundable" },
+    { name: "Bulk Order Returns", summary: "Orders over $500 require manager approval for refund" },
   ];
 
   const conflicts = [
     {
-      title: "Refund amount for partial damage",
-      description: "Your return policy says 'full refund for all returns', but the damage handling doc says 'partial refund based on damage assessment'. Which should I follow?",
-      options: ["Always full refund", "Partial refund based on assessment", "Escalate to manager"],
+      title: "Return window duration",
+      docA: "Document A says the return window is 30 days.",
+      docB: "Document B says the return window is 14 days.",
+      options: ["30 days (Doc A)", "14 days (Doc B)"],
     },
     {
-      title: "Claim window after delivery",
-      description: "The main policy states 30-day claim window, but the FAQ mentions 14 days for electronics. Should electronics have a different window?",
-      options: ["30 days for all items", "14 days for electronics", "Escalate to manager"],
+      title: "Refund method for partial damage",
+      docA: "Return policy says 'full refund for all returns'.",
+      docB: "Damage handling doc says 'partial refund based on assessment'.",
+      options: ["Always full refund", "Partial refund based on assessment"],
     },
   ];
 
@@ -489,247 +528,345 @@ function SetupTab({ onSetupComplete }: { onSetupComplete: () => void }) {
       <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="px-4 py-4 space-y-4">
 
-          {/* Greeting */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0 mt-0.5">
-              <span className="text-[12px]">&#x1F454;</span>
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">Alex (Team Lead)</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                <p className="text-[12px] leading-relaxed text-foreground">
-                  Welcome to Support Workforce! I'm Alex, your Team Lead. I manage your support reps so you don't have to deal with the details.
-                </p>
-                <p className="text-[12px] leading-relaxed text-foreground mt-2">
-                  Your Zendesk and Shopify are connected. I need two things from you before we can get your first rep on the floor.
-                </p>
-              </div>
-            </div>
-          </div>
+          {/* ── Step 1: Welcome ── */}
+          <AlexBubble>
+            <p className="text-[12px] leading-relaxed text-foreground">
+              Hi, I'm Alex — your AI team lead.
+            </p>
+            <p className="text-[12px] leading-relaxed text-foreground mt-2">
+              I'll help you set up your first AI support rep. Here's what we'll do:
+            </p>
+            <ol className="text-[12px] leading-relaxed text-foreground mt-2 list-decimal list-inside space-y-0.5">
+              <li>Connect your tools (Shopify & Zendesk)</li>
+              <li>Upload your support docs so I can learn your policies</li>
+              <li>Configure your Rep's identity and permissions</li>
+              <li>Run a quick sanity check</li>
+              <li>Choose how you want your Rep to work</li>
+            </ol>
+            <p className="text-[12px] leading-relaxed text-foreground mt-2">
+              Let's get started.
+            </p>
+          </AlexBubble>
 
-          {/* Training docs prompt */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0 mt-0.5">
-              <span className="text-[12px]">&#x1F454;</span>
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">Alex (Team Lead)</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                <p className="text-[13px] font-bold text-foreground mb-1.5">First — your training docs.</p>
-                <p className="text-[12px] leading-relaxed text-foreground">
-                  Upload the same playbooks, refund policies, and escalation rules you'd hand a new hire. I'll read them, extract the rules, and flag anything that's unclear.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {step === "greeting" && (
+          {step === "welcome" && (
             <div className="ml-9">
-              {/* Upload area */}
-              <div
-                className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-primary/40 transition-colors"
-                onClick={() => { setUseDemo(false); setStep("processing"); }}
+              <Button
+                className="h-9 px-6 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
+                onClick={() => setStep("shopify_check")}
               >
-                <Upload className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
-                <p className="text-[11px] text-foreground font-medium">Drop files here or click to upload</p>
-                <p className="text-[9px] text-muted-foreground mt-1">PDF, DOCX, TXT — up to 10MB each</p>
-              </div>
-              <div className="flex items-center gap-3 mt-2">
-                <div className="h-px bg-border flex-1" />
-                <span className="text-[9px] text-muted-foreground">or</span>
-                <div className="h-px bg-border flex-1" />
-              </div>
-              <div className="flex items-center gap-2 mt-2">
-                <Globe className="w-3.5 h-3.5 text-muted-foreground" />
-                <Input placeholder="Paste a URL to import..." className="h-8 text-[11px] flex-1" />
-                <Button size="sm" variant="outline" className="h-8 text-[10px]">Import</Button>
-              </div>
-              <button
-                onClick={() => { setUseDemo(true); setStep("processing"); }}
-                className="mt-2 text-[10px] text-primary hover:underline"
-              >
-                No docs handy? Try with Seel Return Guidelines →
-              </button>
+                Let's go <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
             </div>
           )}
 
-          {/* Processing */}
-          {step !== "greeting" && (
-            <div className="flex gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-[12px]">&#x1F454;</span>
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[11px] font-semibold">Alex (Team Lead)</span>
-                  <span className="text-[9px] text-muted-foreground/50">just now</span>
+          {/* ── Step 2: Shopify Check ── */}
+          {step !== "welcome" && (
+            <AlexBubble>
+              {shopifyConnected ? (
+                <>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <span className="text-[12px] font-medium text-foreground">Shopify is connected — coastalliving.myshopify.com</span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-muted-foreground">
+                    Your AI Rep can look up orders, shipping status, and customer info.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    <span className="text-[12px] font-medium text-foreground">Shopify is not connected</span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-muted-foreground">
+                    We currently support Shopify as the order management system. If you're using a different platform, please contact your Seel point of contact for setup assistance. You can continue without order data, but your Rep will escalate all order-related queries.
+                  </p>
+                  {step === "shopify_check" && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={() => toast.info("Contact your Seel point of contact for setup assistance.")}>
+                        Contact Support
+                      </Button>
+                      <Button size="sm" className="h-7 text-[10px] bg-teal-600 hover:bg-teal-700" onClick={() => setStep("zendesk_connect")}>
+                        Continue without order data
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </AlexBubble>
+          )}
+
+          {/* ── Step 3: Zendesk Connect ── */}
+          {step !== "welcome" && step !== "shopify_check" && (
+            <>
+              <AlexBubble>
+                {zendeskConnected ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      <span className="text-[12px] font-medium text-foreground">Zendesk AI Support Access is set up — coastalliving.zendesk.com</span>
+                    </div>
+                  </>
+                ) : skippedZendesk ? (
+                  <>
+                    <p className="text-[12px] leading-relaxed text-foreground">
+                      No problem — you can set this up later. But your Rep won't be able to handle tickets until Zendesk is connected.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[12px] leading-relaxed text-foreground">
+                      To let your Rep read and respond to tickets, we need to set up Zendesk AI Support Access. This is a 3-step process you'll complete in the Integrations page.
+                    </p>
+                  </>
+                )}
+              </AlexBubble>
+
+              {step === "zendesk_connect" && !zendeskConnected && !skippedZendesk && (
+                <div className="ml-9 space-y-2">
+                  {/* CTA card */}
+                  <div className="rounded-xl border border-border bg-white p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-8 h-8 rounded-lg bg-[#03363D]/10 flex items-center justify-center">
+                        <Link2 className="w-4 h-4 text-[#03363D]" />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-medium text-foreground">Set up Zendesk AI Support Access</p>
+                        <p className="text-[10px] text-muted-foreground">Authorize API · Create Agent seat · Configure ticket routing</p>
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full h-9 text-[11px] bg-[#03363D] hover:bg-[#03363D]/90"
+                      onClick={() => {
+                        setZendeskConnected(true);
+                        setStep("upload_sop");
+                        toast.success("Zendesk connected successfully");
+                      }}
+                    >
+                      Open <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSkippedZendesk(true);
+                      setStep("upload_sop");
+                    }}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Skip for now
+                  </button>
                 </div>
-                <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                  {step === "processing" ? (
-                    <>
-                      <p className="text-[12px] leading-relaxed text-foreground">
-                        {useDemo
-                          ? "Great, I'll use the Seel Return Guidelines as a demo. Give me a moment to read through them..."
-                          : "Got it! I'm reading through your documents now..."}
-                      </p>
-                      {!useDemo && (
-                        <p className="text-[12px] leading-relaxed text-muted-foreground mt-2">
-                          <Clock className="w-3 h-3 inline mr-1" />
-                          For your own documents, this usually takes 30–60 minutes. I'll notify you when it's ready — feel free to come back later.
-                        </p>
-                      )}
-                      <div className="mt-3 flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        <span className="text-[10px] text-muted-foreground">Analyzing documents...</span>
+              )}
+            </>
+          )}
+
+          {/* ── Step 4: Upload SOP Documents ── */}
+          {["upload_sop", "processing", "parse_results", "conflicts", "hire_ready", "done"].includes(step) && (
+            <>
+              <AlexBubble>
+                <p className="text-[12px] leading-relaxed text-foreground">
+                  Now let's teach your Rep. Upload your customer service SOP documents — I'll extract rules and knowledge from them.
+                </p>
+              </AlexBubble>
+
+              {step === "upload_sop" && (
+                <div className="ml-9 space-y-2">
+                  {/* Upload area */}
+                  <div
+                    className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-primary/40 transition-colors"
+                    onClick={() => { setUseDemo(false); setStep("processing"); }}
+                  >
+                    <Upload className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-[11px] text-foreground font-medium">Drop files here or click to upload</p>
+                    <p className="text-[9px] text-muted-foreground mt-1">PDF, DOCX, TXT — up to 10MB each, max 10 files</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-px bg-border flex-1" />
+                    <span className="text-[9px] text-muted-foreground">or</span>
+                    <div className="h-px bg-border flex-1" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Input placeholder="Paste a URL to import..." className="h-8 text-[11px] flex-1" />
+                    <Button size="sm" variant="outline" className="h-8 text-[10px]">Import</Button>
+                  </div>
+                  <button
+                    onClick={() => { setUseDemo(true); setStep("processing"); }}
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    Try with a sample document
+                  </button>
+                  <div>
+                    <button
+                      onClick={() => setStep("hire_ready")}
+                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Skip — I'll teach my Rep through conversation later
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Processing ── */}
+          {["processing", "parse_results", "conflicts", "hire_ready", "done"].includes(step) && step !== "upload_sop" && (
+            <AlexBubble>
+              {step === "processing" ? (
+                <>
+                  <p className="text-[12px] leading-relaxed text-foreground">
+                    {useDemo
+                      ? "Great, I'll use the Seel Return & Shipping Guidelines as a sample. Give me a moment..."
+                      : "Analyzing your documents..."}
+                  </p>
+                  {!useDemo && (
+                    <p className="text-[11px] leading-relaxed text-muted-foreground mt-2">
+                      <Clock className="w-3 h-3 inline mr-1" />
+                      This usually takes 1-2 minutes. You can wait or come back later.
+                    </p>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <span className="text-[10px] text-muted-foreground">Analyzing documents...</span>
+                  </div>
+                  {useDemo && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 h-7 text-[10px]"
+                      onClick={() => setStep("parse_results")}
+                    >
+                      Skip to results (demo)
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* ── Step 5: Parse Results ── */}
+                  <p className="text-[12px] leading-relaxed text-foreground">
+                    Done! I extracted <strong>{demoRules.length} rules</strong> and <strong>12 knowledge entries</strong> from your documents.
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {demoRules.slice(0, 5).map((rule, i) => (
+                      <div key={i} className="flex items-start gap-1.5">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="text-[11px] font-medium text-foreground">{rule.name}</span>
+                          <span className="text-[10px] text-muted-foreground ml-1">— {rule.summary}</span>
+                        </div>
                       </div>
-                      {useDemo && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-3 h-7 text-[10px]"
-                          onClick={() => setStep("rules_extracted")}
-                        >
-                          Skip to results (demo)
-                        </Button>
-                      )}
-                    </>
-                  ) : (
+                    ))}
+                    {demoRules.length > 5 && (
+                      <button
+                        onClick={() => toast.info(`All ${demoRules.length} rules extracted`)}
+                        className="text-[10px] text-primary hover:underline ml-4.5"
+                      >
+                        +{demoRules.length - 5} more rules
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => navigate("/ai-support/playbook")}
+                    className="mt-2 text-[10px] text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    Review all in Playbook <ArrowRight className="w-3 h-3" />
+                  </button>
+                  {conflicts.length > 0 && step === "parse_results" && (
                     <>
-                      <p className="text-[12px] leading-relaxed text-foreground">
-                        Done! I've extracted <strong>{demoRules.length} rules</strong> from your documents:
+                      <p className="text-[12px] leading-relaxed text-foreground mt-3">
+                        I found <strong>{conflicts.length} conflicts</strong> that need your input:
                       </p>
-                      <div className="mt-2 space-y-1">
-                        {demoRules.slice(0, 5).map((rule, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                            <span className="text-[11px] text-foreground">{rule}</span>
-                          </div>
-                        ))}
-                        {demoRules.length > 5 && (
-                          <button
-                            onClick={() => toast.info(`All ${demoRules.length} rules: ${demoRules.join(", ")}`)}
-                            className="text-[10px] text-primary hover:underline ml-4.5"
-                          >
-                            +{demoRules.length - 5} more rules
-                          </button>
-                        )}
-                      </div>
-                      {conflicts.length > 0 && step === "rules_extracted" && (
-                        <>
-                          <p className="text-[12px] leading-relaxed text-foreground mt-3">
-                            I found <strong>{conflicts.length} conflicts</strong> that need your input:
-                          </p>
-                          <Button
-                            size="sm"
-                            className="mt-2 h-7 text-[10px] bg-teal-600 hover:bg-teal-700"
-                            onClick={() => { setConflictIdx(0); setStep("conflicts"); }}
-                          >
-                            Review conflicts
-                          </Button>
-                        </>
-                      )}
-                      {step === "done" && (
-                        <p className="text-[12px] leading-relaxed text-foreground mt-3">
-                          All conflicts resolved. Your playbook is ready!
-                        </p>
-                      )}
+                      <Button
+                        size="sm"
+                        className="mt-2 h-7 text-[10px] bg-teal-600 hover:bg-teal-700"
+                        onClick={() => { setConflictIdx(0); setStep("conflicts"); }}
+                      >
+                        Review conflicts
+                      </Button>
                     </>
                   )}
-                </div>
-              </div>
-            </div>
+                  {(step === "hire_ready" || step === "done") && (
+                    <p className="text-[12px] leading-relaxed text-foreground mt-3">
+                      All conflicts resolved. Your playbook is ready!
+                    </p>
+                  )}
+                </>
+              )}
+            </AlexBubble>
           )}
 
-          {/* Conflicts — one bubble per conflict */}
+          {/* ── Conflict Cards ── */}
           {step === "conflicts" && conflictIdx < conflicts.length && (
-            <div className="flex gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-[12px]">&#x1F454;</span>
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[11px] font-semibold">Alex (Team Lead)</span>
-                  <span className="text-[9px] text-muted-foreground/50">just now</span>
+            <div className="ml-9">
+              <div className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <span className="text-[11px] font-semibold text-amber-800">
+                    Conflict {conflictIdx + 1} of {conflicts.length} — {conflicts[conflictIdx].title}
+                  </span>
                 </div>
-                <div className="rounded-xl rounded-tl-sm bg-amber-50/60 border border-amber-200/40 px-3.5 py-2.5">
-                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-1">
-                    Conflict {conflictIdx + 1} of {conflicts.length}
-                  </p>
-                  <p className="text-[12px] font-medium text-foreground mb-1">{conflicts[conflictIdx].title}</p>
-                  <p className="text-[11.5px] text-foreground leading-relaxed">{conflicts[conflictIdx].description}</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-2">
+                <p className="text-[11px] text-amber-800/80 leading-relaxed mb-1">
+                  {conflicts[conflictIdx].docA}
+                </p>
+                <p className="text-[11px] text-amber-800/80 leading-relaxed mb-3">
+                  {conflicts[conflictIdx].docB}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
                   {conflicts[conflictIdx].options.map((opt) => (
                     <button
                       key={opt}
                       onClick={() => {
                         toast.success(`Selected: ${opt}`);
                         if (conflictIdx + 1 >= conflicts.length) {
-                          setStep("done");
+                          setStep("hire_ready");
                         } else {
                           setConflictIdx(conflictIdx + 1);
                         }
                       }}
-                      className="px-3 py-1.5 rounded-full text-[10.5px] border border-border bg-white hover:bg-accent transition-colors"
+                      className="px-3 py-1.5 rounded-full text-[10.5px] font-medium border border-amber-300 text-amber-800 bg-white hover:bg-amber-100 transition-colors"
                     >
                       {opt}
                     </button>
                   ))}
                   <button
                     onClick={() => {
-                      toast.info("Conflict dismissed — will use default behavior");
+                      toast.info("Deferred — you can resolve this in Playbook later");
                       if (conflictIdx + 1 >= conflicts.length) {
-                        setStep("done");
+                        setStep("hire_ready");
                       } else {
                         setConflictIdx(conflictIdx + 1);
                       }
                     }}
                     className="px-3 py-1.5 rounded-full text-[10.5px] text-muted-foreground hover:bg-accent transition-colors"
                   >
-                    Dismiss
+                    Decide later
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Done — hire rep */}
-          {step === "done" && (
-            <div className="flex gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-[12px]">&#x1F454;</span>
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[11px] font-semibold">Alex (Team Lead)</span>
-                  <span className="text-[9px] text-muted-foreground/50">just now</span>
-                </div>
-                <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                  <p className="text-[13px] font-bold text-foreground mb-1.5">Second — let's hire your first support rep.</p>
-                  <p className="text-[12px] leading-relaxed text-foreground">
-                    I'll start them on WISMO — order status, cancellations for unshipped orders, and address changes. Highest volume, lowest risk. Once they prove themselves, we expand their scope.
-                  </p>
-                  <p className="text-[12px] leading-relaxed text-foreground mt-2">
-                    I've pre-configured a rep based on your docs. Review the profile and hit Hire:
-                  </p>
-                </div>
-                <div className="flex justify-end mt-2">
+          {/* ── Step 6: Hire Ready ── */}
+          {(step === "hire_ready" || step === "done") && (
+            <>
+              <AlexBubble>
+                <p className="text-[12px] leading-relaxed text-foreground">
+                  Your playbook is ready. Let's hire your first AI support rep.
+                </p>
+              </AlexBubble>
+              {step === "hire_ready" && (
+                <div className="ml-9">
                   <Button
                     className="h-9 px-5 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
-                    onClick={onSetupComplete}
+                    onClick={onHireRep}
                   >
                     Review & Hire Support Rep <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
                 </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
+
         </div>
       </ScrollArea>
     </div>
@@ -737,7 +874,7 @@ function SetupTab({ onSetupComplete }: { onSetupComplete: () => void }) {
 }
 
 // ══════════════════════════════════════════════════════════
-// ── HIRE REP DIALOG ─────────────────────────────────────
+// ── HIRE REP DIALOG (updated per spec) ──────────────────
 // ══════════════════════════════════════════════════════════
 
 function HireRepDialog({
@@ -751,93 +888,139 @@ function HireRepDialog({
 }) {
   const [name, setName] = useState("Ava");
   const [personality, setPersonality] = useState("Friendly");
+  const [localActions, setLocalActions] = useState<ActionPermission[]>(() =>
+    ACTION_PERMISSIONS.map((a) => ({ ...a }))
+  );
 
   const actionGroups = useMemo(() => {
     const groups: Record<string, ActionPermission[]> = {};
-    ACTION_PERMISSIONS.forEach((a) => {
+    localActions.forEach((a) => {
       const cat = a.category || "General";
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(a);
     });
     return groups;
-  }, []);
+  }, [localActions]);
+
+  const toggleAction = (id: string) => {
+    setLocalActions((prev) =>
+      prev.map((a) => {
+        if (a.id !== id || a.locked) return a;
+        return { ...a, permission: a.permission === "autonomous" ? "disabled" as const : "autonomous" as const };
+      })
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[680px] p-0 overflow-hidden">
-        {/* Header */}
+      <DialogContent className="max-w-[720px] p-0 overflow-hidden">
         <div className="bg-teal-600 px-6 py-4">
           <DialogHeader>
             <DialogTitle className="text-white text-[16px]">Hire Support Rep</DialogTitle>
             <DialogDescription className="text-teal-100 text-[12px]">
-              Pre-configured based on your training docs. Review and confirm.
+              Configure your Rep's identity and permissions.
             </DialogDescription>
           </DialogHeader>
         </div>
 
         <div className="flex max-h-[60vh]">
-          {/* Left column — basic config */}
-          <div className="flex-1 px-5 py-4 overflow-y-auto border-r border-border">
+          {/* Left — Identity */}
+          <div className="w-[260px] px-5 py-4 overflow-y-auto border-r border-border shrink-0">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Identity</p>
             <div className="space-y-4">
               <div>
                 <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 h-8 text-[12px]" />
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value.slice(0, 20))}
+                  className="mt-1 h-8 text-[12px]"
+                  placeholder="e.g. Ava"
+                  maxLength={20}
+                />
+                <p className="text-[9px] text-muted-foreground mt-0.5 text-right">{name.length}/20</p>
               </div>
               <div>
                 <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Personality</Label>
-                <div
- className="flex flex-wrap gap-1.5 mt-1.5">
-                {PERSONALITIES.map((p) => (
-                  <button
-                    key={p.label}
-                    className={cn(
-                      "px-2.5 py-1.5 rounded-full text-[10.5px] border transition-colors flex items-center gap-1",
-                      p.label === personality
-                        ? "border-teal-400 bg-teal-50 text-teal-700"
-                        : "border-border text-foreground hover:bg-accent"
-                    )}
-                    onClick={() => setPersonality(p.label)}
-                  >
-                    <span className="text-[11px]">{p.emoji}</span> {p.label}
-                  </button>
-                ))}
-              </div>
-              </div>
-              <div>
-                <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mode</Label>
-                <Select defaultValue="training">
-                  <SelectTrigger className="mt-1 h-8 text-[11px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="training">Training</SelectItem>
-                    <SelectItem value="production">Production</SelectItem>
-                    <SelectItem value="off">Off</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {HIRE_PERSONALITIES.map((p) => (
+                    <button
+                      key={p.label}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-[10.5px] border transition-colors",
+                        p.label === personality
+                          ? "border-teal-400 bg-teal-50 text-teal-700"
+                          : "border-border text-foreground hover:bg-accent"
+                      )}
+                      onClick={() => setPersonality(p.label)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Right column — allowed actions */}
+          {/* Right — Action Permissions */}
           <div className="flex-1 px-5 py-4 overflow-y-auto">
-            <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Allowed Actions</Label>
-            <div className="mt-2 space-y-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Action Permissions</p>
+            <div className="space-y-4">
               {Object.entries(actionGroups).map(([cat, actions]) => (
                 <div key={cat}>
-                  <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{cat}</p>
-                  <div className="space-y-1">
+                  <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{cat}</p>
+                  <div className="space-y-1.5">
                     {actions.map((action) => (
-                      <label key={action.id} className="flex items-start gap-2 py-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                  defaultChecked={action.permission === 'autonomous'}
-                          className="mt-0.5 rounded border-border"
-                        />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[11px] text-foreground">{action.name}</span>
-                            {action.guardrails && action.guardrails.length > 0 && (
-                              <p className="text-[9px] text-muted-foreground mt-0.5">{action.guardrails[0].label}</p>                     )}
+                      <div
+                        key={action.id}
+                        className={cn(
+                          "flex items-start gap-2.5 py-2 px-2.5 rounded-lg border transition-colors",
+                          action.locked
+                            ? "border-border/40 bg-muted/20"
+                            : action.permission === "autonomous"
+                            ? "border-teal-200/60 bg-teal-50/30"
+                            : "border-border bg-white"
+                        )}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-medium text-foreground">{action.name}</span>
+                            {action.accessType && (
+                              <Badge variant="outline" className="text-[7px] px-1 py-0 h-3.5 border-border/50">
+                                {action.accessType}
+                              </Badge>
+                            )}
+                            {action.locked && (
+                              <span className="text-[8px] text-muted-foreground flex items-center gap-0.5">
+                                <Lock className="w-2.5 h-2.5" /> Always on
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[9.5px] text-muted-foreground mt-0.5">{action.description}</p>
+                          {action.guardrails && action.guardrails.length > 0 && action.permission === "autonomous" && (
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <Shield className="w-3 h-3 text-amber-500" />
+                              {action.guardrails.map((g) => (
+                                <span key={g.id} className="text-[9px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                                  {g.label}{g.value !== undefined ? `: ${g.unit || ""}${g.value}` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </label>
+                        {!action.locked && (
+                          <button
+                            onClick={() => toggleAction(action.id)}
+                            className={cn(
+                              "shrink-0 px-2.5 py-1 rounded-full text-[9px] font-medium border transition-colors mt-0.5",
+                              action.permission === "autonomous"
+                                ? "bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100"
+                                : "bg-muted/30 text-muted-foreground border-border hover:bg-accent"
+                            )}
+                          >
+                            {action.permission === "autonomous" ? "Autonomous" : "Disabled"}
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -846,13 +1029,13 @@ function HireRepDialog({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-3 border-t border-border">
           <Button
             className="w-full h-10 bg-teal-600 hover:bg-teal-700 text-[13px]"
             onClick={() => onHire(name || "Ava")}
+            disabled={!name.trim()}
           >
-            Hire
+            Hire {name || "Ava"}
           </Button>
         </div>
       </DialogContent>
@@ -932,7 +1115,6 @@ function RepProfilePanel({
     return groups;
   }, []);
 
-  // Edit mode
   if (isEditing) {
     return (
       <div className="w-[320px] border-l border-border bg-white flex flex-col h-full shrink-0">
@@ -951,18 +1133,18 @@ function RepProfilePanel({
             <div>
               <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Personality</Label>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {PERSONALITIES.map((p) => (
+                {HIRE_PERSONALITIES.map((p) => (
                   <button
                     key={p.label}
                     className={cn(
-                      "px-2.5 py-1.5 rounded-full text-[10.5px] border transition-colors flex items-center gap-1",
+                      "px-2.5 py-1.5 rounded-full text-[10.5px] border transition-colors",
                       p.label === personality
                         ? "border-violet-400 bg-violet-50 text-violet-700"
                         : "border-border text-foreground hover:bg-accent"
                     )}
                     onClick={() => setPersonality(p.label)}
                   >
-                    <span className="text-[11px]">{p.emoji}</span> {p.label}
+                    {p.label}
                   </button>
                 ))}
               </div>
@@ -979,7 +1161,6 @@ function RepProfilePanel({
               </Select>
             </div>
 
-            {/* Allowed Actions with Guardrails */}
             <div>
               <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Allowed Actions</Label>
               <div className="mt-2 space-y-3">
@@ -988,10 +1169,16 @@ function RepProfilePanel({
                     <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{cat}</p>
                     <div className="space-y-1">
                       {actions.map((action) => (
-                        <label key={action.id} className="flex items-start gap-2 py-1 cursor-pointer">
-                          <input type="checkbox" defaultChecked={action.permission === 'autonomous'} className="mt-0.5 rounded border-border" />
+                        <label key={action.id} className={cn("flex items-start gap-2 py-1", action.locked ? "opacity-50" : "cursor-pointer")}>
+                          <input
+                            type="checkbox"
+                            defaultChecked={action.permission === "autonomous"}
+                            disabled={action.locked}
+                            className="mt-0.5 rounded border-border"
+                          />
                           <div className="flex-1 min-w-0">
                             <span className="text-[11px] text-foreground">{action.name}</span>
+                            {action.locked && <span className="text-[8px] text-muted-foreground ml-1">Always on</span>}
                             {action.guardrails && action.guardrails.length > 0 && (
                               <p className="text-[9px] text-muted-foreground mt-0.5">{action.guardrails[0].label}</p>
                             )}
@@ -1013,7 +1200,6 @@ function RepProfilePanel({
     );
   }
 
-  // View mode
   return (
     <div className="w-[320px] border-l border-border bg-white flex flex-col h-full shrink-0">
       <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
@@ -1024,7 +1210,6 @@ function RepProfilePanel({
       </div>
       <ScrollArea className="flex-1">
         <div className="px-4 py-4">
-          {/* Avatar + name + mode badge */}
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-xl bg-violet-500 flex items-center justify-center text-white text-[16px] font-bold">
               {initials}
@@ -1035,7 +1220,6 @@ function RepProfilePanel({
             </div>
           </div>
 
-          {/* Edit button */}
           <Button
             variant="outline"
             size="sm"
@@ -1045,12 +1229,11 @@ function RepProfilePanel({
             <Pencil className="w-3 h-3 mr-1" /> Edit Profile
           </Button>
 
-          {/* Details — simplified fields */}
           <div className="mb-4">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Details</p>
             <div className="space-y-1.5">
               {[
-                ["Personality", "Warm & Professional"],
+                ["Personality", "Friendly"],
                 ["Mode", "Training"],
                 ["Started", "Mar 29, 2026"],
               ].map(([label, value]) => (
@@ -1062,7 +1245,6 @@ function RepProfilePanel({
             </div>
           </div>
 
-          {/* Performance — no Cost, no Escalation, has Avg Response */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Performance</p>
@@ -1088,7 +1270,6 @@ function RepProfilePanel({
             </div>
           </div>
 
-          {/* Config History — collapsed by default */}
           <div>
             <button
               onClick={() => setConfigOpen(!configOpen)}
@@ -1120,33 +1301,227 @@ function RepProfilePanel({
 }
 
 // ══════════════════════════════════════════════════════════
-// ── REP VIEW (conversation + escalations) ───────────────
+// ── SCENARIO CARD (Sanity Check) ────────────────────────
 // ══════════════════════════════════════════════════════════
 
-type RepOnboardingStep = "greeting" | "scenario_1" | "scenario_2" | "scenario_3" | "mode_select" | "ready" | "done";
+interface SanityScenario {
+  id: string;
+  title: string;
+  num: number;
+  total: number;
+  customerMessage: string;
+  actions: string[];
+  draftReply: string;
+  reasoning: string;
+}
+
+const SANITY_SCENARIOS: SanityScenario[] = [
+  {
+    id: "s1",
+    title: "Where is my order?",
+    num: 1,
+    total: 3,
+    customerMessage: "Hi, I ordered a candle set 5 days ago and still haven't received it. Order #CLC-10250.",
+    actions: [
+      "get_order_details(#CLC-10250)",
+      "track_shipment(tracking_number)",
+      "message_user(reply)",
+    ],
+    draftReply: "Hi! I found your order #CLC-10250. It shipped 4 days ago via USPS — tracking shows it's in transit with an estimated delivery of March 28. I'll keep an eye on it for you!",
+    reasoning: "Matched rule: 'WISMO Handling'. Order is within delivery window. Tracking info available — gave a specific update.",
+  },
+  {
+    id: "s2",
+    title: "Cancel protection plan",
+    num: 2,
+    total: 3,
+    customerMessage: "I bought shipping protection on my last order but I don't want it anymore. Can I cancel and get a refund for the protection fee? Order #CLC-10312.",
+    actions: [
+      "get_order_details(#CLC-10312)",
+      "check Seel protection status",
+      "message_user(reply)",
+    ],
+    draftReply: "I can see your order #CLC-10312 has Seel shipping protection. Unfortunately, the protection plan cannot be canceled after purchase — it's active for the full shipping period. If anything happens to your package, you can file a claim at resolve.seel.com.",
+    reasoning: "Matched rule: 'Seel Protection Policy'. Protection plans are non-refundable per policy. Directed customer to claim portal in case they need it later.",
+  },
+  {
+    id: "s3",
+    title: "Bulk return request",
+    num: 3,
+    total: 3,
+    customerMessage: "I want to return 15 items from a bulk order. Order #CLC-10301. Total was $2,400.",
+    actions: [
+      "get_order_details(#CLC-10301)",
+      "refund amount $2,400 exceeds guardrail",
+      "escalate_ticket(handoff notes)",
+    ],
+    draftReply: "I understand you'd like to return these items. Since this is a larger order, I'd like our team to review it personally. I've flagged this for a team member who will follow up with you shortly via email.",
+    reasoning: "Matched rule: 'Return & Refund'. Refund $2,400 exceeds the $200 guardrail limit. Escalated with full context.",
+  },
+];
+
+function ScenarioCard({
+  scenario,
+  onLooksGood,
+  onNeedsAdjustment,
+}: {
+  scenario: SanityScenario;
+  onLooksGood: () => void;
+  onNeedsAdjustment: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-white overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-2.5 border-b border-border/50 bg-muted/20 flex items-center gap-2">
+        <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="text-[11px] font-semibold text-foreground">
+          Scenario {scenario.num} of {scenario.total} — {scenario.title}
+        </span>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* Customer message */}
+        <div>
+          <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Customer:</p>
+          <p className="text-[11.5px] text-foreground leading-relaxed italic">
+            "{scenario.customerMessage}"
+          </p>
+        </div>
+
+        {/* What I'd do */}
+        <div>
+          <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">What I'd do:</p>
+          <div className="space-y-0.5">
+            {scenario.actions.map((action, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-[9px] text-muted-foreground">→</span>}
+                <code className="text-[10px] text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded font-mono">
+                  {action}
+                </code>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Draft reply */}
+        <div>
+          <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">My draft reply:</p>
+          <blockquote className="pl-3 border-l-2 border-teal-200 text-[11px] text-foreground leading-relaxed">
+            {scenario.draftReply}
+          </blockquote>
+        </div>
+
+        {/* Why */}
+        <div>
+          <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Why:</p>
+          <p className="text-[10.5px] text-muted-foreground leading-relaxed">
+            {scenario.reasoning}
+          </p>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="px-4 py-2.5 border-t border-border/50 flex items-center gap-2">
+        <button
+          onClick={onLooksGood}
+          className="px-3.5 py-1.5 rounded-md text-[10.5px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+        >
+          <Check className="w-3 h-3 inline mr-1" />Looks good
+        </button>
+        <button
+          onClick={onNeedsAdjustment}
+          className="px-3.5 py-1.5 rounded-md text-[10.5px] font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+        >
+          <AlertTriangle className="w-3 h-3 inline mr-1" />Needs adjustment
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ── REP VIEW (Sanity Check + Escalations) ───────────────
+// ══════════════════════════════════════════════════════════
+
+type RepPhase = "greeting" | "scenario_1" | "scenario_2" | "scenario_3" | "handoff" | "role_guide" | "done";
 
 function RepView({
   repName,
   showProfile,
   onToggleProfile,
+  onSwitchToTeamLead,
+  postHirePhase,
+  selectedMode,
+  onRoleGuideDone,
 }: {
   repName: string;
   showProfile: boolean;
   onToggleProfile: () => void;
+  onSwitchToTeamLead: () => void;
+  postHirePhase: string;
+  selectedMode: string;
+  onRoleGuideDone: () => void;
 }) {
-  const [onboardingStep] = useState<RepOnboardingStep>("done");
+  const [phase, setPhase] = useState<RepPhase>("greeting");
+  const [adjustmentText, setAdjustmentText] = useState("");
+  const [showAdjustmentInput, setShowAdjustmentInput] = useState<string | null>(null);
+  const [hasShownTip, setHasShownTip] = useState(false);
   const initials = getInitials(repName);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [onboardingStep]);
+  }, [phase, showAdjustmentInput]);
 
   const sortedTickets = useMemo(() => {
     return [...ESCALATION_TICKETS].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, []);
+
+  const RepBubble = ({ children }: { children: React.ReactNode }) => (
+    <div className="flex gap-2.5">
+      <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">
+        {initials}
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[11px] font-semibold">{repName}</span>
+          <span className="text-[9px] text-muted-foreground/50">just now</span>
+        </div>
+        <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+
+  const handleLooksGood = (currentScenario: string) => {
+    if (currentScenario === "scenario_1") setPhase("scenario_2");
+    else if (currentScenario === "scenario_2") setPhase("scenario_3");
+    else if (currentScenario === "scenario_3") setPhase("handoff");
+  };
+
+  const handleNeedsAdjustment = (scenarioId: string) => {
+    setShowAdjustmentInput(scenarioId);
+  };
+
+  const submitAdjustment = (currentScenario: string) => {
+    if (!adjustmentText.trim()) return;
+    toast.info("Got it. I'll let Team Lead know — they'll update the rules.");
+    setShowAdjustmentInput(null);
+    setAdjustmentText("");
+    if (!hasShownTip) setHasShownTip(true);
+    // In real app, this would switch to TL area. For prototype, advance.
+    if (currentScenario === "scenario_1") setPhase("scenario_2");
+    else if (currentScenario === "scenario_2") setPhase("scenario_3");
+    else if (currentScenario === "scenario_3") setPhase("handoff");
+  };
+
+  const currentScenarioIdx =
+    phase === "scenario_1" ? 0 :
+    phase === "scenario_2" ? 1 :
+    phase === "scenario_3" ? 2 : -1;
 
   return (
     <div className="flex flex-col h-full">
@@ -1158,7 +1533,9 @@ function RepView({
           </div>
           <div>
             <span className="text-[12px] font-semibold text-foreground">{repName}</span>
-            <span className="text-[10px] text-muted-foreground ml-1.5">L1 — WISMO Specialist · Onboarding</span>
+            <span className="text-[10px] text-muted-foreground ml-1.5">
+              {phase === "done" || postHirePhase === "role_guide" ? "Working" : "Sanity Check"}
+            </span>
           </div>
         </div>
         <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={onToggleProfile}>
@@ -1169,189 +1546,339 @@ function RepView({
       <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="px-4 py-4 space-y-4">
 
-          {/* Pre-completed onboarding — Greeting */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">
-              {initials}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">{repName}</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
+          {/* Greeting */}
+          <RepBubble>
+            <p className="text-[12px] leading-relaxed text-foreground">
+              Hi! I'm {repName}, your new AI support rep.
+            </p>
+            <p className="text-[12px] leading-relaxed text-foreground mt-2">
+              Before I start handling real tickets, let me show you how I'd handle a few scenarios. I'll walk you through 3 tests one at a time — tell me if each response looks right.
+            </p>
+          </RepBubble>
+
+          {/* Scenario 1 */}
+          {["scenario_1", "scenario_2", "scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
+            <>
+              {(phase === "scenario_1" && !showAdjustmentInput) ? (
+                <div className="ml-9">
+                  <ScenarioCard
+                    scenario={SANITY_SCENARIOS[0]}
+                    onLooksGood={() => handleLooksGood("scenario_1")}
+                    onNeedsAdjustment={() => handleNeedsAdjustment("scenario_1")}
+                  />
+                </div>
+              ) : (
+                <div className="ml-9">
+                  <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-[11px] font-medium text-foreground">Scenario 1 — {SANITY_SCENARIOS[0].title}</span>
+                      <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {phase === "scenario_1" && showAdjustmentInput === "scenario_1" && (
+                <div className="ml-9 space-y-2">
+                  <Textarea
+                    value={adjustmentText}
+                    onChange={(e) => setAdjustmentText(e.target.value)}
+                    placeholder="What should be different?"
+                    className="text-[11px] min-h-[60px]"
+                  />
+                  <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_1")}>
+                    Submit feedback
+                  </Button>
+                  {!hasShownTip && (
+                    <p className="text-[10px] text-muted-foreground italic">
+                      By the way — anytime after setup, if you want to adjust rules, just tell Team Lead in the Communication tab. They'll handle it.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Scenario 2 */}
+          {["scenario_2", "scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
+            <>
+              {(phase === "scenario_2" && !showAdjustmentInput) ? (
+                <div className="ml-9">
+                  <ScenarioCard
+                    scenario={SANITY_SCENARIOS[1]}
+                    onLooksGood={() => handleLooksGood("scenario_2")}
+                    onNeedsAdjustment={() => handleNeedsAdjustment("scenario_2")}
+                  />
+                </div>
+              ) : (
+                <div className="ml-9">
+                  <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-[11px] font-medium text-foreground">Scenario 2 — {SANITY_SCENARIOS[1].title}</span>
+                      <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {phase === "scenario_2" && showAdjustmentInput === "scenario_2" && (
+                <div className="ml-9 space-y-2">
+                  <Textarea
+                    value={adjustmentText}
+                    onChange={(e) => setAdjustmentText(e.target.value)}
+                    placeholder="What should be different?"
+                    className="text-[11px] min-h-[60px]"
+                  />
+                  <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_2")}>
+                    Submit feedback
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Scenario 3 */}
+          {["scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
+            <>
+              {(phase === "scenario_3" && !showAdjustmentInput) ? (
+                <div className="ml-9">
+                  <ScenarioCard
+                    scenario={SANITY_SCENARIOS[2]}
+                    onLooksGood={() => handleLooksGood("scenario_3")}
+                    onNeedsAdjustment={() => handleNeedsAdjustment("scenario_3")}
+                  />
+                </div>
+              ) : (
+                <div className="ml-9">
+                  <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-[11px] font-medium text-foreground">Scenario 3 — {SANITY_SCENARIOS[2].title}</span>
+                      <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {phase === "scenario_3" && showAdjustmentInput === "scenario_3" && (
+                <div className="ml-9 space-y-2">
+                  <Textarea
+                    value={adjustmentText}
+                    onChange={(e) => setAdjustmentText(e.target.value)}
+                    placeholder="What should be different?"
+                    className="text-[11px] min-h-[60px]"
+                  />
+                  <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_3")}>
+                    Submit feedback
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Handoff to Team Lead */}
+          {["handoff", "role_guide", "done"].includes(phase) && postHirePhase !== "role_guide" && (
+            <>
+              <RepBubble>
                 <p className="text-[12px] leading-relaxed text-foreground">
-                  Hi! I'm {repName}. Alex brought me up to speed on your docs — I've studied your playbook, refund policy, and escalation rules.
+                  All scenarios reviewed! I'll hand you back to Team Lead for the final step.
                 </p>
-                <p className="text-[12px] leading-relaxed text-foreground mt-2">
-                  Before I start handling real tickets, let me show you how I'd handle three scenarios. You tell me if I'm on the right track.
-                </p>
-              </div>
-            </div>
-          </div>
+              </RepBubble>
+              {phase === "handoff" && (
+                <div className="ml-9">
+                  <Button
+                    className="h-9 px-5 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
+                    onClick={() => {
+                      setPhase("role_guide");
+                      onSwitchToTeamLead();
+                    }}
+                  >
+                    Go to Team Lead <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
 
-          {/* Scenario 1 — self-handle */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">
-              {initials}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">{repName}</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                <p className="text-[13px] font-bold text-foreground mb-1.5">Scenario 1 — "Where is my order?"</p>
-                <p className="text-[12px] text-foreground leading-relaxed">
-                  Customer writes: <em>"Where is my order #DBH-29174? It's been a week and I haven't received anything."</em>
-                </p>
-                <p className="text-[12px] text-foreground leading-relaxed mt-2">
-                  Here's what I'd do:
-                </p>
-                <ol className="text-[12px] text-foreground leading-relaxed mt-1 list-decimal list-inside space-y-0.5">
-                  <li>Look up #DBH-29174 in Shopify</li>
-                  <li>I see it's <strong>shipped</strong> via Royal Mail, tracking RM29174UK, expected Mar 25</li>
-                  <li>I'd reply:</li>
-                </ol>
-                <blockquote className="mt-2 pl-3 border-l-2 border-border text-[11.5px] text-muted-foreground italic">
-                  Hi Emma! Your order #DBH-29174 shipped via Royal Mail (tracking: RM29174UK) and is expected to arrive by March 25th. You can track it here: [link]. Let me know if you need anything else!
-                </blockquote>
-                <p className="text-[12px] text-foreground leading-relaxed mt-2">
-                  This is read-only — I'm just looking up info and replying. Does this look right?
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* User response — That's right */}
-          <div className="flex gap-2.5 justify-end">
-            <div className="rounded-xl rounded-tr-sm bg-violet-50 border border-violet-100 px-3.5 py-2 max-w-[80%]">
-              <p className="text-[12px] text-foreground">That's right</p>
-            </div>
-          </div>
-
-          {/* Scenario 2 — escalation (unclear input) */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">
-              {initials}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">{repName}</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                <p className="text-[13px] font-bold text-foreground mb-1.5">Scenario 2 — "I want a refund but also keep the item"</p>
-                <p className="text-[12px] text-foreground leading-relaxed">
-                  Customer writes: <em>"I bought this as a gift and the recipient doesn't want it. Can I get a refund without returning it?"</em>
-                </p>
-                <p className="text-[12px] text-foreground leading-relaxed mt-2">
-                  This one's tricky — the request is unclear and doesn't match any standard flow. I'd <strong>escalate to you</strong> with a note explaining the ambiguity so you can decide.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* User response */}
-          <div className="flex gap-2.5 justify-end">
-            <div className="rounded-xl rounded-tr-sm bg-violet-50 border border-violet-100 px-3.5 py-2 max-w-[80%]">
-              <p className="text-[12px] text-foreground">That's right</p>
-            </div>
-          </div>
-
-          {/* Scenario 3 — escalation (no permission) */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">
-              {initials}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">{repName}</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                <p className="text-[13px] font-bold text-foreground mb-1.5">Scenario 3 — "Process my refund now"</p>
-                <p className="text-[12px] text-foreground leading-relaxed">
-                  Customer writes: <em>"I returned my order last week. Where's my refund?"</em>
-                </p>
-                <p className="text-[12px] text-foreground leading-relaxed mt-2">
-                  I can look up the return status, but I don't have permission to <strong>process refunds</strong>. I'd <strong>escalate to you</strong> with the return details so you can trigger the refund.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* User response */}
-          <div className="flex gap-2.5 justify-end">
-            <div className="rounded-xl rounded-tr-sm bg-violet-50 border border-violet-100 px-3.5 py-2 max-w-[80%]">
-              <p className="text-[12px] text-foreground">That's right</p>
-            </div>
-          </div>
-
-          {/* Mode selection */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">
-              {initials}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">{repName}</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
+          {/* Role Guide (after mode selection) */}
+          {(phase === "done" || postHirePhase === "role_guide") && (
+            <>
+              <RepBubble>
                 <p className="text-[12px] leading-relaxed text-foreground">
-                  Great — I'm confident I understand your policies.
+                  I'm now live in <strong>{selectedMode === "production" ? "Production" : "Training"} mode</strong>. Here's how our team works:
                 </p>
-                <p className="text-[12px] leading-relaxed text-foreground mt-2">
-                  One last question. How do you want me to work?
-                </p>
-                <p className="text-[12px] leading-relaxed text-foreground mt-2">
-                  <strong>Training mode</strong> — I draft my responses and actions, but I check with you before anything goes out to the customer. Good if you want to review my work for a while.
-                </p>
-                <p className="text-[12px] leading-relaxed text-foreground mt-2">
-                  <strong>Production mode</strong> — I handle tickets on my own. You can review everything after the fact. Good if you trust the sanity check and want me working immediately.
-                </p>
-              </div>
-            </div>
-          </div>
+                <div className="mt-3 space-y-2.5">
+                  <div>
+                    <p className="text-[11px] font-semibold text-foreground">Come to me (Rep) when you want to:</p>
+                    <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
+                      <li>Check on tickets I've escalated to you</li>
+                      <li>View or change my settings (click Profile)</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-foreground">Talk to Team Lead when you want to:</p>
+                    <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
+                      <li>Tell them about policy changes — they'll update my rules</li>
+                      <li>Review their improvement suggestions</li>
+                      <li>Upload new SOP documents</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-foreground">In the Zendesk Sidebar you can:</p>
+                    <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
+                      <li>See what I'm doing on any ticket in real-time</li>
+                      <li>Mark a bad response so Team Lead can analyze it</li>
+                      <li>Copy my suggested reply (in Training mode)</li>
+                    </ul>
+                  </div>
+                </div>
+              </RepBubble>
 
-          {/* User chose Training */}
-          <div className="flex gap-2.5 justify-end">
-            <div className="rounded-xl rounded-tr-sm bg-violet-50 border border-violet-100 px-3.5 py-2 max-w-[80%]">
-              <p className="text-[12px] text-foreground">Training — check with me first</p>
-            </div>
-          </div>
+              {/* Continue to sidebar install */}
+              {postHirePhase === "role_guide" && (
+                <div className="ml-9 mt-2">
+                  <Button
+                    className="h-9 px-5 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
+                    onClick={onRoleGuideDone}
+                  >
+                    Continue <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                </div>
+              )}
 
-          {/* Rep confirms + tells about escalation communication */}
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">
-              {initials}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px] font-semibold">{repName}</span>
-                <span className="text-[9px] text-muted-foreground/50">just now</span>
-              </div>
-              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5">
-                <p className="text-[12px] leading-relaxed text-foreground">
-                  I'm live in <strong>Training mode</strong>. I'll start picking up WISMO, cancellation, and address change tickets now.
-                </p>
-                <p className="text-[12px] leading-relaxed text-foreground mt-2">
-                  I'll message you here whenever I need your help — like when a ticket needs escalation or when I'm unsure about something. You'll see those as cards below.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Escalation cards */}
-          <div className="space-y-2.5 mt-2">
-            {sortedTickets.map((ticket) => (
-              <EscalationCard key={ticket.id} ticket={ticket} />
-            ))}
-          </div>
+              {/* Escalation cards (shown in post-onboarding state) */}
+              {phase === "done" && postHirePhase !== "role_guide" && (
+                <div className="space-y-2.5 mt-2">
+                  {sortedTickets.map((ticket) => (
+                    <EscalationCard key={ticket.id} ticket={ticket} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
         </div>
       </ScrollArea>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ── MODE SELECTION (in Team Lead area) ──────────────────
+// ══════════════════════════════════════════════════════════
+
+function ModeSelectionView({
+  repName,
+  onModeSelected,
+}: {
+  repName: string;
+  onModeSelected: (mode: "training" | "production") => void;
+}) {
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <AlexBubble>
+        <p className="text-[12px] leading-relaxed text-foreground">
+          Your Rep is ready. One last thing — how do you want {repName} to work?
+        </p>
+      </AlexBubble>
+
+      <div className="ml-9 space-y-2.5">
+        {/* Training Mode card */}
+        <div
+          className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4 cursor-pointer hover:border-blue-300 transition-colors"
+          onClick={() => onModeSelected("training")}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+              <span className="text-[12px]">🔵</span>
+            </div>
+            <span className="text-[12px] font-semibold text-foreground">Training Mode</span>
+            <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[8px] ml-auto">Recommended</Badge>
+          </div>
+          <p className="text-[11px] text-foreground leading-relaxed">
+            {repName} drafts every response as a Zendesk Internal Note. You review each one in Zendesk and decide whether to copy it and send to the customer. {repName} learns from your decisions.
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Best for: First-time setup — review every response before it reaches customers.
+          </p>
+        </div>
+
+        {/* Production Mode card */}
+        <div
+          className="rounded-xl border border-border bg-white p-4 cursor-pointer hover:border-emerald-200 transition-colors"
+          onClick={() => setShowConfirm(true)}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+              <span className="text-[12px]">🟢</span>
+            </div>
+            <span className="text-[12px] font-semibold text-foreground">Production Mode</span>
+          </div>
+          <p className="text-[11px] text-foreground leading-relaxed">
+            {repName} handles tickets independently — replies directly to customers, and escalates to you when unsure. You review performance after the fact.
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Best for: When you trust the setup and want {repName} working right away.
+          </p>
+        </div>
+      </div>
+
+      {/* Production confirmation dialog */}
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent className="max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-[14px]">Confirm Production Mode</DialogTitle>
+            <DialogDescription className="text-[12px]">
+              {repName} will reply directly to customers. You can switch to Training mode anytime from the Rep profile. Continue?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => setShowConfirm(false)}>Cancel</Button>
+            <Button size="sm" className="bg-teal-600 hover:bg-teal-700" onClick={() => { setShowConfirm(false); onModeSelected("production"); }}>
+              Confirm
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ── SIDEBAR INSTALL CTA (Step 9) ────────────────────────
+// ══════════════════════════════════════════════════════════
+
+function SidebarInstallCTA({
+  onInstall,
+  onSkip,
+}: {
+  onInstall: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <AlexBubble>
+        <p className="text-[12px] leading-relaxed text-foreground">
+          One more thing — I noticed you haven't installed the Seel Sidebar App in Zendesk yet. It lets you see what your Rep is doing on each ticket, right inside your Zendesk workspace.
+        </p>
+      </AlexBubble>
+      <div className="ml-9">
+        <div className="rounded-xl border border-border bg-white p-4">
+          <p className="text-[12px] font-medium text-foreground mb-1">Install Zendesk Sidebar App</p>
+          <p className="text-[10.5px] text-muted-foreground mb-3">
+            See AI status, copy replies, and mark bad cases — all without leaving Zendesk.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" className="h-8 text-[10px] bg-teal-600 hover:bg-teal-700" onClick={onInstall}>
+              Install <ArrowRight className="w-3 h-3 ml-1" />
+            </Button>
+            <button onClick={onSkip} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+              Skip for now
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1370,6 +1897,11 @@ export default function CommunicationPage() {
   const [showTopics, setShowTopics] = useState(false);
   const [topics, setTopics] = useState<Topic[]>(TOPICS);
   const [newMsg, setNewMsg] = useState("");
+
+  // Post-hire flow state
+  const [postHirePhase, setPostHirePhase] = useState<"none" | "sanity_check" | "mode_select" | "role_guide" | "sidebar_install" | "complete">("none");
+  const [selectedMode, setSelectedMode] = useState<"training" | "production">("training");
+  const [, navigate] = useLocation();
 
   const threadTopic = useMemo(
     () => (threadTopicId ? topics.find((t) => t.id === threadTopicId) || null : null),
@@ -1411,7 +1943,6 @@ export default function CommunicationPage() {
       {/* ── Narrow sidebar ── */}
       <div className="w-14 border-r border-border bg-white flex flex-col items-center py-3 shrink-0">
         <TooltipProvider delayDuration={200}>
-          {/* Team Lead */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -1430,10 +1961,8 @@ export default function CommunicationPage() {
             </TooltipContent>
           </Tooltip>
 
-          {/* Separator */}
           <div className="w-6 h-px bg-border my-2" />
 
-          {/* Rep — only if hired */}
           {repName && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1498,12 +2027,57 @@ export default function CommunicationPage() {
             </div>
 
             {teamLeadTab === "setup" ? (
-              <SetupTab onSetupComplete={() => setShowHireDialog(true)} />
+              <SetupTab onHireRep={() => setShowHireDialog(true)} />
             ) : (
               <div className="flex-1 flex flex-col min-w-0">
-                {/* Topics feed */}
                 <ScrollArea className="flex-1">
                   <div className="px-4 py-4 space-y-5">
+                    {/* Mode selection (Step 8) — shown in Conversation tab after sanity check */}
+                    {postHirePhase === "mode_select" && repName && (
+                      <ModeSelectionView
+                        repName={repName}
+                        onModeSelected={(mode) => {
+                          setSelectedMode(mode);
+                          toast.success(`${mode === "training" ? "Training" : "Production"} mode activated`);
+                          // Switch to Rep area for role guide per spec
+                          setPostHirePhase("role_guide");
+                          setActiveView("rep");
+                        }}
+                      />
+                    )}
+
+                    {/* Sidebar install (Step 9) */}
+                    {postHirePhase === "sidebar_install" && (
+                      <SidebarInstallCTA
+                        onInstall={() => {
+                          toast.success("Redirecting to Integrations...");
+                          setPostHirePhase("complete");
+                          navigate("/ai-support/integrations");
+                        }}
+                        onSkip={() => {
+                          setPostHirePhase("complete");
+                        }}
+                      />
+                    )}
+
+                    {/* Onboarding complete message */}
+                    {postHirePhase === "complete" && (
+                      <>
+                        <AlexBubble>
+                          <p className="text-[12px] leading-relaxed text-foreground">
+                            Setup is complete! {repName} is ready to work. 🎉
+                          </p>
+                          <p className="text-[12px] leading-relaxed text-foreground mt-2">
+                            You can find me here in the Communication tab anytime you need to chat.
+                          </p>
+                        </AlexBubble>
+
+                        {/* Unfinished items summary — shown if Zendesk was skipped etc. */}
+                        {/* In the real app, this would check actual connection state */}
+                      </>
+                    )}
+
+                    {/* Regular topics */}
                     {sortedTopics.map((topic) => (
                       <TopicCard
                         key={topic.id}
@@ -1515,7 +2089,6 @@ export default function CommunicationPage() {
                   </div>
                 </ScrollArea>
 
-                {/* Message input — initiate new topic */}
                 <div className="px-4 py-2.5 border-t border-border shrink-0">
                   <div className="flex items-end gap-2">
                     <Textarea
@@ -1557,6 +2130,19 @@ export default function CommunicationPage() {
             repName={repName}
             showProfile={showProfile}
             onToggleProfile={() => setShowProfile(!showProfile)}
+            onSwitchToTeamLead={() => {
+              setActiveView("teamlead");
+              setTeamLeadTab("conversation");
+              setPostHirePhase("mode_select");
+            }}
+            postHirePhase={postHirePhase}
+            selectedMode={selectedMode}
+            onRoleGuideDone={() => {
+              // After role guide, go back to TL for sidebar install
+              setActiveView("teamlead");
+              setTeamLeadTab("conversation");
+              setPostHirePhase("sidebar_install");
+            }}
           />
         ) : null}
 
@@ -1588,6 +2174,7 @@ export default function CommunicationPage() {
           setRepName(name);
           setShowHireDialog(false);
           setActiveView("rep");
+          setPostHirePhase("sanity_check");
           toast.success(`${name} has been hired!`);
         }}
       />

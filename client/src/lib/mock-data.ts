@@ -72,6 +72,8 @@ export interface ActionPermission {
   guardrails?: Guardrail[];
   lastModified: string;
   dependsOn?: string[];
+  locked?: boolean;
+  accessType?: "read" | "write";
 }
 
 // ── SOP-level Rule ──────────────────────────────────────────
@@ -224,103 +226,80 @@ export const INTEGRATIONS: Integration[] = [
 ];
 
 export const ACTION_PERMISSIONS: ActionPermission[] = [
+  // Communication — locked
   {
     id: "ap-1",
-    name: "Issue Refund",
-    description: "Process refund to original payment method",
-    category: "Financial",
+    name: "Reply to customer",
+    description: "Send a response to the customer",
+    category: "Communication",
     permission: "autonomous",
-    guardrails: [
-      { id: "g-1-1", label: "Max refund amount", type: "number", value: 150, unit: "$", enabled: true },
-    ],
+    locked: true,
+    accessType: "write",
     lastModified: "2026-03-10T14:00:00Z",
   },
   {
     id: "ap-2",
-    name: "Cancel Order",
-    description: "Cancel unfulfilled order and notify customer",
-    category: "Order Management",
+    name: "Escalate to human",
+    description: "Transfer ticket to human agent with context summary",
+    category: "Communication",
     permission: "autonomous",
-    lastModified: "2026-03-01T09:00:00Z",
+    locked: true,
+    accessType: "write",
+    lastModified: "2026-03-10T14:00:00Z",
   },
+  // Order Management
   {
     id: "ap-3",
-    name: "Create Return Label",
-    description: "Generate prepaid return shipping label",
-    category: "Returns",
-    permission: "autonomous",
-    lastModified: "2026-03-01T09:00:00Z",
-  },
-  {
-    id: "ap-4",
-    name: "Track Shipment",
+    name: "Track shipment",
     description: "Look up shipment status and share with customer",
     category: "Order Management",
     permission: "autonomous",
+    accessType: "read",
+    lastModified: "2026-02-28T09:00:00Z",
+  },
+  {
+    id: "ap-4",
+    name: "Look up order details",
+    description: "Retrieve order information from Shopify",
+    category: "Order Management",
+    permission: "autonomous",
+    accessType: "read",
     lastModified: "2026-02-28T09:00:00Z",
   },
   {
     id: "ap-5",
-    name: "Apply Discount",
-    description: "Apply discount code or manual discount",
-    category: "Financial",
-    permission: "autonomous",
+    name: "Cancel order",
+    description: "Cancel unfulfilled order and notify customer",
+    category: "Order Management",
+    permission: "disabled",
+    accessType: "write",
     guardrails: [
-      { id: "g-5-1", label: "Max discount percentage", type: "number", value: 15, unit: "%", enabled: true },
+      { id: "g-5-1", label: "Only unfulfilled orders", type: "boolean", enabled: true },
     ],
-    lastModified: "2026-03-05T11:00:00Z",
+    lastModified: "2026-03-01T09:00:00Z",
   },
+  // Customer
   {
     id: "ap-6",
-    name: "Update Shipping Address",
-    description: "Modify shipping address on unfulfilled order",
-    category: "Order Management",
+    name: "Look up customer info",
+    description: "Retrieve customer profile and order history",
+    category: "Customer",
     permission: "autonomous",
+    accessType: "read",
     lastModified: "2026-02-28T09:00:00Z",
   },
+  // Financial
   {
     id: "ap-7",
-    name: "Resend Order",
-    description: "Create replacement shipment for lost/damaged items",
-    category: "Order Management",
-    permission: "autonomous",
-    guardrails: [
-      { id: "g-7-1", label: "Max order value", type: "number", value: 200, unit: "$", enabled: true },
-    ],
-    lastModified: "2026-03-08T16:00:00Z",
-  },
-  {
-    id: "ap-8",
-    name: "Create Coupon",
-    description: "Generate unique discount coupon for customer retention",
+    name: "Process refund",
+    description: "Process refund to original payment method",
     category: "Financial",
     permission: "disabled",
-    lastModified: "2026-02-28T09:00:00Z",
-    dependsOn: ["ap-5"],
-  },
-  {
-    id: "ap-9",
-    name: "Escalate to Manager",
-    description: "Transfer ticket to human agent with context summary",
-    category: "Workflow",
-    permission: "autonomous",
+    accessType: "write",
     guardrails: [
-      { id: "g-9-1", label: "Angry customer detected", type: "boolean", enabled: true },
-      { id: "g-9-2", label: "Legal/safety keywords", type: "boolean", enabled: true },
-      { id: "g-9-3", label: "Unresolved after N turns", type: "number", value: 4, unit: "turns", enabled: true },
-      { id: "g-9-4", label: "Customer requests human", type: "boolean", enabled: true },
-      { id: "g-9-5", label: "High-value order threshold", type: "number", value: 500, unit: "$", enabled: true },
-      { id: "g-9-6", label: "Repeat contact threshold", type: "number", value: 3, unit: "times", enabled: true },
+      { id: "g-7-1", label: "Max amount", type: "number", value: 200, unit: "$", enabled: true },
     ],
-    lastModified: "2026-02-28T09:00:00Z",
-  },
-  {
-    id: "ap-10",
-    name: "Close Ticket",
-    description: "Mark ticket as resolved after customer confirmation",
-    category: "Workflow",
-    permission: "autonomous",
-    lastModified: "2026-02-28T09:00:00Z",
+    lastModified: "2026-03-10T14:00:00Z",
   },
 ];
 

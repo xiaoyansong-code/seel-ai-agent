@@ -1,8 +1,12 @@
-# PRD 修订任务
+# Onboarding Prototype Update — TODO
 
-- [ ] 重新阅读原 PRD v2.0 完整内容，记录其结构和章节
-- [ ] 重新阅读 AGENT_TECHNICAL_DOC.md 完整内容，提取所有 agent 交互设计
-- [ ] 审阅原型代码中的 UI 展示内容（字段以"展示什么"而非数据类型描述）
-- [ ] 基于 v2.0 结构修改 PRD，补充 agent 交互设计和用户故事流程
-- [ ] 字段描述改为"展示什么内容"的方式
-- [ ] 保存 checkpoint 并交付
+- [ ] Step 1: Welcome — new numbered plan + "Let's go" button
+- [ ] Step 2: Shopify check — auto-check connection status
+- [ ] Step 3: Zendesk connect — CTA card + "Skip for now"
+- [ ] Step 4: Upload SOP — updated copy, "Try with a sample document", skip link
+- [ ] Step 5: Parse results — "N rules and M knowledge entries", conflict cards with "Decide later"
+- [ ] Step 6: Hire Dialog — 3 personalities, no Mode, locked Actions, "Hire Ava" button
+- [ ] Step 7: Sanity Check — structured scenario cards, Looks good / Needs adjustment
+- [ ] Step 8: Go-live mode — Team Lead area, mode cards, Production confirmation
+- [ ] Step 9: Sidebar install — conditional CTA
+- [ ] Onboarding complete — completion message + pending items
