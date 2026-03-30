@@ -28,7 +28,7 @@ import {
   Send, Check, X, ArrowRight, ChevronDown, ChevronRight,
   MessageCircle, ExternalLink, Pencil, Upload, FileText,
   CheckCircle2, Globe, Clock, BarChart3, List, Link2,
-  AlertTriangle, Shield, Lock,
+  AlertTriangle, Shield, Lock, Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -1128,12 +1128,8 @@ function RepProfilePanel({
   onClose: () => void;
 }) {
   const [, navigate] = useLocation();
-  const [isEditing, setIsEditing] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [personality, setPersonality] = useState("Friendly");
-  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
-  const [pendingMode, setPendingMode] = useState("training");
   const initials = getInitials(repName);
 
   const configHistory = [
@@ -1149,137 +1145,6 @@ function RepProfilePanel({
     });
     return groups;
   }, []);
-
-  if (isEditing) {
-    return (
-      <div className="w-[320px] border-l border-border bg-white flex flex-col h-full shrink-0">
-        <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
-          <span className="text-[12px] font-semibold text-foreground">Edit Profile</span>
-          <button onClick={() => setIsEditing(false)} className="p-1 rounded hover:bg-accent transition-colors">
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="px-4 py-4 space-y-3">
-            <div>
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
-              <Input defaultValue={repName} className="mt-1 h-8 text-[12px]" />
-            </div>
-            <div>
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Personality</Label>
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {HIRE_PERSONALITIES.map((p) => (
-                  <button
-                    key={p.label}
-                    className={cn(
-                      "px-2.5 py-1.5 rounded-full text-[10.5px] border transition-colors",
-                      p.label === personality
-                        ? "border-violet-400 bg-violet-50 text-violet-700"
-                        : "border-border text-foreground hover:bg-accent"
-                    )}
-                    onClick={() => setPersonality(p.label)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mode</Label>
-              <Select defaultValue="training">
-                <SelectTrigger className="mt-1 h-8 text-[11px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="training">Training</SelectItem>
-                  <SelectItem value="production">Production</SelectItem>
-                  <SelectItem value="off">Off</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Allowed Actions</Label>
-              <div className="mt-2 space-y-3">
-                {Object.entries(actionGroups).map(([cat, actions]) => (
-                  <div key={cat}>
-                    <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{cat}</p>
-                    <div className="space-y-1">
-                      {actions.map((action) => (
-                        <label key={action.id} className={cn("flex items-start gap-2 py-1", action.locked ? "opacity-50" : "cursor-pointer")}>
-                          <input
-                            type="checkbox"
-                            defaultChecked={action.permission === "autonomous"}
-                            disabled={action.locked}
-                            className="mt-0.5 rounded border-border"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[11px] text-foreground">{action.name}</span>
-                            {action.locked && <span className="text-[8px] text-muted-foreground ml-1">Always on</span>}
-                            {action.guardrails && action.guardrails.length > 0 && (
-                              <div className="mt-1 space-y-0.5">
-                                {action.guardrails.map((g) => (
-                                  <div key={g.id} className="flex items-center gap-1.5">
-                                    <span className="text-[9px] text-muted-foreground">{g.label}</span>
-                                    {g.type === "number" && g.value !== undefined && (
-                                      <input
-                                        type="number"
-                                        defaultValue={g.value}
-                                        className="w-16 h-5 text-[9px] border border-border rounded px-1 text-right"
-                                      />
-                                    )}
-                                    {g.unit && <span className="text-[8px] text-muted-foreground">{g.unit}</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Button className="w-full h-8 text-[11px]" onClick={() => setShowSaveConfirm(true)}>
-              Save Changes
-            </Button>
-
-            {/* Save Confirmation Dialog */}
-            <Dialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
-              <DialogContent className="max-w-sm">
-                <DialogHeader>
-                  <DialogTitle className="text-[14px]">Confirm Changes</DialogTitle>
-                  <DialogDescription className="text-[11px] text-muted-foreground">
-                    {repName} is currently in <strong>Training</strong> mode.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-2 py-2">
-                  <div className="rounded-md bg-muted/30 border border-border/50 px-3 py-2">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Change Summary</p>
-                    <div className="space-y-0.5">
-                      <p className="text-[11px] text-foreground">Personality: Friendly → {personality}</p>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-amber-600 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    Changes will take effect immediately on active tickets.
-                  </p>
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" size="sm" className="h-8 text-[11px]" onClick={() => setShowSaveConfirm(false)}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" className="h-8 text-[11px]" onClick={() => { setShowSaveConfirm(false); setIsEditing(false); toast.success("Profile updated"); }}>
-                    Confirm & Save
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </ScrollArea>
-      </div>
-    );
-  }
 
   return (
     <div className="w-[320px] border-l border-border bg-white flex flex-col h-full shrink-0">
@@ -2018,7 +1883,6 @@ function SidebarInstallCTA({
 
 export default function CommunicationPage() {
   const [activeView, setActiveView] = useState<"teamlead" | "rep">("teamlead");
-  const [teamLeadTab, setTeamLeadTab] = useState<"conversation" | "setup">("conversation");
   const [showHireDialog, setShowHireDialog] = useState(false);
   const [repName, setRepName] = useState<string | null>("Ava");
   const [showProfile, setShowProfile] = useState(false);
@@ -2154,6 +2018,25 @@ export default function CommunicationPage() {
               </TooltipContent>
             </Tooltip>
           )}
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Config entry at bottom of narrow sidebar */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => navigate("/config")}
+                className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="text-[11px]">
+              <p className="font-semibold">Agent Config</p>
+              <p className="text-muted-foreground">Configure all agents</p>
+            </TooltipContent>
+          </Tooltip>
         </TooltipProvider>
       </div>
 
@@ -2161,42 +2044,29 @@ export default function CommunicationPage() {
       <div className="flex-1 flex min-w-0">
         {activeView === "teamlead" ? (
           <div className="flex-1 flex flex-col min-w-0">
-            {/* Tab bar */}
+            {/* Header bar — no tabs, just title + topics button */}
             <div className="flex items-center border-b border-border px-4 h-10 shrink-0">
-              <button
-                onClick={() => setTeamLeadTab("conversation")}
-                className={cn(
-                  "px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors mr-1",
-                  teamLeadTab === "conversation" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Conversation
-                {pendingCount > 0 && (
+              <span className="text-[12px] font-semibold text-foreground">
+                {testMode === "onboarding" ? "Onboarding Setup" : "Team Lead Conversation"}
+                {testMode === "normal" && pendingCount > 0 && (
                   <span className="ml-1.5 w-4 h-4 rounded-full bg-amber-400 text-white text-[8px] inline-flex items-center justify-center">
                     {pendingCount}
                   </span>
                 )}
-              </button>
-              <button
-                onClick={() => setTeamLeadTab("setup")}
-                className={cn(
-                  "px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors",
-                  teamLeadTab === "setup" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Onboarding
-              </button>
+              </span>
               <div className="flex-1" />
-              <button
-                onClick={() => setShowTopics(!showTopics)}
-                className="p-1.5 rounded hover:bg-accent transition-colors"
-                title="All topics"
-              >
-                <List className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
+              {testMode === "normal" && (
+                <button
+                  onClick={() => setShowTopics(!showTopics)}
+                  className="p-1.5 rounded hover:bg-accent transition-colors"
+                  title="All topics"
+                >
+                  <List className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              )}
             </div>
 
-            {teamLeadTab === "setup" ? (
+            {testMode === "onboarding" ? (
               <SetupTab onHireRep={() => setShowHireDialog(true)} />
             ) : (
               <div className="flex-1 flex flex-col min-w-0">
@@ -2302,7 +2172,6 @@ export default function CommunicationPage() {
             onToggleProfile={() => setShowProfile(!showProfile)}
             onSwitchToTeamLead={() => {
               setActiveView("teamlead");
-              setTeamLeadTab("conversation");
               setPostHirePhase("mode_select");
             }}
             postHirePhase={postHirePhase}
@@ -2310,7 +2179,6 @@ export default function CommunicationPage() {
             onRoleGuideDone={() => {
               // After role guide, go back to TL for sidebar install
               setActiveView("teamlead");
-              setTeamLeadTab("conversation");
               setPostHirePhase("sidebar_install");
             }}
           />
