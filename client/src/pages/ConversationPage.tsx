@@ -436,16 +436,16 @@ function EscalatedTicketCard({
             <p className="text-[12px] font-medium">{ticket.subject}</p>
 
             {/* Rep's Handoff Note */}
-            {ticket.internalNote && (
+            {ticket.handoffNotes && (
               <div className="rounded-md bg-white/60 border border-border/50 px-2.5 py-2">
                 <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70 block mb-1">Rep's Handoff Note</span>
-                <p className="text-[11.5px] leading-relaxed text-foreground/80">{ticket.internalNote}</p>
+                <p className="text-[11.5px] leading-relaxed text-foreground/80">{ticket.handoffNotes}</p>
               </div>
             )}
 
             {/* Escalation reason */}
-            {ticket.escalationReason && (
-              <p className="text-[10px] text-muted-foreground/70 italic">{ticket.escalationReason}</p>
+            {ticket.handoffNotes && ticket.sentiment && (
+              <p className="text-[10px] text-muted-foreground/70 italic">Sentiment: {ticket.sentiment}{ticket.orderValue ? ` · Order: $${ticket.orderValue}` : ''}</p>
             )}
           </div>
 

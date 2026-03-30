@@ -1047,8 +1047,13 @@ function HireRepDialog({
 // ── ESCALATION CARD ─────────────────────────────────────
 // ══════════════════════════════════════════════════════════
 
-function EscalationCard({ ticket }: { ticket: EscalationTicket }) {
+function EscalationCard({ ticket, onResolve }: { ticket: EscalationTicket; onResolve?: (id: string) => void }) {
   const isResolved = ticket.status === "resolved";
+  const sentimentColors: Record<string, string> = {
+    frustrated: "bg-red-50 text-red-600 border-red-200",
+    urgent: "bg-orange-50 text-orange-600 border-orange-200",
+    neutral: "bg-slate-50 text-slate-600 border-slate-200",
+  };
   return (
     <div className={cn(
       "rounded-xl border px-3.5 py-2.5 transition-colors",
@@ -1056,29 +1061,58 @@ function EscalationCard({ ticket }: { ticket: EscalationTicket }) {
     )}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="text-[11px] font-medium text-foreground">
-              #{ticket.id} · {ticket.subject}
-            </span>
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <a
+              href={ticket.zendeskUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] font-medium text-primary hover:underline inline-flex items-center gap-0.5"
+            >
+              #{ticket.zendeskTicketId}
+              <ExternalLink className="w-2.5 h-2.5" />
+            </a>
+            <span className="text-[11px] font-medium text-foreground">{ticket.subject}</span>
           </div>
           <p className="text-[10.5px] text-muted-foreground leading-relaxed line-clamp-2">
             {ticket.summary}
           </p>
-          <p className="text-[9px] text-muted-foreground/60 mt-1">
-            {formatRelativeTime(ticket.createdAt)}
-          </p>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="text-[9px] text-muted-foreground/60">
+              {formatRelativeTime(ticket.createdAt)}
+            </span>
+            {ticket.sentiment && (
+              <Badge variant="outline" className={cn("text-[8px]", sentimentColors[ticket.sentiment] || sentimentColors.neutral)}>
+                {ticket.sentiment}
+              </Badge>
+            )}
+            {ticket.orderValue !== undefined && (
+              <span className="text-[9px] font-medium text-foreground">
+                ${ticket.orderValue.toLocaleString()}
+              </span>
+            )}
+          </div>
         </div>
-        <Badge
-          variant="outline"
-          className={cn(
-            "text-[8px] shrink-0",
-            isResolved
-              ? "bg-muted/30 text-muted-foreground border-border/40"
-              : "bg-amber-50 text-amber-700 border-amber-200"
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[8px]",
+              isResolved
+                ? "bg-muted/30 text-muted-foreground border-border/40"
+                : "bg-amber-50 text-amber-700 border-amber-200"
+            )}
+          >
+            {isResolved ? "Resolved" : "Needs attention"}
+          </Badge>
+          {!isResolved && onResolve && (
+            <button
+              onClick={() => onResolve(ticket.id)}
+              className="px-2 py-1 rounded text-[9px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+            >
+              <Check className="w-2.5 h-2.5 inline mr-0.5" />Resolve
+            </button>
           )}
-        >
-          {isResolved ? "Resolved" : "Needs attention"}
-        </Badge>
+        </div>
       </div>
     </div>
   );
@@ -1098,7 +1132,10 @@ function RepProfilePanel({
   const [, navigate] = useLocation();
   const [isEditing, setIsEditing] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [personality, setPersonality] = useState("Friendly");
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [pendingMode, setPendingMode] = useState("training");
   const initials = getInitials(repName);
 
   const configHistory = [
@@ -1180,7 +1217,21 @@ function RepProfilePanel({
                             <span className="text-[11px] text-foreground">{action.name}</span>
                             {action.locked && <span className="text-[8px] text-muted-foreground ml-1">Always on</span>}
                             {action.guardrails && action.guardrails.length > 0 && (
-                              <p className="text-[9px] text-muted-foreground mt-0.5">{action.guardrails[0].label}</p>
+                              <div className="mt-1 space-y-0.5">
+                                {action.guardrails.map((g) => (
+                                  <div key={g.id} className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-muted-foreground">{g.label}</span>
+                                    {g.type === "number" && g.value !== undefined && (
+                                      <input
+                                        type="number"
+                                        defaultValue={g.value}
+                                        className="w-16 h-5 text-[9px] border border-border rounded px-1 text-right"
+                                      />
+                                    )}
+                                    {g.unit && <span className="text-[8px] text-muted-foreground">{g.unit}</span>}
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
                         </label>
@@ -1191,9 +1242,41 @@ function RepProfilePanel({
               </div>
             </div>
 
-            <Button className="w-full h-8 text-[11px]" onClick={() => { setIsEditing(false); toast.success("Profile updated"); }}>
+            <Button className="w-full h-8 text-[11px]" onClick={() => setShowSaveConfirm(true)}>
               Save Changes
             </Button>
+
+            {/* Save Confirmation Dialog */}
+            <Dialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle className="text-[14px]">Confirm Changes</DialogTitle>
+                  <DialogDescription className="text-[11px] text-muted-foreground">
+                    {repName} is currently in <strong>Training</strong> mode.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 py-2">
+                  <div className="rounded-md bg-muted/30 border border-border/50 px-3 py-2">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Change Summary</p>
+                    <div className="space-y-0.5">
+                      <p className="text-[11px] text-foreground">Personality: Friendly → {personality}</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-amber-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Changes will take effect immediately on active tickets.
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" size="sm" className="h-8 text-[11px]" onClick={() => setShowSaveConfirm(false)}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" className="h-8 text-[11px]" onClick={() => { setShowSaveConfirm(false); setIsEditing(false); toast.success("Profile updated"); }}>
+                    Confirm & Save
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </ScrollArea>
       </div>
@@ -1268,6 +1351,36 @@ function RepProfilePanel({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Action Permissions (read-only) */}
+          <div className="mb-4">
+            <button
+              onClick={() => setActionsOpen(!actionsOpen)}
+              className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 hover:text-foreground transition-colors"
+            >
+              {actionsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              Action Permissions ({ACTION_PERMISSIONS.length})
+            </button>
+            {actionsOpen && (
+              <div className="space-y-2">
+                {Object.entries(actionGroups).map(([cat, actions]) => (
+                  <div key={cat}>
+                    <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{cat}</p>
+                    <div className="space-y-1">
+                      {actions.map((action) => (
+                        <div key={action.id} className="flex items-center justify-between py-0.5">
+                          <span className="text-[10.5px] text-foreground">{action.name}</span>
+                          <Badge variant="outline" className={cn("text-[8px]", action.permission === "autonomous" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-muted/30 text-muted-foreground border-border/40")}>
+                            {action.permission === "autonomous" ? "Autonomous" : "Disabled"}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -1466,18 +1579,28 @@ function RepView({
   const [adjustmentText, setAdjustmentText] = useState("");
   const [showAdjustmentInput, setShowAdjustmentInput] = useState<string | null>(null);
   const [hasShownTip, setHasShownTip] = useState(false);
+  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
   const initials = getInitials(repName);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleResolve = (id: string) => {
+    setResolvedIds((prev) => { const next = new Set(Array.from(prev)); next.add(id); return next; });
+    toast.success("Escalation marked as resolved");
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [phase, showAdjustmentInput]);
 
   const sortedTickets = useMemo(() => {
-    return [...ESCALATION_TICKETS].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  }, []);
+    return [...ESCALATION_TICKETS]
+      .map((t) => resolvedIds.has(t.id) ? { ...t, status: "resolved" as const } : t)
+      .sort((a, b) => {
+        // needs_attention first, then by date
+        if (a.status !== b.status) return a.status === "needs_attention" ? -1 : 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  }, [resolvedIds]);
 
   const RepBubble = ({ children }: { children: React.ReactNode }) => (
     <div className="flex gap-2.5">
@@ -1531,11 +1654,23 @@ function RepView({
           <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center text-white text-[9px] font-bold">
             {initials}
           </div>
-          <div>
+          <div className="flex items-center gap-1.5">
             <span className="text-[12px] font-semibold text-foreground">{repName}</span>
-            <span className="text-[10px] text-muted-foreground ml-1.5">
-              {phase === "done" || postHirePhase === "role_guide" ? "Working" : "Sanity Check"}
-            </span>
+            {(phase === "done" || postHirePhase === "role_guide") ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[8px] font-medium",
+                  selectedMode === "production"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-blue-50 text-blue-700 border-blue-200"
+                )}
+              >
+                {selectedMode === "production" ? "Production" : "Training"}
+              </Badge>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">Sanity Check</span>
+            )}
           </div>
         </div>
         <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={onToggleProfile}>
@@ -1749,7 +1884,7 @@ function RepView({
               {phase === "done" && postHirePhase !== "role_guide" && (
                 <div className="space-y-2.5 mt-2">
                   {sortedTickets.map((ticket) => (
-                    <EscalationCard key={ticket.id} ticket={ticket} />
+                    <EscalationCard key={ticket.id} ticket={ticket} onResolve={handleResolve} />
                   ))}
                 </div>
               )}

@@ -1,7 +1,8 @@
 /* ── Zendesk Sidebar Mock Data ──────────────────────────────
-   Two ticket states (MVP — Direct Handoff):
+   Ticket states (MVP — Direct Handoff):
    1. "handling"   — AI handling normally, no manager attention needed
    2. "escalated"  — AI cannot handle, needs manager to take over
+   Non-AI tickets: isAiTicket = false → sidebar shows empty state
    ──────────────────────────────────────────────────────────── */
 
 export type TicketState = "handling" | "escalated";
@@ -19,18 +20,22 @@ export interface ZendeskTicket {
   customerEmail: string;
   state: TicketState;
   messages: TicketMessage[];
-  // AI internal note — always present for escalated
-  internalNote?: string;
-  // Give Instruction
-  instruction?: string;
-  // AI handling metadata
+  /** Whether this ticket is assigned to the AI Rep */
+  isAiTicket: boolean;
+  // ── Handling metadata ──
   confidence?: number;
   intentDetected?: string;
   currentStep?: string;
-  // Escalation metadata
-  escalationReason?: string;
-  // Suggested reply for manager to copy
+  /** In Training mode, the Rep's draft reply (shown as internal note) */
+  trainingDraftReply?: string;
+  // ── Escalation metadata ──
+  handoffNotes?: string;
+  sentiment?: "frustrated" | "neutral" | "urgent";
+  orderValue?: number;
   suggestedReply?: string;
+  // ── Flag Issue ──
+  flagged?: boolean;
+  flagNote?: string;
 }
 
 export const ZENDESK_TICKETS: ZendeskTicket[] = [
@@ -41,9 +46,12 @@ export const ZENDESK_TICKETS: ZendeskTicket[] = [
     customerName: "Lisa Wang",
     customerEmail: "lisa.wang@yahoo.com",
     state: "handling",
+    isAiTicket: true,
     confidence: 0.94,
     intentDetected: "Where Is My Order",
     currentStep: "Shared tracking link and updated ETA",
+    trainingDraftReply:
+      "Hi Lisa! Your order #CLC-10250 shipped 4 days ago via USPS. Tracking shows it's in transit — estimated delivery March 28. I'll follow up if it hasn't arrived by then.",
     messages: [
       {
         from: "customer",
@@ -69,9 +77,12 @@ export const ZENDESK_TICKETS: ZendeskTicket[] = [
     customerName: "Sarah Mitchell",
     customerEmail: "sarah.m@gmail.com",
     state: "handling",
+    isAiTicket: true,
     confidence: 0.92,
     intentDetected: "Product Issues — Damaged Item",
     currentStep: "Processed refund of $89.99",
+    trainingDraftReply:
+      "Hi Sarah! I'm so sorry about the damaged lamp. I can see your order #CLC-10234 — the ceramic table lamp at $89.99. Since this is a damaged item, I'll process a full refund right away. You don't need to return the damaged item.",
     messages: [
       {
         from: "customer",
@@ -97,9 +108,12 @@ export const ZENDESK_TICKETS: ZendeskTicket[] = [
     customerName: "David Park",
     customerEmail: "david.park@outlook.com",
     state: "handling",
+    isAiTicket: true,
     confidence: 0.85,
     intentDetected: "Pre-sale — Loyalty Discount",
     currentStep: "Applied 12% discount code",
+    trainingDraftReply:
+      "Hi David! Thanks for being a loyal customer — I can see you've placed 7 orders with us. I'd love to offer you a 12% loyalty discount! Your code is LOYAL-DAVID-12, bringing your total to $206.36 (saving $28.14).",
     messages: [
       {
         from: "customer",
@@ -125,9 +139,13 @@ export const ZENDESK_TICKETS: ZendeskTicket[] = [
     customerName: "Robert Chen",
     customerEmail: "robert.chen@gmail.com",
     state: "escalated",
-    escalationReason: "Customer explicitly requested human agent. Sentiment: very frustrated. High-value order ($450).",
-    internalNote: "Customer ordered a coastal oak bookshelf ($450). Delivery attempted 3 times — customer was home each time but driver marked as 'not home'. Customer is understandably frustrated and demanding to speak with a manager. I verified the delivery failures in the carrier system. This needs human judgment on how to resolve the carrier issue.",
-    suggestedReply: "Hi Robert, I'm so sorry about the repeated delivery issues — that's completely unacceptable. I've escalated this directly with our carrier and scheduled a guaranteed delivery for tomorrow between 10am-12pm. As an apology, I'd also like to offer you a $50 store credit. Would that work for you?",
+    isAiTicket: true,
+    sentiment: "frustrated",
+    orderValue: 450,
+    handoffNotes:
+      "Customer ordered a coastal oak bookshelf ($450). Delivery attempted 3 times — customer was home each time but driver marked as 'not home'. Customer is understandably frustrated and demanding to speak with a manager. I verified the delivery failures in the carrier system. This needs human judgment on how to resolve the carrier issue.",
+    suggestedReply:
+      "Hi Robert, I'm so sorry about the repeated delivery issues — that's completely unacceptable. I've escalated this directly with our carrier and scheduled a guaranteed delivery for tomorrow between 10am-12pm. As an apology, I'd also like to offer you a $50 store credit. Would that work for you?",
     messages: [
       {
         from: "customer",
@@ -148,8 +166,11 @@ export const ZENDESK_TICKETS: ZendeskTicket[] = [
     customerName: "James Wilson",
     customerEmail: "james.w@mail.co.uk",
     state: "escalated",
-    escalationReason: "No rule for international customs duties refund. Escalated for policy decision.",
-    internalNote: "International return with customs duties question. Customer paid £22 in customs. I don't have a rule for whether customs duties are refundable. This has come up 5 times this week — needs a policy decision.",
+    isAiTicket: true,
+    sentiment: "neutral",
+    orderValue: 120,
+    handoffNotes:
+      "International return with customs duties question. Customer paid £22 in customs. I don't have a rule for whether customs duties are refundable. This has come up 5 times this week — needs a policy decision.",
     messages: [
       {
         from: "customer",
@@ -160,6 +181,22 @@ export const ZENDESK_TICKETS: ZendeskTicket[] = [
         from: "internal",
         text: "🚨 Escalating — no policy for international customs duties refund. This is the 5th similar case this week.",
         timestamp: "2026-03-26T11:00:10Z",
+      },
+    ],
+  },
+  // ── 6. Non-AI ticket (not assigned to AI Rep) ──
+  {
+    id: "zd-4601",
+    subject: "Partnership inquiry",
+    customerName: "Michelle Torres",
+    customerEmail: "m.torres@brandco.com",
+    state: "handling",
+    isAiTicket: false,
+    messages: [
+      {
+        from: "customer",
+        text: "Hi, I'm reaching out from BrandCo. We'd love to discuss a wholesale partnership opportunity with Coastal Living Co.",
+        timestamp: "2026-03-26T14:00:00Z",
       },
     ],
   },
