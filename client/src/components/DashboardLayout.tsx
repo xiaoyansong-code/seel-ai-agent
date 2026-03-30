@@ -180,13 +180,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <span>Zendesk Sidebar</span>
             </div>
           </Link>
-          <Link href="/config">
-            <div className={cn(
-              "flex items-center gap-2 px-3 py-[5px] rounded-lg text-[11px] transition-colors cursor-pointer",
-              location.startsWith("/config")
-                ? "bg-primary/8 text-primary font-medium"
-                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent/50"
-            )}>
+          <Link href="/communication">
+            <div className="flex items-center gap-2 px-3 py-[5px] rounded-lg text-[11px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent/50 transition-colors cursor-pointer">
               <Settings className="w-3.5 h-3.5 shrink-0" />
               <span>Config</span>
             </div>

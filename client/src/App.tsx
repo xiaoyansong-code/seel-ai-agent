@@ -10,7 +10,6 @@ import PlaybookPage from "./pages/PlaybookPage";
 import ZendeskApp from "./pages/ZendeskApp";
 import CommunicationPage from "./pages/CommunicationPage";
 import IntegrationsPage from "./pages/IntegrationsPage";
-import AgentPage from "./pages/AgentPage";
 
 function Router() {
   return (
@@ -22,9 +21,6 @@ function Router() {
       <Route path="/performance" component={Performance} />
       <Route path="/performance/conversations" component={Performance} />
 
-      {/* Unified Agent Config page */}
-      <Route path="/config" component={AgentPage} />
-
       {/* Global pages */}
       <Route path="/integrations" component={IntegrationsPage} />
 
@@ -33,7 +29,10 @@ function Router() {
         <Redirect to="/communication" />
       </Route>
       <Route path="/agent">
-        <Redirect to="/config" />
+        <Redirect to="/communication" />
+      </Route>
+      <Route path="/config">
+        <Redirect to="/communication" />
       </Route>
       <Route path="/settings">
         <Redirect to="/playbook" />

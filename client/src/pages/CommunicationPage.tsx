@@ -24,18 +24,21 @@ import {
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Switch as SwitchUI } from "@/components/ui/switch";
 import {
   Send, Check, X, ArrowRight, ChevronDown, ChevronRight,
   MessageCircle, ExternalLink, Pencil, Upload, FileText,
   CheckCircle2, Globe, Clock, BarChart3, List, Link2,
   AlertTriangle, Shield, Lock, Settings,
+  HelpCircle, Eye, Rocket, Power, Bot, Plus, Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import {
   TOPICS, ESCALATION_TICKETS, ACTION_PERMISSIONS, PERFORMANCE_SUMMARY,
+  AGENT_IDENTITY, AGENT_MODE,
   type Topic, type EscalationTicket, type EscalationStatus,
-  type ActionPermission, type AgentMode,
+  type ActionPermission, type AgentMode, type AgentIdentity,
 } from "@/lib/mock-data";
 
 // ── helpers ──
@@ -1221,7 +1224,7 @@ function RepProfilePanel({
 
           <button
             className="text-[10px] text-muted-foreground hover:text-primary hover:underline transition-colors mb-4 flex items-center gap-1"
-            onClick={() => navigate("/config")}
+            onClick={() => { onClose(); (window as any).__setActiveView?.("config"); }}
           >
             <Pencil className="w-3 h-3" /> Edit in Config
           </button>
@@ -1931,11 +1934,336 @@ function SidebarInstallCTA({
 }
 
 // ══════════════════════════════════════════════════════════
+// ── CONFIG PANEL (embedded in Agents page) ──────────────
+// ══════════════════════════════════════════════════════════
+
+interface AgentDef {
+  id: string;
+  name: string;
+  role: string;
+  emoji: string;
+  level: string;
+  color: string;
+  hasConfig: boolean;
+}
+
+const CONFIG_AGENTS: AgentDef[] = [
+  { id: "alex", name: "Alex", role: "Team Lead", emoji: "👔", level: "Orchestrator", color: "teal", hasConfig: false },
+  { id: "ava", name: "Ava", role: "WISMO Specialist", emoji: "💬", level: "L1", color: "violet", hasConfig: true },
+];
+
+const MODE_OPTIONS: { mode: AgentMode; icon: typeof Rocket; color: string; desc: string }[] = [
+  { mode: "production", icon: Rocket, color: "emerald", desc: "Replies directly to customers." },
+  { mode: "training", icon: Eye, color: "amber", desc: "Drafts as internal notes for review." },
+  { mode: "off", icon: Power, color: "zinc", desc: "Inactive — all tickets go to humans." },
+];
+
+function ConfigTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-muted-foreground/50 hover:text-muted-foreground cursor-help transition-colors">
+          <HelpCircle className="w-3 h-3" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[260px] text-[12px] leading-relaxed bg-foreground text-background">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ConfigSection({ title, tip, children, id }: { title: string; tip?: string; children: React.ReactNode; id?: string }) {
+  return (
+    <section id={id} className="bg-white rounded-md border border-border/60">
+      <div className="px-5 pt-4 pb-3">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-[14px] font-semibold text-foreground leading-tight">{title}</h2>
+          {tip && <ConfigTip text={tip} />}
+        </div>
+      </div>
+      <div className="px-5 pb-4">{children}</div>
+    </section>
+  );
+}
+
+function ConfigPanel() {
+  const [selectedAgent, setSelectedAgent] = useState("ava");
+  const [agentMode, setAgentMode] = useState<AgentMode>(AGENT_MODE);
+  const [permissions, setPermissions] = useState<ActionPermission[]>(ACTION_PERMISSIONS);
+  const [identity, setIdentity] = useState<AgentIdentity>({ ...AGENT_IDENTITY, name: "Ava" });
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const currentAgent = useMemo(() => CONFIG_AGENTS.find((a) => a.id === selectedAgent)!, [selectedAgent]);
+
+  const togglePermission = (id: string) => {
+    setPermissions((prev) =>
+      prev.map((p) => p.id === id ? { ...p, permission: p.permission === "disabled" ? "autonomous" : "disabled" } : p)
+    );
+    setHasChanges(true);
+  };
+
+  const confirmSave = () => {
+    setShowConfirm(false);
+    setHasChanges(false);
+    toast.success("Agent configuration saved");
+  };
+
+  const groupedPermissions = useMemo(() => {
+    return permissions.reduce<Record<string, ActionPermission[]>>((acc, p) => {
+      (acc[p.category] = acc[p.category] || []).push(p);
+      return acc;
+    }, {});
+  }, [permissions]);
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <div className="flex h-full">
+        {/* Left: Agent List */}
+        <div className="w-[220px] shrink-0 border-r border-border bg-[#fafafa] flex flex-col">
+          <div className="px-3 py-3 border-b border-border">
+            <h2 className="text-[13px] font-semibold text-foreground">Agent Config</h2>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Configure all agents in one place</p>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-0.5">
+              {CONFIG_AGENTS.map((agent) => (
+                <button
+                  key={agent.id}
+                  onClick={() => setSelectedAgent(agent.id)}
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-colors",
+                    selectedAgent === agent.id ? "bg-white border border-border shadow-sm" : "hover:bg-white/60"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center text-[14px] shrink-0",
+                    agent.color === "teal" && "bg-teal-100",
+                    agent.color === "violet" && "bg-violet-100"
+                  )}>
+                    {agent.emoji}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[12px] font-medium text-foreground truncate">{agent.name}</span>
+                      <Badge variant="secondary" className="h-4 text-[8px] px-1.5 shrink-0">{agent.level}</Badge>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground truncate">{agent.role}</p>
+                  </div>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+          <div className="p-2 border-t border-border">
+            <button
+              onClick={() => toast.info("Adding new agents — coming soon")}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-white/60 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Agent</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Config Panels */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-white shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className={cn(
+                "w-8 h-8 rounded-lg flex items-center justify-center text-[14px]",
+                currentAgent.color === "teal" && "bg-teal-100",
+                currentAgent.color === "violet" && "bg-violet-100"
+              )}>
+                {currentAgent.emoji}
+              </div>
+              <div>
+                <h1 className="text-[15px] font-semibold text-foreground leading-tight">{currentAgent.name}</h1>
+                <p className="text-[10px] text-muted-foreground">{currentAgent.level} · {currentAgent.role}</p>
+              </div>
+            </div>
+            {currentAgent.hasConfig && (
+              <Button className="gap-1.5 h-8 text-[12px]" onClick={() => setShowConfirm(true)} disabled={!hasChanges}>
+                <Save className="w-3.5 h-3.5" />
+                Save Changes
+              </Button>
+            )}
+          </div>
+
+          {/* Content */}
+          <ScrollArea className="flex-1">
+            {!currentAgent.hasConfig ? (
+              <div className="flex flex-col items-center justify-center py-20 px-6">
+                <div className="w-14 h-14 rounded-2xl bg-teal-100 flex items-center justify-center text-[24px] mb-4">👔</div>
+                <h3 className="text-[15px] font-semibold text-foreground mb-1">Alex — Team Lead</h3>
+                <p className="text-[12px] text-muted-foreground text-center max-w-[360px] leading-relaxed">
+                  Alex is the orchestrator agent. He manages your playbook, monitors rep performance, and surfaces insights. His behavior is system-defined and not directly configurable.
+                </p>
+                <div className="mt-6 flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-muted-foreground/50" />
+                  <span className="text-[11px] text-muted-foreground">System-managed agent</span>
+                </div>
+              </div>
+            ) : (
+              <div className="max-w-[720px] mx-auto px-5 py-5 space-y-4">
+                {/* Mode */}
+                <ConfigSection id="section-mode" title="Mode" tip="Controls how the rep handles incoming Zendesk tickets. Training mode drafts as internal notes; Production replies directly.">
+                  <div className="grid grid-cols-3 gap-3">
+                    {MODE_OPTIONS.map(({ mode, icon: Icon, color, desc }) => (
+                      <button
+                        key={mode}
+                        onClick={() => { setAgentMode(mode); setHasChanges(true); }}
+                        className={cn(
+                          "border rounded-md px-4 py-3 text-left transition-all",
+                          agentMode === mode ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/30"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={cn("w-2 h-2 rounded-full", color === "emerald" && "bg-emerald-400", color === "amber" && "bg-amber-400", color === "zinc" && "bg-zinc-400")} />
+                          <span className="text-[13px] font-medium capitalize">{mode}</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">{desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </ConfigSection>
+
+                {/* Identity */}
+                <ConfigSection id="section-identity" title="Identity" tip="How the rep presents itself to customers in conversations.">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-2 flex-1">
+                        <Label className="text-[12px] font-medium text-muted-foreground shrink-0">Name</Label>
+                        <Input
+                          value={identity.name}
+                          onChange={(e) => { setIdentity({ ...identity, name: e.target.value }); setHasChanges(true); }}
+                          className="h-8 text-[13px] max-w-[180px]"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 flex-1">
+                        <Label className="text-[12px] font-medium text-muted-foreground shrink-0">Tone</Label>
+                        <Select
+                          value={identity.tone}
+                          onValueChange={(val: "professional" | "friendly" | "casual") => { setIdentity({ ...identity, tone: val }); setHasChanges(true); }}
+                        >
+                          <SelectTrigger className="h-8 text-[13px] max-w-[180px]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="professional">Professional</SelectItem>
+                            <SelectItem value="friendly">Friendly</SelectItem>
+                            <SelectItem value="casual">Casual</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-[12px] font-medium text-muted-foreground shrink-0">Disclose AI</Label>
+                        <ConfigTip text="If enabled, the rep will tell customers it's an AI when directly asked." />
+                        <SwitchUI
+                          checked={identity.transparentAboutAI}
+                          onCheckedChange={(checked) => { setIdentity({ ...identity, transparentAboutAI: checked }); setHasChanges(true); }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Label className="text-[12px] font-medium text-muted-foreground">Greeting</Label>
+                        <ConfigTip text="The first message sent to customers when a new conversation starts." />
+                      </div>
+                      <Textarea
+                        value={identity.greeting}
+                        onChange={(e) => { setIdentity({ ...identity, greeting: e.target.value }); setHasChanges(true); }}
+                        className="text-[13px] min-h-[60px]"
+                        rows={2}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Label className="text-[12px] font-medium text-muted-foreground">Signature</Label>
+                        <ConfigTip text="Appended at the end of every customer-facing reply." />
+                      </div>
+                      <Input
+                        value={identity.signature}
+                        onChange={(e) => { setIdentity({ ...identity, signature: e.target.value }); setHasChanges(true); }}
+                        className="h-8 text-[13px]"
+                      />
+                    </div>
+                  </div>
+                </ConfigSection>
+
+                {/* Actions & Permissions */}
+                <ConfigSection id="section-actions" title="Actions & Permissions" tip="Toggle which actions the rep can perform autonomously. Disabled actions will be escalated to you.">
+                  {Object.entries(groupedPermissions).map(([category, actions]) => (
+                    <div key={category} className="mb-4 last:mb-0">
+                      <p className="text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wide">{category}</p>
+                      <div className="space-y-0 divide-y divide-border/30">
+                        {actions.map((action) => {
+                          const isOn = action.permission !== "disabled";
+                          const isLocked = action.locked;
+                          return (
+                            <div key={action.id} className={cn("flex items-center justify-between py-2.5 first:pt-0 last:pb-0", isLocked && "opacity-50")}>
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className="text-[13px] font-medium text-foreground">{action.name}</span>
+                                <ConfigTip text={action.description} />
+                                {isLocked && <Badge variant="secondary" className="h-4 text-[8px] px-1.5">Locked</Badge>}
+                                {isOn && action.guardrails && action.guardrails.length > 0 && (
+                                  <div className="flex items-center gap-2 ml-2">
+                                    {action.guardrails.filter((g) => g.enabled).map((g) => (
+                                      <div key={g.id} className="flex items-center gap-1">
+                                        <span className="text-[10px] text-muted-foreground font-medium">Guardrail:</span>
+                                        <span className="text-[10px] text-foreground">{g.label}</span>
+                                        {g.type === "number" && (
+                                          <div className="flex items-center gap-0.5">
+                                            <Input type="number" defaultValue={g.value} onChange={() => setHasChanges(true)} className="w-14 h-5 text-[10px] px-1.5" />
+                                            {g.unit && <span className="text-[9px] text-muted-foreground">{g.unit}</span>}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <SwitchUI checked={isOn} disabled={isLocked} onCheckedChange={() => togglePermission(action.id)} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </ConfigSection>
+
+                <div className="h-8" />
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+
+        {/* Save Confirmation Dialog */}
+        <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+          <DialogContent className="max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-[14px]">Confirm Changes</DialogTitle>
+              <DialogDescription className="text-[12px]">
+                You are about to update <span className="font-medium text-foreground">{currentAgent.name}</span>'s configuration. Changes to mode and permissions will take effect immediately on new tickets.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirm(false)}>Cancel</Button>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700" onClick={confirmSave}>Confirm & Save</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
 // ── MAIN PAGE ───────────────────────────────────────────
 // ══════════════════════════════════════════════════════════
 
 export default function CommunicationPage() {
-  const [activeView, setActiveView] = useState<"teamlead" | "rep">("teamlead");
+  const [activeView, setActiveView] = useState<"teamlead" | "rep" | "config">("teamlead");
   const [showHireDialog, setShowHireDialog] = useState(false);
   const [repName, setRepName] = useState<string | null>("Ava");
   const [showProfile, setShowProfile] = useState(false);
@@ -1952,6 +2280,12 @@ export default function CommunicationPage() {
   const [selectedMode, setSelectedMode] = useState<"training" | "production">("training");
   const [, navigate] = useLocation();
 
+  // Expose setActiveView for child components (RepProfilePanel "Edit in Config" link)
+  useEffect(() => {
+    (window as any).__setActiveView = setActiveView;
+    return () => { delete (window as any).__setActiveView; };
+  }, [setActiveView]);
+
   const threadTopic = useMemo(
     () => (threadTopicId ? topics.find((t) => t.id === threadTopicId) || null : null),
     [threadTopicId, topics]
@@ -1960,6 +2294,10 @@ export default function CommunicationPage() {
   const handleTopicAction = useCallback((topicId: string, action: string) => {
     if (action.startsWith("navigate:")) {
       const path = action.replace("navigate:", "");
+      if (path === "/config") {
+        setActiveView("config");
+        return;
+      }
       navigate(path);
       return;
     }
@@ -2084,8 +2422,11 @@ export default function CommunicationPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => navigate("/config")}
-                className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                onClick={() => setActiveView("config")}
+                className={cn(
+                  "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                  activeView === "config" ? "bg-slate-100 text-foreground" : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                )}
               >
                 <Settings className="w-4 h-4" />
               </button>
@@ -2223,7 +2564,9 @@ export default function CommunicationPage() {
               </div>
             )}
           </div>
-        ) : repName ? (
+        ) : activeView === "config" ? (
+          <ConfigPanel />
+        ) : activeView === "rep" && repName ? (
           <RepView
             repName={repName}
             showProfile={showProfile}
