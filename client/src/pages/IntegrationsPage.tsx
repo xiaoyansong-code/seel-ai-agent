@@ -4,7 +4,8 @@
    Option B: AI Support Access (OAuth + Agent Seat + Routing)
    ──────────────────────────────────────────────────────── */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -312,7 +313,7 @@ function AISupportFlow({ onBack }: { onBack: () => void }) {
             </p>
             {routingDone ? (
               <p className="text-[10.5px] text-emerald-700 mt-0.5">
-                Routing configured — your AI Rep will start receiving tickets based on your rules. Head back to <strong>AI Support → Communication</strong> to continue setup.
+                Routing configured — your AI Rep will start receiving tickets based on your rules. Head back to <strong>AI Support → Agents</strong> to continue setup.
               </p>
             ) : (
               <p className="text-[10.5px] text-muted-foreground mt-0.5 leading-relaxed">
@@ -362,7 +363,7 @@ function AISupportFlow({ onBack }: { onBack: () => void }) {
           <div className="flex-1 min-w-0">
             <p className="text-[12px] text-emerald-800 font-medium">Zendesk is fully configured for AI Support</p>
             <p className="text-[10.5px] text-emerald-700 mt-0.5">
-              Go to <strong>AI Support → Communication</strong> to set up your Playbook and hire your Rep.
+              Go to <strong>AI Support → Agents</strong> to set up your Playbook and hire your Rep.
             </p>
           </div>
         </div>
@@ -373,10 +374,17 @@ function AISupportFlow({ onBack }: { onBack: () => void }) {
 
 // ── Zendesk Card ────────────────────────────────────────────
 
-function ZendeskCard() {
+function ZendeskCard({ autoOpenPurpose }: { autoOpenPurpose?: SetupPurpose }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [purpose, setPurpose] = useState<SetupPurpose>(null);
   const [sidebarActive] = useState(true); // mock: existing sidebar is connected
+
+  useEffect(() => {
+    if (autoOpenPurpose) {
+      setDialogOpen(true);
+      setPurpose(autoOpenPurpose);
+    }
+  }, [autoOpenPurpose]);
 
   return (
     <>
@@ -490,13 +498,18 @@ function ZendeskCard() {
 // ── Main Integrations Page ──────────────────────────────────
 
 export default function IntegrationsPage() {
+  const searchString = useSearch();
+  const params = new URLSearchParams(searchString);
+  const setupParam = params.get("setup");
+  const autoOpenPurpose: SetupPurpose = setupParam === "ai_support" ? "ai_support" : setupParam === "sidebar" ? "sidebar" : null;
+
   return (
     <div className="p-6 max-w-[720px]">
       <h1 className="text-[20px] font-bold text-foreground mb-1">Integrations</h1>
       <p className="text-[13px] text-muted-foreground mb-6">Connect your tools to Seel.</p>
 
       <div className="space-y-4">
-        <ZendeskCard />
+        <ZendeskCard autoOpenPurpose={autoOpenPurpose} />
 
         {/* Placeholder for future integrations */}
         <div className="border border-dashed border-border/60 rounded-xl px-5 py-6 text-center">

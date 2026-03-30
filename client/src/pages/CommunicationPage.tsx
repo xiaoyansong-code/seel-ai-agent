@@ -638,12 +638,10 @@ function SetupTab({
                     <Button
                       className="w-full h-9 text-[11px] bg-[#03363D] hover:bg-[#03363D]/90"
                       onClick={() => {
-                        setZendeskConnected(true);
-                        setStep("upload_sop");
-                        toast.success("Zendesk connected successfully");
+                        navigate("/integrations?setup=ai_support");
                       }}
                     >
-                      Open <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      Open Integrations <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </Button>
                   </div>
                   <button
@@ -1303,14 +1301,12 @@ function RepProfilePanel({
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-7 text-[10.5px] mb-4"
-            onClick={() => setIsEditing(true)}
+          <button
+            className="text-[10px] text-muted-foreground hover:text-primary hover:underline transition-colors mb-4 flex items-center gap-1"
+            onClick={() => navigate("/config")}
           >
-            <Pencil className="w-3 h-3 mr-1" /> Edit Profile
-          </Button>
+            <Pencil className="w-3 h-3" /> Edit in Config
+          </button>
 
           <div className="mb-4">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Details</p>
@@ -1668,9 +1664,7 @@ function RepView({
               >
                 {selectedMode === "production" ? "Production" : "Training"}
               </Badge>
-            ) : (
-              <span className="text-[10px] text-muted-foreground">Sanity Check</span>
-            )}
+            ) : null}
           </div>
         </div>
         <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={onToggleProfile}>
@@ -2033,6 +2027,9 @@ export default function CommunicationPage() {
   const [topics, setTopics] = useState<Topic[]>(TOPICS);
   const [newMsg, setNewMsg] = useState("");
 
+  // Test mode: toggle between Onboarding and Normal conversation
+  const [testMode, setTestMode] = useState<"onboarding" | "normal">("onboarding");
+
   // Post-hire flow state
   const [postHirePhase, setPostHirePhase] = useState<"none" | "sanity_check" | "mode_select" | "role_guide" | "sidebar_install" | "complete">("none");
   const [selectedMode, setSelectedMode] = useState<"training" | "production">("training");
@@ -2074,7 +2071,45 @@ export default function CommunicationPage() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-48px)]">
+    <div className="flex flex-col h-[calc(100vh-48px)]">
+      {/* ── Test Mode Toggle Bar ── */}
+      <div className="flex items-center justify-between px-4 h-9 border-b border-border bg-amber-50/50 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Test Mode</span>
+          <div className="flex items-center bg-white rounded-md border border-amber-200 p-0.5">
+            <button
+              onClick={() => setTestMode("onboarding")}
+              className={cn(
+                "px-2.5 py-1 rounded text-[10px] font-medium transition-colors",
+                testMode === "onboarding" ? "bg-amber-100 text-amber-800" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Onboarding
+            </button>
+            <button
+              onClick={() => setTestMode("normal")}
+              className={cn(
+                "px-2.5 py-1 rounded text-[10px] font-medium transition-colors",
+                testMode === "normal" ? "bg-amber-100 text-amber-800" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Normal
+            </button>
+          </div>
+        </div>
+        {testMode === "onboarding" && postHirePhase === "none" && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 text-[9px] border-amber-200 text-amber-700 hover:bg-amber-100"
+            onClick={() => setShowHireDialog(true)}
+          >
+            Hire Rep
+          </Button>
+        )}
+      </div>
+
+      <div className="flex flex-1 min-h-0">
       {/* ── Narrow sidebar ── */}
       <div className="w-14 border-r border-border bg-white flex flex-col items-center py-3 shrink-0">
         <TooltipProvider delayDuration={200}>
@@ -2299,6 +2334,8 @@ export default function CommunicationPage() {
         {activeView === "rep" && showProfile && repName && (
           <RepProfilePanel repName={repName} onClose={() => setShowProfile(false)} />
         )}
+      </div>
+
       </div>
 
       {/* Hire dialog */}

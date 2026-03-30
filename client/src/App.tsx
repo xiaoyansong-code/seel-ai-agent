@@ -10,15 +10,19 @@ import PlaybookPage from "./pages/PlaybookPage";
 import ZendeskApp from "./pages/ZendeskApp";
 import CommunicationPage from "./pages/CommunicationPage";
 import IntegrationsPage from "./pages/IntegrationsPage";
+import AgentPage from "./pages/AgentPage";
 
 function Router() {
   return (
     <Switch>
-      {/* AI Support module — default landing is Communication */}
+      {/* AI Support module — default landing is Agents (formerly Communication) */}
       <Route path="/" component={CommunicationPage} />
       <Route path="/communication" component={CommunicationPage} />
       <Route path="/playbook" component={PlaybookPage} />
       <Route path="/performance" component={Performance} />
+
+      {/* Unified Agent Config page */}
+      <Route path="/config" component={AgentPage} />
 
       {/* Global pages */}
       <Route path="/integrations" component={IntegrationsPage} />
@@ -28,7 +32,7 @@ function Router() {
         <Redirect to="/communication" />
       </Route>
       <Route path="/agent">
-        <Redirect to="/communication" />
+        <Redirect to="/config" />
       </Route>
       <Route path="/settings">
         <Redirect to="/playbook" />

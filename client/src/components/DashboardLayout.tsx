@@ -18,6 +18,7 @@ import {
   Bell,
   ExternalLink,
   HelpCircle,
+  Settings,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
@@ -47,7 +48,7 @@ const customizeNav: NavItem[] = [
 
 /* AI Support internal tabs */
 const aiTabs = [
-  { label: "Communication", href: "/communication" },
+  { label: "Agents", href: "/communication" },
   { label: "Playbook", href: "/playbook" },
   { label: "Performance", href: "/performance" },
 ];
@@ -165,6 +166,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-2 px-3 py-[5px] rounded-lg text-[11px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent/50 transition-colors cursor-pointer">
               <ExternalLink className="w-3.5 h-3.5 shrink-0" />
               <span>Zendesk Sidebar</span>
+            </div>
+          </Link>
+          <Link href="/config">
+            <div className={cn(
+              "flex items-center gap-2 px-3 py-[5px] rounded-lg text-[11px] transition-colors cursor-pointer",
+              location.startsWith("/config")
+                ? "bg-primary/8 text-primary font-medium"
+                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-accent/50"
+            )}>
+              <Settings className="w-3.5 h-3.5 shrink-0" />
+              <span>Config</span>
             </div>
           </Link>
           <div className="flex items-center gap-2 px-3 py-[5px] rounded-lg text-[11px] text-muted-foreground/30">
