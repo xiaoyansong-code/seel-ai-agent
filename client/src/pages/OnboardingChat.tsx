@@ -1,6 +1,6 @@
 /* ── Onboarding Chat — Quick Start ──────────────────────────────
    AOS-inspired conversational onboarding with choice bubbles.
-   Quick Start: Connect → Upload Seel Return Policy demo → AI Parse → Resolve Conflict → Go Live Shadow
+   Quick Start: Connect → Upload Seel Return Policy demo → AI Parse → Resolve Conflict → Go Live Training
    Then guide to Settings/Documents for deeper config.
    ──────────────────────────────────────────────────────────── */
 
@@ -230,9 +230,9 @@ export default function OnboardingChat() {
         addAiMessages([
           makeMsg("ai", `Got it — I'll use "${choiceLabel}" as the rule. ✓`),
           makeMsg("ai", "That's the Quick Start done! You can upload more documents and review extracted rules anytime in **Playbook → Knowledge Base**."),
-          makeMsg("ai", "Now let's get your agent live. I recommend starting in **Shadow Mode** — I'll draft replies as Internal Notes in Zendesk, but won't send anything until you approve.", {
+          makeMsg("ai", "Now let's get your agent live. I recommend starting in **Training Mode** — I'll draft replies as Internal Notes in Zendesk, but won't send anything until you approve.", {
             choices: [
-              { label: "Start in Shadow Mode", value: "shadow", icon: "eye", variant: "primary" },
+              { label: "Start in Training Mode", value: "training", icon: "eye", variant: "primary" },
               { label: "Go live in Production", value: "production", icon: "rocket", variant: "outline" },
             ],
           }),
@@ -242,7 +242,7 @@ export default function OnboardingChat() {
 
       case "go_live":
         setPhase("done");
-        const modeName = value === "shadow" ? "Shadow Mode" : "Production Mode";
+        const modeName = value === "training" ? "Training Mode" : "Production Mode";
         addAiMessages([
           makeMsg("ai", `${modeName} activated! Your agent is now working on your Zendesk tickets.`),
           makeMsg("ai", "A few things you can set up when you're ready — no rush:", {

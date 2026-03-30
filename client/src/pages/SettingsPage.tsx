@@ -161,41 +161,18 @@ function KnowledgeTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-[13px] font-medium text-foreground">{rule.name}</span>
+                    {rule.tags?.[0] && (
                     <Badge variant="secondary" className="h-[18px] px-1.5 text-[10px]">
-                      {rule.intent}
+                      {rule.tags[0]}
                     </Badge>
+                    )}
                     {rule.tags?.map((tag) => (
                       <Badge key={tag} variant="outline" className="h-[16px] px-1 text-[9px]">{tag}</Badge>
                     ))}
                   </div>
 
-                  {/* Policy */}
-                  <p className="text-[12px] text-foreground/80 leading-relaxed mb-2">{rule.policy}</p>
-
-                  {/* Exceptions */}
-                  {rule.exceptions.length > 0 && (
-                    <div className="mb-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600/80">Exceptions</span>
-                      <ul className="mt-0.5 space-y-0.5">
-                        {rule.exceptions.map((ex, i) => (
-                          <li key={i} className="text-[11px] text-muted-foreground flex gap-1.5">
-                            <span className="text-amber-500 mt-0.5 shrink-0">·</span>
-                            {ex}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Escalation */}
-                  <div className="rounded-md bg-red-50/50 border border-red-100 px-2.5 py-1.5 mb-2">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <AlertTriangle className="w-3 h-3 text-red-400" />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-red-500/80">Escalation</span>
-                    </div>
-                    <p className="text-[11px] text-red-800/70"><strong>Trigger:</strong> {rule.escalation.trigger}</p>
-                    <p className="text-[11px] text-red-800/70"><strong>Action:</strong> {rule.escalation.action}</p>
-                  </div>
+                  {/* Content */}
+                  <p className="text-[12px] text-foreground/80 leading-relaxed mb-2 whitespace-pre-line">{rule.content}</p>
 
                   <div className="flex items-center gap-3">
                     <span className="text-[11px] text-muted-foreground/60">

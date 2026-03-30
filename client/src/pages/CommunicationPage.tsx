@@ -4,7 +4,7 @@
    Hire Dialog: 3 personalities, locked actions, no mode.
    Sanity Check: structured scenario cards.
    Go-live mode: Team Lead area with mode cards.
-   Sidebar install: conditional CTA.
+   Question topics: inline answer + knowledge base update.
    ──────────────────────────────────────────────────────────── */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -35,7 +35,7 @@ import {
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import {
-  TOPICS, ESCALATION_TICKETS, ACTION_PERMISSIONS, PERFORMANCE_SUMMARY,
+  TOPICS, ESCALATION_TICKETS, ACTION_PERMISSIONS, WRITE_ACTIONS, PERFORMANCE_SUMMARY,
   AGENT_IDENTITY, AGENT_MODE,
   type Topic, type EscalationTicket, type EscalationStatus,
   type ActionPermission, type AgentMode, type AgentIdentity,
@@ -105,6 +105,44 @@ function AlexBubble({ children, className }: { children: React.ReactNode; classN
   );
 }
 
+// ── Topic type maps ──
+const TYPE_ICON: Record<string, typeof HelpCircle> = {
+  knowledge_gap: AlertTriangle,
+  performance_report: BarChart3,
+  performance_summary: BarChart3,
+  open_question: HelpCircle,
+  escalation_review: Shield,
+  rule_update: FileText,
+  question: HelpCircle,
+};
+const TYPE_COLOR: Record<string, string> = {
+  knowledge_gap: "text-orange-500",
+  performance_report: "text-blue-500",
+  performance_summary: "text-blue-500",
+  open_question: "text-violet-500",
+  escalation_review: "text-red-500",
+  rule_update: "text-teal-500",
+  question: "text-amber-500",
+};
+const TYPE_BG: Record<string, string> = {
+  knowledge_gap: "bg-orange-50 text-orange-700",
+  performance_report: "bg-blue-50 text-blue-700",
+  performance_summary: "bg-blue-50 text-blue-700",
+  open_question: "bg-violet-50 text-violet-700",
+  escalation_review: "bg-red-50 text-red-700",
+  rule_update: "bg-teal-50 text-teal-700",
+  question: "bg-amber-50 text-amber-700",
+};
+const TYPE_LABEL: Record<string, string> = {
+  knowledge_gap: "Knowledge Gap",
+  performance_report: "Performance",
+  performance_summary: "Performance",
+  open_question: "Open Question",
+  escalation_review: "Escalation",
+  rule_update: "Rule Update",
+  question: "Question",
+};
+
 // ══════════════════════════════════════════════════════════
 // ── TOPIC CARD (Feishu-style) ───────────────────────────
 // ══════════════════════════════════════════════════════════
@@ -127,8 +165,11 @@ function TopicCard({
   const firstMsg = topic.messages[0];
   const isRuleProposal = !!topic.proposedRule;
   const isPerfSummary = topic.type === "performance_summary";
+  const isQuestion = topic.type === "question";
   const hasPendingAction = topic.proposedRule?.status === "pending";
   const hasUnread = replies.length > 0 && replies.some((r) => r.sender === "ai");
+  const [questionAnswer, setQuestionAnswer] = useState("");
+  const [questionAnswered, setQuestionAnswered] = useState(false);
 
   return (
     <div className="flex gap-2.5 group">
@@ -147,22 +188,22 @@ function TopicCard({
           )}
         </div>
 
-        {isPerfSummary && topic.weeklySummary && (
+        {isPerfSummary && topic.dailyDigest && (
           <div className="rounded-xl rounded-tl-sm border border-border bg-white overflow-hidden mb-1.5 shadow-sm">
             {/* Header */}
             <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-blue-50/30 border-b border-border/50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-blue-600" />
-                  <span className="text-[13px] font-bold text-foreground">Weekly Performance Summary</span>
+                  <span className="text-[13px] font-bold text-foreground">Daily Digest</span>
                 </div>
-                <span className="text-[10px] text-muted-foreground bg-white/80 px-2 py-0.5 rounded-full border border-border/50">{topic.weeklySummary.periodLabel}</span>
+                <span className="text-[10px] text-muted-foreground bg-white/80 px-2 py-0.5 rounded-full border border-border/50">{topic.dailyDigest.periodLabel}</span>
               </div>
             </div>
             {/* KPI Grid */}
             <div className="px-4 py-3 border-b border-border/30">
               <div className="grid grid-cols-5 gap-2">
-                {topic.weeklySummary.kpis.map((kpi) => (
+                {topic.dailyDigest.kpis.map((kpi) => (
                   <div key={kpi.label} className="text-center p-2 rounded-lg bg-muted/30">
                     <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">{kpi.label}</p>
                     <p className="text-[15px] font-bold text-foreground">{kpi.value}</p>
@@ -176,13 +217,13 @@ function TopicCard({
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-2.5">
                   <p className="text-[9px] font-semibold text-emerald-700 uppercase tracking-wider mb-0.5">Top Intent</p>
-                  <p className="text-[12px] font-semibold text-emerald-800">{topic.weeklySummary.topIntent.name}</p>
-                  <p className="text-[10px] text-emerald-600">{topic.weeklySummary.topIntent.volume} tickets · {topic.weeklySummary.topIntent.resolution} resolution</p>
+                  <p className="text-[12px] font-semibold text-emerald-800">{topic.dailyDigest.topIntent.name}</p>
+                  <p className="text-[10px] text-emerald-600">{topic.dailyDigest.topIntent.volume} tickets · {topic.dailyDigest.topIntent.resolution} resolution</p>
                 </div>
                 <div className="rounded-lg border border-red-200 bg-red-50/50 p-2.5">
                   <p className="text-[9px] font-semibold text-red-700 uppercase tracking-wider mb-0.5">Needs Attention</p>
-                  <p className="text-[12px] font-semibold text-red-800">{topic.weeklySummary.worstIntent.name}</p>
-                  <p className="text-[10px] text-red-600">{topic.weeklySummary.worstIntent.volume} tickets · {topic.weeklySummary.worstIntent.resolution} resolution</p>
+                  <p className="text-[12px] font-semibold text-red-800">{topic.dailyDigest.worstIntent.name}</p>
+                  <p className="text-[10px] text-red-600">{topic.dailyDigest.worstIntent.volume} tickets · {topic.dailyDigest.worstIntent.resolution} resolution</p>
                 </div>
               </div>
             </div>
@@ -190,7 +231,7 @@ function TopicCard({
             <div className="px-4 py-3">
               <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recommendations</p>
               <div className="space-y-2">
-                {topic.weeklySummary.recommendations.map((rec, i) => (
+                {topic.dailyDigest.recommendations.map((rec, i) => (
                   <div key={i} className="flex items-start gap-2">
                     <ChevronRight className="w-3 h-3 text-blue-500 mt-0.5 shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -209,7 +250,58 @@ function TopicCard({
           </div>
         )}
 
-        {firstMsg && !isRuleProposal && !isPerfSummary && (
+        {isQuestion && (
+          <>
+            {firstMsg && (
+              <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5 mb-1.5">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[8px] px-1.5 py-0 h-4">QUESTION</Badge>
+                </div>
+                <p className="text-[12px] font-medium text-foreground mb-1">{topic.title}</p>
+                <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap">
+                  {renderMd(firstMsg.content)}
+                </div>
+              </div>
+            )}
+            {!questionAnswered ? (
+              <div className="ml-0.5 mt-1.5">
+                <Textarea
+                  value={questionAnswer}
+                  onChange={(e) => setQuestionAnswer(e.target.value)}
+                  placeholder="Type your answer..."
+                  className="text-[11px] min-h-[60px] mb-1.5"
+                  rows={2}
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-[10px] bg-teal-600 hover:bg-teal-700"
+                  disabled={!questionAnswer.trim()}
+                  onClick={() => {
+                    setQuestionAnswered(true);
+                    onAction(topic.id, `answer:${questionAnswer}`);
+                  }}
+                >
+                  <Send className="w-3 h-3 mr-1" /> Send
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2 mt-1.5">
+                <div className="flex justify-end">
+                  <div className="rounded-xl rounded-tr-sm bg-violet-50 px-3.5 py-2 max-w-[85%]">
+                    <p className="text-[11px] text-foreground leading-relaxed">{questionAnswer}</p>
+                  </div>
+                </div>
+                <AlexBubble>
+                  <p className="text-[12px] leading-relaxed text-foreground">
+                    Got it. I've updated the knowledge base with this information.
+                  </p>
+                </AlexBubble>
+              </div>
+            )}
+          </>
+        )}
+
+        {firstMsg && !isRuleProposal && !isPerfSummary && !isQuestion && (
           <div className="rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5 mb-1.5">
             <div className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap">
               {renderMd(firstMsg.content)}
@@ -237,9 +329,20 @@ function TopicCard({
 
             <div className="rounded-xl border border-border bg-white overflow-hidden mb-1.5">
               <div className="px-3.5 py-2 border-b border-border/50 bg-muted/20">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  {topic.proposedRule!.type === "new" ? "Proposed New Rule" : "Proposed Rule Update"}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    {topic.proposedRule!.type === "new" ? "Proposed New Rule" : "Proposed Rule Update"}
+                  </p>
+                  {topic.proposedRule!.confidence && (
+                    <Badge variant="outline" className={cn("text-[8px] px-1.5 py-0 h-4 border",
+                      topic.proposedRule!.confidence === "high" && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                      topic.proposedRule!.confidence === "medium" && "bg-amber-50 text-amber-700 border-amber-200",
+                      topic.proposedRule!.confidence === "low" && "bg-red-50 text-red-700 border-red-200",
+                    )}>
+                      {topic.proposedRule!.confidence.charAt(0).toUpperCase() + topic.proposedRule!.confidence.slice(1)} confidence
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-[12px] font-medium text-foreground mt-0.5">
                   {topic.proposedRule!.ruleName}
                 </p>
@@ -955,7 +1058,7 @@ function HireRepDialog({
   const [name, setName] = useState("Ava");
   const [personality, setPersonality] = useState("Friendly");
   const [localActions, setLocalActions] = useState<ActionPermission[]>(() =>
-    ACTION_PERMISSIONS.map((a) => ({ ...a }))
+    WRITE_ACTIONS.map((a) => ({ ...a }))
   );
 
   const actionGroups = useMemo(() => {
@@ -1029,7 +1132,8 @@ function HireRepDialog({
 
           {/* Right — Action Permissions */}
           <div className="flex-1 px-5 py-4 overflow-y-auto">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Action Permissions</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Action Permissions</p>
+            <p className="text-[10px] text-muted-foreground mb-3">Read-only lookups (order, shipment, customer, product, Seel protection) are always enabled.</p>
             <div className="space-y-4">
               {Object.entries(actionGroups).map(([cat, actions]) => (
                 <div key={cat}>
@@ -1050,9 +1154,9 @@ function HireRepDialog({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[11px] font-medium text-foreground">{action.name}</span>
-                            {action.accessType && (
+                            {action.type === "write" && (
                               <Badge variant="outline" className="text-[7px] px-1 py-0 h-3.5 border-border/50">
-                                {action.accessType}
+                                write
                               </Badge>
                             )}
                             {action.locked && (
@@ -1201,18 +1305,19 @@ function RepProfilePanel({
   const initials = getInitials(repName);
 
   const configHistory = [
-    { hash: "0413d17", description: `${repName} onboarded — WISMO Specialist, Training mode`, author: "Team Lead (Alex)", date: "29 Mar 2026, 9:14 pm" },
+    { hash: "0413d17", description: `${repName} onboarded — Training mode`, author: "Team Lead (Alex)", date: "29 Mar 2026, 9:14 pm" },
   ];
 
+  const writeActions = useMemo(() => WRITE_ACTIONS, []);
   const actionGroups = useMemo(() => {
     const groups: Record<string, ActionPermission[]> = {};
-    ACTION_PERMISSIONS.forEach((a) => {
+    writeActions.forEach((a) => {
       const cat = a.category || "General";
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(a);
     });
     return groups;
-  }, []);
+  }, [writeActions]);
 
   return (
     <div className="w-[320px] border-l border-border bg-white flex flex-col h-full shrink-0">
@@ -1289,10 +1394,11 @@ function RepProfilePanel({
               className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 hover:text-foreground transition-colors"
             >
               {actionsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-              Action Permissions ({ACTION_PERMISSIONS.length})
+              Action Permissions ({writeActions.length})
             </button>
             {actionsOpen && (
               <div className="space-y-2">
+                <p className="text-[9px] text-muted-foreground mb-1">Read-only lookups (order, shipment, customer, product, Seel protection) are always enabled.</p>
                 {Object.entries(actionGroups).map(([cat, actions]) => (
                   <div key={cat}>
                     <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{cat}</p>
@@ -1814,11 +1920,11 @@ function RepView({
                         </ul>
                       </div>
                       <div>
-                        <p className="text-[11px] font-semibold text-foreground">In the Zendesk Sidebar you can:</p>
+                        <p className="text-[11px] font-semibold text-foreground">In Zendesk, look for my Internal Notes on tickets:</p>
                         <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
-                          <li>See what I'm doing on any ticket in real-time</li>
-                          <li>Mark a bad response so Team Lead can analyze it</li>
-                          <li>Copy my suggested reply (in Training mode)</li>
+                          <li>When I handle a ticket, I leave an Internal Note with my reasoning</li>
+                          <li>When I escalate, the Internal Note includes my handoff summary and a suggested reply</li>
+                          <li>To flag an issue, reply to my Internal Note with your feedback</li>
                         </ul>
                       </div>
                     </div>
@@ -1938,43 +2044,6 @@ function ModeSelectionView({
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// ── SIDEBAR INSTALL CTA (Step 9) ────────────────────────
-// ══════════════════════════════════════════════════════════
-
-function SidebarInstallCTA({
-  onInstall,
-  onSkip,
-}: {
-  onInstall: () => void;
-  onSkip: () => void;
-}) {
-  return (
-    <div className="space-y-4">
-      <AlexBubble>
-        <p className="text-[12px] leading-relaxed text-foreground">
-          One more thing — I noticed you haven't installed the Seel Sidebar App in Zendesk yet. It lets you see what your Rep is doing on each ticket, right inside your Zendesk workspace.
-        </p>
-      </AlexBubble>
-      <div className="ml-9">
-        <div className="rounded-xl border border-border bg-white p-4">
-          <p className="text-[12px] font-medium text-foreground mb-1">Install Zendesk Sidebar App</p>
-          <p className="text-[10.5px] text-muted-foreground mb-3">
-            See AI status, copy replies, and mark bad cases — all without leaving Zendesk.
-          </p>
-          <div className="flex items-center gap-2">
-            <Button size="sm" className="h-8 text-[10px] bg-teal-600 hover:bg-teal-700" onClick={onInstall}>
-              Install <ArrowRight className="w-3 h-3 ml-1" />
-            </Button>
-            <button onClick={onSkip} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-              Skip for now
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ══════════════════════════════════════════════════════════
 // ── CONFIG PANEL (embedded in Agents page) ──────────────
@@ -1992,7 +2061,7 @@ interface AgentDef {
 
 const CONFIG_AGENTS: AgentDef[] = [
   { id: "alex", name: "Alex", role: "Team Lead", emoji: "👔", level: "Orchestrator", color: "teal", hasConfig: false },
-  { id: "ava", name: "Ava", role: "WISMO Specialist", emoji: "💬", level: "L1", color: "violet", hasConfig: true },
+  { id: "ava", name: "Ava", role: "Support Rep", emoji: "💬", level: "Rep", color: "violet", hasConfig: true },
 ];
 
 const MODE_OPTIONS: { mode: AgentMode; icon: typeof Rocket; color: string; desc: string }[] = [
@@ -2033,7 +2102,7 @@ function ConfigSection({ title, tip, children, id }: { title: string; tip?: stri
 function ConfigPanel() {
   const [selectedAgent, setSelectedAgent] = useState("ava");
   const [agentMode, setAgentMode] = useState<AgentMode>(AGENT_MODE);
-  const [permissions, setPermissions] = useState<ActionPermission[]>(ACTION_PERMISSIONS);
+  const [permissions, setPermissions] = useState<ActionPermission[]>(WRITE_ACTIONS);
   const [identity, setIdentity] = useState<AgentIdentity>({ ...AGENT_IDENTITY, name: "Ava" });
   const [showConfirm, setShowConfirm] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -2236,6 +2305,7 @@ function ConfigPanel() {
 
                 {/* Actions & Permissions */}
                 <ConfigSection id="section-actions" title="Actions & Permissions" tip="Toggle which actions the rep can perform autonomously. Disabled actions will be escalated to you.">
+                  <p className="text-[11px] text-muted-foreground mb-3">Read-only lookups (order, shipment, customer, product, Seel protection) are always enabled.</p>
                   {Object.entries(groupedPermissions).map(([category, actions]) => (
                     <div key={category} className="mb-4 last:mb-0">
                       <p className="text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wide">{category}</p>
@@ -2319,7 +2389,7 @@ export default function CommunicationPage() {
   const [testMode, setTestMode] = useState<"onboarding" | "normal">("onboarding");
 
   // Post-hire flow state
-  const [postHirePhase, setPostHirePhase] = useState<"none" | "sanity_check" | "mode_select" | "role_guide" | "sidebar_install" | "complete">("none");
+  const [postHirePhase, setPostHirePhase] = useState<"none" | "sanity_check" | "mode_select" | "role_guide" | "complete">("none");
   const [selectedMode, setSelectedMode] = useState<"training" | "production">("training");
   const [, navigate] = useLocation();
 
@@ -2453,7 +2523,7 @@ export default function CommunicationPage() {
               </TooltipTrigger>
               <TooltipContent side="right" className="text-[11px]">
                 <p className="font-semibold">{repName}</p>
-                <p className="text-muted-foreground">L1 — WISMO Specialist · Working</p>
+                <p className="text-muted-foreground">Production</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -2524,20 +2594,6 @@ export default function CommunicationPage() {
                           // Switch to Rep area for role guide per spec
                           setPostHirePhase("role_guide");
                           setActiveView("rep");
-                        }}
-                      />
-                    )}
-
-                    {/* Sidebar install (Step 9) */}
-                    {postHirePhase === "sidebar_install" && (
-                      <SidebarInstallCTA
-                        onInstall={() => {
-                          toast.success("Redirecting to Integrations...");
-                          setPostHirePhase("complete");
-                          navigate("/integrations");
-                        }}
-                        onSkip={() => {
-                          setPostHirePhase("complete");
                         }}
                       />
                     )}
@@ -2621,9 +2677,9 @@ export default function CommunicationPage() {
             postHirePhase={postHirePhase}
             selectedMode={selectedMode}
             onRoleGuideDone={() => {
-              // After role guide, go back to TL for sidebar install
+              // After role guide, go back to TL for completion
               setActiveView("teamlead");
-              setPostHirePhase("sidebar_install");
+              setPostHirePhase("complete");
             }}
             testMode={testMode}
           />

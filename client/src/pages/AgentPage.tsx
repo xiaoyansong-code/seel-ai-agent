@@ -76,9 +76,9 @@ const AGENTS: AgentDef[] = [
   {
     id: "ava",
     name: "Ava",
-    role: "WISMO Specialist",
+    role: "Support Rep",
     emoji: "💬",
-    level: "L1",
+    level: "Rep",
     color: "violet",
     hasConfig: true,
   },

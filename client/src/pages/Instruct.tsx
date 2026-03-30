@@ -23,23 +23,23 @@ import { toast } from "sonner";
 /* ── Config ── */
 const TYPE_ICON: Record<TopicType, typeof Lightbulb> = {
   knowledge_gap: Lightbulb, performance_report: BarChart3, performance_summary: BarChart3,
-  open_question: HelpCircle, escalation_review: AlertTriangle, rule_update: FileEdit,
+  open_question: HelpCircle, escalation_review: AlertTriangle, rule_update: FileEdit, question: HelpCircle,
 };
 const TYPE_COLOR: Record<TopicType, string> = {
   knowledge_gap: "text-amber-500", performance_report: "text-blue-500", performance_summary: "text-blue-500",
-  open_question: "text-slate-500", escalation_review: "text-orange-500", rule_update: "text-violet-500",
+  open_question: "text-slate-500", escalation_review: "text-orange-500", rule_update: "text-violet-500", question: "text-amber-500",
 };
 const TYPE_BG: Record<TopicType, string> = {
   knowledge_gap: "bg-amber-50 text-amber-700", performance_report: "bg-blue-50 text-blue-700", performance_summary: "bg-blue-50 text-blue-700",
-  open_question: "bg-slate-50 text-slate-600", escalation_review: "bg-orange-50 text-orange-700", rule_update: "bg-violet-50 text-violet-700",
+  open_question: "bg-slate-50 text-slate-600", escalation_review: "bg-orange-50 text-orange-700", rule_update: "bg-violet-50 text-violet-700", question: "bg-amber-50 text-amber-700",
 };
 const TYPE_LABEL: Record<TopicType, string> = {
   knowledge_gap: "Knowledge Gap", performance_report: "Performance", performance_summary: "Summary",
-  open_question: "Question", escalation_review: "Escalation", rule_update: "Rule Update",
+  open_question: "Question", escalation_review: "Escalation", rule_update: "Rule Update", question: "Question",
 };
 type FilterTab = "all" | "open" | "resolved";
 const PRIORITY: Record<TopicType, number> = {
-  knowledge_gap: 0, escalation_review: 1, open_question: 2, rule_update: 3, performance_report: 4, performance_summary: 5,
+  knowledge_gap: 0, escalation_review: 1, open_question: 2, rule_update: 3, performance_report: 4, performance_summary: 5, question: 2,
 };
 
 /* ── Onboarding Types ── */
@@ -374,7 +374,7 @@ export default function Inbox() {
               `**Training mode** — ${repName} drafts responses and actions, but checks with you before anything goes out to the customer. Good if you want to review their work for a while.\n\n**Production mode** — ${repName} handles tickets independently. You can review everything after the fact. Good if you trust the sanity check and want them working immediately.`,
               {
                 choices: [
-                  { label: "Training — check with me first", value: "shadow" },
+                  { label: "Training — check with me first", value: "training" },
                   { label: "Production — handle it yourself", value: "production" },
                 ],
               }
@@ -383,12 +383,12 @@ export default function Inbox() {
 
           case "mode_select": {
             setObPhase("complete");
-            const mode = choice === "shadow" ? "Training" : "Production";
+            const mode = choice === "training" ? "Training" : "Production";
             const incomplete = skippedSteps.length > 0;
 
-            let completionMsg = `**${repName} is now in ${mode} mode.** ${choice === "shadow" ? "They'll draft everything and wait for your approval before sending." : "They'll start handling tickets on their own right away."}\n\n---\n\n**Here's how things work from here:**\n\n`;
-            completionMsg += `- **This conversation** — I'll message you here whenever ${repName} runs into something they don't know, needs your input on a rule, or has a weekly performance summary.\n`;
-            completionMsg += `- **Zendesk** — ${choice === "shadow" ? `Check the sidebar for ${repName}'s draft responses. You can approve, edit, or flag bad cases.` : `${repName} is handling tickets. Check the sidebar to review their work or flag bad cases.`}\n`;
+            let completionMsg = `**${repName} is now in ${mode} mode.** ${choice === "training" ? "They'll draft everything and wait for your approval before sending." : "They'll start handling tickets on their own right away."}\n\n---\n\n**Here's how things work from here:**\n\n`;
+            completionMsg += `- **This conversation** — I'll message you here whenever ${repName} runs into something they don't know, needs your input on a rule, or has a daily digest.\n`;
+            completionMsg += `- **Zendesk** — ${choice === "training" ? `Check Internal Notes for ${repName}'s draft responses. You can approve, edit, or flag bad cases.` : `${repName} is handling tickets. Check Internal Notes to review their work or flag bad cases.`}\n`;
             completionMsg += `- **Playbook** — Your configuration hub. Adjust permissions, escalation rules, identity, and knowledge anytime.`;
 
             if (incomplete) {
@@ -485,7 +485,7 @@ export default function Inbox() {
               `**Training mode** — ${repName} drafts responses and actions, but checks with you before anything goes out to the customer.\n\n**Production mode** — ${repName} handles tickets independently. You can review everything after the fact.`,
               {
                 choices: [
-                  { label: "Training — check with me first", value: "shadow" },
+                  { label: "Training — check with me first", value: "training" },
                   { label: "Production — handle it yourself", value: "production" },
                 ],
               }
