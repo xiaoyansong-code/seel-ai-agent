@@ -524,6 +524,7 @@ function SetupTab({
   const [conflictIdx, setConflictIdx] = useState(0);
   const [shopifyConnected] = useState(true);
   const [zendeskConnected, setZendeskConnected] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [skippedZendesk, setSkippedZendesk] = useState(false);
   const [, navigate] = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -691,14 +692,27 @@ function SetupTab({
                         <p className="text-[10px] text-muted-foreground">Authorize API · Create Agent seat · Configure ticket routing</p>
                       </div>
                     </div>
-                    <Button
-                      className="w-full h-9 text-[11px] bg-[#03363D] hover:bg-[#03363D]/90"
-                      onClick={() => {
-                        navigate("/integrations?setup=ai_support");
-                      }}
-                    >
-                      Open Integrations <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        className="flex-1 h-9 text-[11px] bg-[#03363D] hover:bg-[#03363D]/90"
+                        onClick={() => {
+                          navigate("/integrations?setup=ai_support");
+                        }}
+                      >
+                        Open Integrations <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="h-9 text-[11px] border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => {
+                          setZendeskConnected(true);
+                          setStep("upload_sop");
+                          toast.success("Zendesk connected (simulated)");
+                        }}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Simulate Connect
+                      </Button>
+                    </div>
                   </div>
                   <button
                     onClick={() => {
@@ -783,16 +797,14 @@ function SetupTab({
                     <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     <span className="text-[10px] text-muted-foreground">Analyzing documents...</span>
                   </div>
-                  {useDemo && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="mt-3 h-7 text-[10px]"
-                      onClick={() => setStep("parse_results")}
-                    >
-                      Skip to results (demo)
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 h-7 text-[10px]"
+                    onClick={() => setStep("parse_results")}
+                  >
+                    {useDemo ? "Skip to results (demo)" : "Skip to results"}
+                  </Button>
                 </>
               ) : (
                 <>
@@ -820,7 +832,7 @@ function SetupTab({
                     )}
                   </div>
                   <button
-                    onClick={() => navigate("/ai-support/playbook")}
+                    onClick={() => navigate("/playbook")}
                     className="mt-2 text-[10px] text-primary hover:underline inline-flex items-center gap-1"
                   >
                     Review all in Playbook <ArrowRight className="w-3 h-3" />
@@ -1249,7 +1261,7 @@ function RepProfilePanel({
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Performance</p>
               <button
-                onClick={() => navigate("/ai-support/performance")}
+                onClick={() => navigate("/performance")}
                 className="text-[9px] text-primary hover:underline"
               >
                 View more →
@@ -2443,18 +2455,18 @@ export default function CommunicationPage() {
       <div className="flex-1 flex min-w-0">
         {activeView === "teamlead" ? (
           <div className="flex-1 flex flex-col min-w-0">
-            {/* Header bar — no tabs, just title + topics button */}
-            <div className="flex items-center border-b border-border px-4 h-10 shrink-0">
-              <span className="text-[12px] font-semibold text-foreground">
-                {testMode === "onboarding" ? "Onboarding Setup" : "Team Lead Conversation"}
-                {testMode === "normal" && pendingCount > 0 && (
-                  <span className="ml-1.5 w-4 h-4 rounded-full bg-amber-400 text-white text-[8px] inline-flex items-center justify-center">
-                    {pendingCount}
-                  </span>
-                )}
-              </span>
-              <div className="flex-1" />
-              {testMode === "normal" && (
+            {/* Header bar — only shown in normal mode for topics button */}
+            {testMode === "normal" && (
+              <div className="flex items-center border-b border-border px-4 h-10 shrink-0">
+                <span className="text-[12px] font-semibold text-foreground">
+                  Team Lead Conversation
+                  {pendingCount > 0 && (
+                    <span className="ml-1.5 w-4 h-4 rounded-full bg-amber-400 text-white text-[8px] inline-flex items-center justify-center">
+                      {pendingCount}
+                    </span>
+                  )}
+                </span>
+                <div className="flex-1" />
                 <button
                   onClick={() => setShowTopics(!showTopics)}
                   className="p-1.5 rounded hover:bg-accent transition-colors"
@@ -2462,8 +2474,8 @@ export default function CommunicationPage() {
                 >
                   <List className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {testMode === "onboarding" ? (
               <SetupTab onHireRep={() => setShowHireDialog(true)} />
@@ -2491,7 +2503,7 @@ export default function CommunicationPage() {
                         onInstall={() => {
                           toast.success("Redirecting to Integrations...");
                           setPostHirePhase("complete");
-                          navigate("/ai-support/integrations");
+                          navigate("/integrations");
                         }}
                         onSkip={() => {
                           setPostHirePhase("complete");
