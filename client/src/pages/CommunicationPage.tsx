@@ -1495,6 +1495,7 @@ function RepView({
   postHirePhase,
   selectedMode,
   onRoleGuideDone,
+  testMode,
 }: {
   repName: string;
   showProfile: boolean;
@@ -1503,6 +1504,7 @@ function RepView({
   postHirePhase: string;
   selectedMode: string;
   onRoleGuideDone: () => void;
+  testMode: "onboarding" | "normal";
 }) {
   const [phase, setPhase] = useState<RepPhase>("greeting");
   const [adjustmentText, setAdjustmentText] = useState("");
@@ -1585,7 +1587,7 @@ function RepView({
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-[12px] font-semibold text-foreground">{repName}</span>
-            {(phase === "done" || postHirePhase === "role_guide") ? (
+            {(testMode === "normal" || phase === "done" || postHirePhase === "role_guide") ? (
               <Badge
                 variant="outline"
                 className={cn(
@@ -1608,212 +1610,241 @@ function RepView({
       <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="px-4 py-4 space-y-4">
 
-          {/* Greeting */}
-          <RepBubble>
-            <p className="text-[12px] leading-relaxed text-foreground">
-              Hi! I'm {repName}, your new AI support rep.
-            </p>
-            <p className="text-[12px] leading-relaxed text-foreground mt-2">
-              Before I start handling real tickets, let me show you how I'd handle a few scenarios. I'll walk you through 3 tests one at a time — tell me if each response looks right.
-            </p>
-          </RepBubble>
-
-          {/* Scenario 1 */}
-          {["scenario_1", "scenario_2", "scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
-            <>
-              {(phase === "scenario_1" && !showAdjustmentInput) ? (
-                <div className="ml-9">
-                  <ScenarioCard
-                    scenario={SANITY_SCENARIOS[0]}
-                    onLooksGood={() => handleLooksGood("scenario_1")}
-                    onNeedsAdjustment={() => handleNeedsAdjustment("scenario_1")}
-                  />
-                </div>
-              ) : (
-                <div className="ml-9">
-                  <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-[11px] font-medium text-foreground">Scenario 1 — {SANITY_SCENARIOS[0].title}</span>
-                      <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {phase === "scenario_1" && showAdjustmentInput === "scenario_1" && (
-                <div className="ml-9 space-y-2">
-                  <Textarea
-                    value={adjustmentText}
-                    onChange={(e) => setAdjustmentText(e.target.value)}
-                    placeholder="What should be different?"
-                    className="text-[11px] min-h-[60px]"
-                  />
-                  <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_1")}>
-                    Submit feedback
-                  </Button>
-                  {!hasShownTip && (
-                    <p className="text-[10px] text-muted-foreground italic">
-                      By the way — anytime after setup, if you want to adjust rules, just tell Team Lead in the Communication tab. They'll handle it.
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Scenario 2 */}
-          {["scenario_2", "scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
-            <>
-              {(phase === "scenario_2" && !showAdjustmentInput) ? (
-                <div className="ml-9">
-                  <ScenarioCard
-                    scenario={SANITY_SCENARIOS[1]}
-                    onLooksGood={() => handleLooksGood("scenario_2")}
-                    onNeedsAdjustment={() => handleNeedsAdjustment("scenario_2")}
-                  />
-                </div>
-              ) : (
-                <div className="ml-9">
-                  <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-[11px] font-medium text-foreground">Scenario 2 — {SANITY_SCENARIOS[1].title}</span>
-                      <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {phase === "scenario_2" && showAdjustmentInput === "scenario_2" && (
-                <div className="ml-9 space-y-2">
-                  <Textarea
-                    value={adjustmentText}
-                    onChange={(e) => setAdjustmentText(e.target.value)}
-                    placeholder="What should be different?"
-                    className="text-[11px] min-h-[60px]"
-                  />
-                  <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_2")}>
-                    Submit feedback
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Scenario 3 */}
-          {["scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
-            <>
-              {(phase === "scenario_3" && !showAdjustmentInput) ? (
-                <div className="ml-9">
-                  <ScenarioCard
-                    scenario={SANITY_SCENARIOS[2]}
-                    onLooksGood={() => handleLooksGood("scenario_3")}
-                    onNeedsAdjustment={() => handleNeedsAdjustment("scenario_3")}
-                  />
-                </div>
-              ) : (
-                <div className="ml-9">
-                  <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-[11px] font-medium text-foreground">Scenario 3 — {SANITY_SCENARIOS[2].title}</span>
-                      <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {phase === "scenario_3" && showAdjustmentInput === "scenario_3" && (
-                <div className="ml-9 space-y-2">
-                  <Textarea
-                    value={adjustmentText}
-                    onChange={(e) => setAdjustmentText(e.target.value)}
-                    placeholder="What should be different?"
-                    className="text-[11px] min-h-[60px]"
-                  />
-                  <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_3")}>
-                    Submit feedback
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Handoff to Team Lead */}
-          {["handoff", "role_guide", "done"].includes(phase) && postHirePhase !== "role_guide" && (
+          {/* ── NORMAL MODE: Show escalation tickets directly ── */}
+          {testMode === "normal" && (
             <>
               <RepBubble>
                 <p className="text-[12px] leading-relaxed text-foreground">
-                  All scenarios reviewed! I'll hand you back to Team Lead for the final step.
+                  Here are the tickets I've escalated to you. Review each one and let me know how to proceed.
                 </p>
               </RepBubble>
-              {phase === "handoff" && (
-                <div className="ml-9">
-                  <Button
-                    className="h-9 px-5 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
-                    onClick={() => {
-                      setPhase("role_guide");
-                      onSwitchToTeamLead();
-                    }}
-                  >
-                    Go to Team Lead <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
 
-          {/* Role Guide (after mode selection) */}
-          {(phase === "done" || postHirePhase === "role_guide") && (
-            <>
-              <RepBubble>
-                <p className="text-[12px] leading-relaxed text-foreground">
-                  I'm now live in <strong>{selectedMode === "production" ? "Production" : "Training"} mode</strong>. Here's how our team works:
-                </p>
-                <div className="mt-3 space-y-2.5">
-                  <div>
-                    <p className="text-[11px] font-semibold text-foreground">Come to me (Rep) when you want to:</p>
-                    <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
-                      <li>Check on tickets I've escalated to you</li>
-                      <li>View or change my settings (click Profile)</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold text-foreground">Talk to Team Lead when you want to:</p>
-                    <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
-                      <li>Tell them about policy changes — they'll update my rules</li>
-                      <li>Review their improvement suggestions</li>
-                      <li>Upload new SOP documents</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold text-foreground">In the Zendesk Sidebar you can:</p>
-                    <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
-                      <li>See what I'm doing on any ticket in real-time</li>
-                      <li>Mark a bad response so Team Lead can analyze it</li>
-                      <li>Copy my suggested reply (in Training mode)</li>
-                    </ul>
-                  </div>
-                </div>
-              </RepBubble>
-
-              {/* Continue to sidebar install */}
-              {postHirePhase === "role_guide" && (
-                <div className="ml-9 mt-2">
-                  <Button
-                    className="h-9 px-5 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
-                    onClick={onRoleGuideDone}
-                  >
-                    Continue <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                </div>
-              )}
-
-              {/* Escalation cards (shown in post-onboarding state) */}
-              {phase === "done" && postHirePhase !== "role_guide" && (
-                <div className="space-y-2.5 mt-2">
-                  {sortedTickets.map((ticket) => (
+              <div className="space-y-2.5">
+                {sortedTickets.length > 0 ? (
+                  sortedTickets.map((ticket) => (
                     <EscalationCard key={ticket.id} ticket={ticket} onResolve={handleResolve} />
-                  ))}
-                </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                    <p className="text-[12px] text-muted-foreground">No escalated tickets right now</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── ONBOARDING MODE: Show scenario flow ── */}
+          {testMode === "onboarding" && (
+            <>
+              {/* Greeting */}
+              <RepBubble>
+                <p className="text-[12px] leading-relaxed text-foreground">
+                  Hi! I'm {repName}, your new AI support rep.
+                </p>
+                <p className="text-[12px] leading-relaxed text-foreground mt-2">
+                  Before I start handling real tickets, let me show you how I'd handle a few scenarios. I'll walk you through 3 tests one at a time — tell me if each response looks right.
+                </p>
+              </RepBubble>
+
+              {/* Scenario 1 */}
+              {["scenario_1", "scenario_2", "scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
+                <>
+                  {(phase === "scenario_1" && !showAdjustmentInput) ? (
+                    <div className="ml-9">
+                      <ScenarioCard
+                        scenario={SANITY_SCENARIOS[0]}
+                        onLooksGood={() => handleLooksGood("scenario_1")}
+                        onNeedsAdjustment={() => handleNeedsAdjustment("scenario_1")}
+                      />
+                    </div>
+                  ) : (
+                    <div className="ml-9">
+                      <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <span className="text-[11px] font-medium text-foreground">Scenario 1 — {SANITY_SCENARIOS[0].title}</span>
+                          <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {phase === "scenario_1" && showAdjustmentInput === "scenario_1" && (
+                    <div className="ml-9 space-y-2">
+                      <Textarea
+                        value={adjustmentText}
+                        onChange={(e) => setAdjustmentText(e.target.value)}
+                        placeholder="What should be different?"
+                        className="text-[11px] min-h-[60px]"
+                      />
+                      <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_1")}>
+                        Submit feedback
+                      </Button>
+                      {!hasShownTip && (
+                        <p className="text-[10px] text-muted-foreground italic">
+                          By the way — anytime after setup, if you want to adjust rules, just tell Team Lead in the Communication tab. They'll handle it.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Scenario 2 */}
+              {["scenario_2", "scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
+                <>
+                  {(phase === "scenario_2" && !showAdjustmentInput) ? (
+                    <div className="ml-9">
+                      <ScenarioCard
+                        scenario={SANITY_SCENARIOS[1]}
+                        onLooksGood={() => handleLooksGood("scenario_2")}
+                        onNeedsAdjustment={() => handleNeedsAdjustment("scenario_2")}
+                      />
+                    </div>
+                  ) : (
+                    <div className="ml-9">
+                      <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <span className="text-[11px] font-medium text-foreground">Scenario 2 — {SANITY_SCENARIOS[1].title}</span>
+                          <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {phase === "scenario_2" && showAdjustmentInput === "scenario_2" && (
+                    <div className="ml-9 space-y-2">
+                      <Textarea
+                        value={adjustmentText}
+                        onChange={(e) => setAdjustmentText(e.target.value)}
+                        placeholder="What should be different?"
+                        className="text-[11px] min-h-[60px]"
+                      />
+                      <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_2")}>
+                        Submit feedback
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Scenario 3 */}
+              {["scenario_3", "handoff", "role_guide", "done"].includes(phase) && (
+                <>
+                  {(phase === "scenario_3" && !showAdjustmentInput) ? (
+                    <div className="ml-9">
+                      <ScenarioCard
+                        scenario={SANITY_SCENARIOS[2]}
+                        onLooksGood={() => handleLooksGood("scenario_3")}
+                        onNeedsAdjustment={() => handleNeedsAdjustment("scenario_3")}
+                      />
+                    </div>
+                  ) : (
+                    <div className="ml-9">
+                      <div className="rounded-xl border border-emerald-200/60 bg-emerald-50/30 px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <span className="text-[11px] font-medium text-foreground">Scenario 3 — {SANITY_SCENARIOS[2].title}</span>
+                          <Badge variant="outline" className="text-[8px] bg-emerald-50 text-emerald-600 border-emerald-200 ml-auto">Passed</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {phase === "scenario_3" && showAdjustmentInput === "scenario_3" && (
+                    <div className="ml-9 space-y-2">
+                      <Textarea
+                        value={adjustmentText}
+                        onChange={(e) => setAdjustmentText(e.target.value)}
+                        placeholder="What should be different?"
+                        className="text-[11px] min-h-[60px]"
+                      />
+                      <Button size="sm" className="h-7 text-[10px]" onClick={() => submitAdjustment("scenario_3")}>
+                        Submit feedback
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Handoff to Team Lead */}
+              {["handoff", "role_guide", "done"].includes(phase) && postHirePhase !== "role_guide" && (
+                <>
+                  <RepBubble>
+                    <p className="text-[12px] leading-relaxed text-foreground">
+                      All scenarios reviewed! I'll hand you back to Team Lead for the final step.
+                    </p>
+                  </RepBubble>
+                  {phase === "handoff" && (
+                    <div className="ml-9">
+                      <Button
+                        className="h-9 px-5 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
+                        onClick={() => {
+                          setPhase("role_guide");
+                          onSwitchToTeamLead();
+                        }}
+                      >
+                        Go to Team Lead <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Role Guide (after mode selection) */}
+              {(phase === "done" || postHirePhase === "role_guide") && (
+                <>
+                  <RepBubble>
+                    <p className="text-[12px] leading-relaxed text-foreground">
+                      I'm now live in <strong>{selectedMode === "production" ? "Production" : "Training"} mode</strong>. Here's how our team works:
+                    </p>
+                    <div className="mt-3 space-y-2.5">
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">Come to me (Rep) when you want to:</p>
+                        <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
+                          <li>Check on tickets I've escalated to you</li>
+                          <li>View or change my settings (click Profile)</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">Talk to Team Lead when you want to:</p>
+                        <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
+                          <li>Tell them about policy changes — they'll update my rules</li>
+                          <li>Review their improvement suggestions</li>
+                          <li>Upload new SOP documents</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">In the Zendesk Sidebar you can:</p>
+                        <ul className="text-[11px] text-foreground mt-1 space-y-0.5 list-disc list-inside">
+                          <li>See what I'm doing on any ticket in real-time</li>
+                          <li>Mark a bad response so Team Lead can analyze it</li>
+                          <li>Copy my suggested reply (in Training mode)</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </RepBubble>
+
+                  {/* Continue to sidebar install */}
+                  {postHirePhase === "role_guide" && (
+                    <div className="ml-9 mt-2">
+                      <Button
+                        className="h-9 px-5 text-[11px] bg-teal-600 hover:bg-teal-700 rounded-full"
+                        onClick={onRoleGuideDone}
+                      >
+                        Continue <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Escalation cards (shown in post-onboarding state) */}
+                  {phase === "done" && postHirePhase !== "role_guide" && (
+                    <div className="space-y-2.5 mt-2">
+                      {sortedTickets.map((ticket) => (
+                        <EscalationCard key={ticket.id} ticket={ticket} onResolve={handleResolve} />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -2343,9 +2374,9 @@ export default function CommunicationPage() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-48px)]">
+    <div className="flex flex-col h-full">
       {/* ── Test Mode Toggle Bar ── */}
-      <div className="flex items-center justify-between px-4 h-9 border-b border-border bg-amber-50/50 shrink-0">
+      <div className="flex items-center justify-between px-4 h-9 border-b border-border bg-amber-50/50 shrink-0 z-10">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Test Mode</span>
           <div className="flex items-center bg-white rounded-md border border-amber-200 p-0.5">
@@ -2594,6 +2625,7 @@ export default function CommunicationPage() {
               setActiveView("teamlead");
               setPostHirePhase("sidebar_install");
             }}
+            testMode={testMode}
           />
         ) : null}
 
