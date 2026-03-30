@@ -152,8 +152,9 @@ export interface DailyMetric {
   date: string;
   autoResolutionRate: number;
   csat: number;
-  intentChangedRate: number;
-  responseTime: number;
+  sentimentChangedRate: number;
+  firstResponseTime: number;
+  fullResolutionTime: number;
   volume: number;
 }
 
@@ -162,7 +163,6 @@ export interface IntentMetric {
   volume: number;
   resolutionRate: number;
   csat: number;
-  intentChangedRate: number;
 }
 
 export interface ActionableItem {
@@ -680,8 +680,9 @@ export const TOPICS: Topic[] = [
 export const PERFORMANCE_SUMMARY: PerformanceMetric[] = [
   { label: "Auto-Resolution Rate", value: 68, unit: "%", trend: 4, trendLabel: "vs last week" },
   { label: "CSAT Score", value: 4.3, unit: "/5", trend: 0.2, trendLabel: "vs last week" },
-  { label: "Intent Changed", value: 12, unit: "%", trend: -3, trendLabel: "vs last week" },
-  { label: "First Response Time", value: 45, unit: "sec", trend: -12, trendLabel: "vs last week" },
+  { label: "Sentiment Changed", value: 8.3, unit: "%", trend: -1.1, trendLabel: "vs last week" },
+  { label: "First Response Time", value: 45, unit: "s", trend: -8, trendLabel: "vs last week" },
+  { label: "Full Resolution Time", value: 750, unit: "s", trend: -130, trendLabel: "vs last week" },
 ];
 
 export const DAILY_METRICS: DailyMetric[] = Array.from({ length: 30 }, (_, i) => {
@@ -694,21 +695,22 @@ export const DAILY_METRICS: DailyMetric[] = Array.from({ length: 30 }, (_, i) =>
     date: date.toISOString().split("T")[0],
     autoResolutionRate: Math.min(75, 55 + i * 0.5 + (Math.random() * 6 - 3)),
     csat: Math.min(4.8, 3.9 + i * 0.015 + (Math.random() * 0.3 - 0.15)),
-    intentChangedRate: Math.max(5, 20 - i * 0.3 + (Math.random() * 4 - 2)),
-    responseTime: Math.max(30, 90 - i * 1.5 + (Math.random() * 15 - 7)),
+    sentimentChangedRate: Math.max(3, 15 - i * 0.25 + (Math.random() * 4 - 2)),
+    firstResponseTime: Math.max(30, 90 - i * 1.5 + (Math.random() * 15 - 7)),
+    fullResolutionTime: Math.max(300, 1200 - i * 20 + (Math.random() * 200 - 100)),
     volume: Math.round(baseVolume * growthFactor + (Math.random() * 10 - 5)),
   };
 });
 
 export const INTENT_METRICS: IntentMetric[] = [
-  { intent: "Where Is My Order", volume: 156, resolutionRate: 89, csat: 4.5, intentChangedRate: 5 },
-  { intent: "Refunds", volume: 98, resolutionRate: 62, csat: 4.0, intentChangedRate: 18 },
-  { intent: "Cancellations", volume: 67, resolutionRate: 78, csat: 4.2, intentChangedRate: 12 },
-  { intent: "Product Issues", volume: 52, resolutionRate: 55, csat: 3.8, intentChangedRate: 22 },
-  { intent: "Shipping", volume: 45, resolutionRate: 71, csat: 4.1, intentChangedRate: 9 },
-  { intent: "Returns", volume: 38, resolutionRate: 58, csat: 3.9, intentChangedRate: 15 },
-  { intent: "Pre-sale Questions", volume: 31, resolutionRate: 82, csat: 4.4, intentChangedRate: 7 },
-  { intent: "Account Issues", volume: 18, resolutionRate: 44, csat: 3.6, intentChangedRate: 28 },
+  { intent: "Where Is My Order", volume: 156, resolutionRate: 89, csat: 4.5 },
+  { intent: "Refunds", volume: 98, resolutionRate: 62, csat: 4.0 },
+  { intent: "Cancellations", volume: 67, resolutionRate: 78, csat: 4.2 },
+  { intent: "Product Issues", volume: 52, resolutionRate: 55, csat: 3.8 },
+  { intent: "Shipping", volume: 45, resolutionRate: 71, csat: 4.1 },
+  { intent: "Returns", volume: 38, resolutionRate: 58, csat: 3.9 },
+  { intent: "Pre-sale Questions", volume: 31, resolutionRate: 82, csat: 4.4 },
+  { intent: "Account Issues", volume: 18, resolutionRate: 44, csat: 3.6 },
 ];
 
 export const ACTIONABLE_ITEMS: ActionableItem[] = [
@@ -729,6 +731,17 @@ export interface ReasoningStep {
   timestamp: string;
 }
 
+export interface ReasoningTurn {
+  turnNumber: number;
+  customerInput: string;
+  contextEnrichment?: { fieldsExtracted: string[]; queries: { action: string; params: string; status: "success" | "failed"; result: string }[]; infoRequested?: string };
+  ruleRouting?: { intent: string; intentConfidence: number; sentiment: string; matchedRules: { name: string; ruleId: string; confidence: number }[] };
+  knowledgeRetrieval?: { query: string; resultsCount: number; topScore: number; belowThreshold: boolean };
+  actionsExecuted?: { name: string; input: string; result: "success" | "failed"; output: string }[];
+  guardrailCheck?: { result: "passed" | "blocked"; blockedRule?: string; blockedReason?: string };
+  repOutput: string;
+}
+
 export interface ConversationLog {
   id: string;
   ticketId: string;
@@ -736,8 +749,11 @@ export interface ConversationLog {
   zendeskUrl: string;
   subject: string;
   customerName: string;
+  customerEmail: string;
   initialIntent: string;
   finalIntent: string;
+  initialSentiment: string;
+  finalSentiment: string;
   intentChanged: boolean;
   outcome: ConversationOutcome;
   mode: ConversationLogMode;
@@ -750,40 +766,50 @@ export interface ConversationLog {
   createdAt: string;
   resolvedAt?: string;
   reasoning: ReasoningStep[];
+  reasoningTurns: ReasoningTurn[];
   messages: { role: "customer" | "agent" | "internal"; text: string; timestamp: string }[];
   flagged: boolean;
   flagNote?: string;
+  escalationReason?: string;
+  handoffNotes?: string;
+  suggestedReply?: string;
 }
 
 export const WEEKLY_SUMMARY = {
-  weekLabel: "Mar 23 \u2013 Mar 29, 2026",
+  weekLabel: "Mar 24 \u2013 Mar 30, 2026",
   variables: {
-    total_tickets: 505,
-    auto_resolved: 343,
-    auto_resolution_rate: 68,
-    auto_resolution_rate_delta: "+4%",
-    intent_changed_rate: 12,
-    intent_changed_rate_delta: "-3%",
-    avg_first_response: "45s",
-    avg_first_response_delta: "-12s",
-    csat: 4.3,
-    csat_delta: "+0.2",
-    top_intent: "Where Is My Order",
-    top_intent_volume: 156,
-    worst_intent: "Account Issues",
-    worst_intent_resolution: "44%",
-    escalation_rate_product_issues: 42,
-    saved_tickets_per_week: 9,
-    intl_return_count: 5,
-    intl_saved_tickets: 5,
-    low_csat_chat_count: 3,
-    csat_improvement_range: "0.2-0.3",
+    period_label: "Mar 24\u201330, 2026",
+    rep_name: "Ava",
+    total_tickets: 156,
+    delta_tickets: "+12%",
+    resolution_rate: "78.5%",
+    delta_resolution: "+3.2%",
+    csat_score: "4.6/5",
+    delta_csat: "+0.2",
+    sentiment_changed_rate: "8.3%",
+    delta_sentiment_changed: "-1.1%",
+    first_response_time: "42s",
+    delta_frt: "-8s",
+    full_resolution_time: "11m 20s",
+    delta_full_rt: "-2m 10s",
+    top_intent: "WISMO",
+    top_intent_resolution: "92%",
+    top_intent_volume: 64,
+    worst_intent: "Return & Refund",
+    worst_intent_resolution: "54%",
+    worst_intent_volume: 38,
+    worst_intent_rule_name: "Return & Refund Handling",
+    link_to_rule: "/playbook",
+    actionable_suggestion: "Return & Refund escalations increased 15% this week. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.",
+    action_link_label: "Edit guardrail for Process Refund",
+    action_link_url: "/config",
+    link_to_performance: "/performance",
   },
-  summaryTemplate: `## Weekly Performance Summary\n\n\`\`\`\nPeriod:          {{week_label}}\nTotal Tickets:   {{total_tickets}}\nAuto-Resolved:   {{auto_resolved}} ({{auto_resolution_rate}}%, {{auto_resolution_rate_delta}} vs prev week)\nIntent Changed:  {{intent_changed_rate}}% ({{intent_changed_rate_delta}} vs prev week)\nFirst Response:  {{avg_first_response}} ({{avg_first_response_delta}} vs prev week)\nCSAT:            {{csat}}/5 ({{csat_delta}} vs prev week)\n\`\`\`\n\n### Top Performing Intent\n**{{top_intent}}** — {{top_intent_volume}} tickets, highest resolution rate.\n\n### Needs Attention\n**{{worst_intent}}** — only {{worst_intent_resolution}} resolution rate.`,
+  summaryTemplate: `\u{1F4CA} Weekly Performance Summary \u2014 {{period_label}}\n\nThis week {{rep_name}} handled {{total_tickets}} tickets ({{delta_tickets}} vs last week).\n\nKey metrics:\n\u2022 Auto-Resolution Rate: {{resolution_rate}} ({{delta_resolution}} vs last week)\n\u2022 CSAT: {{csat_score}} ({{delta_csat}} vs last week)\n\u2022 Sentiment Changed: {{sentiment_changed_rate}} ({{delta_sentiment_changed}} vs last week)\n\u2022 First Response Time: {{first_response_time}} ({{delta_frt}} vs last week)\n\u2022 Full Resolution Time: {{full_resolution_time}} ({{delta_full_rt}} vs last week)\n\nTop performing intent:\n  {{top_intent}} \u2014 {{top_intent_resolution}} resolution rate across {{top_intent_volume}} tickets\n\nNeeds improvement:\n  {{worst_intent}} \u2014 {{worst_intent_resolution}} resolution rate across {{worst_intent_volume}} tickets\n  \u2192 Review this rule: {{worst_intent_rule_name}}\n\nSuggestion:\n  {{actionable_suggestion}}\n  \u2192 {{action_link_label}}\n\nView full performance dashboard \u2192`,
   recommendations: [
-    { id: "rec-1", text: "Product Issues 的升级率为 {{escalation_rate_product_issues}}%。建议检查相关规则并补充 $80 阈值附近的处理逻辑。", linkLabel: "查看 Product Issues 规则", linkPath: "/playbook" },
-    { id: "rec-2", text: "本周有 {{intl_return_count}} 张国际退货工单被升级，目前缺少对应规则。", linkLabel: "查看相关对话", linkPath: "/communication" },
-    { id: "rec-3", text: "{{low_csat_chat_count}} 位客户在 live chat 中给出低 CSAT，原因是语气过于正式。建议切换为 friendly 语气。", linkLabel: "修改 Rep 语气设置", linkPath: "/communication" },
+    { id: "rec-1", text: "Return & Refund escalations increased 15% this week. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.", linkLabel: "Edit guardrail for Process Refund", linkPath: "/config" },
+    { id: "rec-2", text: "WISMO resolution rate is at 92%, the highest across all intents. Consider documenting this rule pattern as a template for other intents.", linkLabel: "View WISMO rule", linkPath: "/playbook" },
+    { id: "rec-3", text: "3 customers rated CSAT low citing overly formal tone on live chat. Consider switching to friendly tone for the chat channel.", linkLabel: "Edit Rep tone settings", linkPath: "/config" },
   ],
 };
 
@@ -791,8 +817,9 @@ export const CONVERSATION_LOGS: ConversationLog[] = [
   {
     id: "cl-1", ticketId: "t-4412", zendeskTicketId: "4412",
     zendeskUrl: "https://coastalliving.zendesk.com/agent/tickets/4412",
-    subject: "Damaged ceramic vase — replacement request", customerName: "Sarah Johnson",
+    subject: "Damaged ceramic vase — replacement request", customerName: "Sarah Johnson", customerEmail: "sarah.j@email.com",
     initialIntent: "Damage Claim", finalIntent: "Damage Claim", intentChanged: false,
+    initialSentiment: "frustrated", finalSentiment: "positive",
     outcome: "resolved", mode: "production", confidence: 0.94,
     ruleMatched: "Damage claims under $80 — auto-replace",
     actionsTaken: ["Send Replacement"], totalTurns: 3, duration: 124, csat: 5,
@@ -810,13 +837,15 @@ export const CONVERSATION_LOGS: ConversationLog[] = [
       { role: "agent", text: "Hi Sarah, I'm sorry to hear your ceramic vase arrived cracked! I've gone ahead and initiated a replacement — you should receive a shipping confirmation within 24 hours. No need to return the damaged item.", timestamp: "2026-03-28T14:22:04Z" },
       { role: "customer", text: "That was fast! Thank you so much.", timestamp: "2026-03-28T14:23:30Z" },
     ],
+    reasoningTurns: [{ turnNumber: 1, customerInput: "I received my ceramic vase and it's cracked. I'd like a replacement.", contextEnrichment: { fieldsExtracted: ["order_id: CLV-2026-4412", "item: ceramic-vase-blue", "value: $34.99"], queries: [{ action: "get_order", params: "CLV-2026-4412", status: "success", result: "Ceramic vase, $34.99, delivered 2026-03-26" }] }, ruleRouting: { intent: "Damage Claim", intentConfidence: 0.94, sentiment: "frustrated", matchedRules: [{ name: "Damage claims under $80 — auto-replace", ruleId: "r-1", confidence: 0.94 }] }, actionsExecuted: [{ name: "Send Replacement", input: "order_id=CLV-2026-4412, item=ceramic-vase-blue", result: "success", output: "Exchange created, shipping in 24h" }], guardrailCheck: { result: "passed" }, repOutput: "Hi Sarah, I'm sorry to hear your ceramic vase arrived cracked! I've gone ahead and initiated a replacement — you should receive a shipping confirmation within 24 hours. No need to return the damaged item." }],
     flagged: false,
   },
   {
     id: "cl-2", ticketId: "t-4501", zendeskTicketId: "4501",
     zendeskUrl: "https://coastalliving.zendesk.com/agent/tickets/4501",
-    subject: "Refund to PayPal instead of credit card", customerName: "Mike Torres",
+    subject: "Refund to PayPal instead of credit card", customerName: "Mike Torres", customerEmail: "mike.t@email.com",
     initialIntent: "Refund Request", finalIntent: "Cross-Payment Refund", intentChanged: true,
+    initialSentiment: "neutral", finalSentiment: "neutral",
     outcome: "escalated", mode: "production", confidence: 0.72,
     ruleMatched: null, actionsTaken: [], totalTurns: 2, duration: 45,
     createdAt: "2026-03-28T16:10:00Z",
@@ -831,13 +860,17 @@ export const CONVERSATION_LOGS: ConversationLog[] = [
       { role: "customer", text: "Can you refund to my PayPal instead of the original credit card?", timestamp: "2026-03-28T16:10:00Z" },
       { role: "internal", text: "[ESCALATION] No rule covers cross-payment-method refunds. Escalating to human agent.", timestamp: "2026-03-28T16:10:03Z" },
     ],
+    reasoningTurns: [{ turnNumber: 1, customerInput: "Can you refund to my PayPal instead of the original credit card?", ruleRouting: { intent: "Refund Request", intentConfidence: 0.72, sentiment: "neutral", matchedRules: [] }, guardrailCheck: { result: "blocked", blockedRule: "Issue Refund", blockedReason: "Cross-payment-method refunds not supported" }, repOutput: "[ESCALATION] No rule covers cross-payment-method refunds. Escalating to human agent." }],
+    escalationReason: "No rule for cross-payment-method refunds",
+    handoffNotes: "Customer wants refund to PayPal instead of original credit card. No existing rule covers this scenario.",
     flagged: false,
   },
   {
     id: "cl-3", ticketId: "t-4523", zendeskTicketId: "4523",
     zendeskUrl: "https://coastalliving.zendesk.com/agent/tickets/4523",
-    subject: "Where is my order? Tracking shows delivered but not received", customerName: "Emily Davis",
+    subject: "Where is my order? Tracking shows delivered but not received", customerName: "Emily Davis", customerEmail: "emily.d@email.com",
     initialIntent: "Where Is My Order", finalIntent: "Where Is My Order", intentChanged: false,
+    initialSentiment: "concerned", finalSentiment: "positive",
     outcome: "resolved", mode: "production", confidence: 0.97,
     ruleMatched: "WISMO — tracking shows delivered",
     actionsTaken: ["Get Order Details", "Check Tracking"], totalTurns: 4, duration: 210, csat: 4,
@@ -855,13 +888,15 @@ export const CONVERSATION_LOGS: ConversationLog[] = [
       { role: "customer", text: "Oh! Let me check with my neighbor. Thanks!", timestamp: "2026-03-27T09:16:30Z" },
       { role: "customer", text: "Found it! My neighbor had it. Thanks!", timestamp: "2026-03-27T09:18:30Z" },
     ],
+    reasoningTurns: [{ turnNumber: 1, customerInput: "Hi, my order CLV-2026-4523 shows delivered but I never got it.", contextEnrichment: { fieldsExtracted: ["order_id: CLV-2026-4523"], queries: [{ action: "get_order", params: "CLV-2026-4523", status: "success", result: "Coastal Throw Blanket, $65, delivered" }, { action: "check_tracking", params: "9400111899223033005", status: "success", result: "Delivered, signed by neighbor" }] }, ruleRouting: { intent: "Where Is My Order", intentConfidence: 0.97, sentiment: "concerned", matchedRules: [{ name: "WISMO — tracking shows delivered", ruleId: "r-3", confidence: 0.97 }] }, repOutput: "Hi Emily! I checked your tracking — USPS shows it was delivered yesterday and signed for by a neighbor. Could you check with them?" }],
     flagged: false,
   },
   {
     id: "cl-4", ticketId: "t-4530", zendeskTicketId: "4530",
     zendeskUrl: "https://coastalliving.zendesk.com/agent/tickets/4530",
-    subject: "Cancel my subscription", customerName: "James Wilson",
+    subject: "Cancel my subscription", customerName: "James Wilson", customerEmail: "james.w@email.com",
     initialIntent: "Cancellation", finalIntent: "Retention — Downgrade", intentChanged: true,
+    initialSentiment: "frustrated", finalSentiment: "satisfied",
     outcome: "resolved", mode: "training", confidence: 0.88,
     ruleMatched: "Cancellation — offer alternatives first",
     actionsTaken: [], totalTurns: 5, duration: 340, csat: 4,
@@ -880,13 +915,15 @@ export const CONVERSATION_LOGS: ConversationLog[] = [
       { role: "customer", text: "Actually the basic plan sounds good. Let's do that.", timestamp: "2026-03-27T11:33:00Z" },
       { role: "agent", text: "Great choice! I've switched you to the Basic plan at $9.99/mo. The change takes effect on your next billing date.", timestamp: "2026-03-27T11:33:30Z" },
     ],
+    reasoningTurns: [{ turnNumber: 1, customerInput: "I want to cancel my subscription. It's too expensive.", ruleRouting: { intent: "Cancellation", intentConfidence: 0.88, sentiment: "frustrated", matchedRules: [{ name: "Cancellation — offer alternatives first", ruleId: "r-5", confidence: 0.88 }] }, repOutput: "[INTERNAL NOTE] Suggested: offer 50% discount or downgrade to Basic plan." }, { turnNumber: 2, customerInput: "Actually the basic plan sounds good. Let's do that.", ruleRouting: { intent: "Retention — Downgrade", intentConfidence: 0.92, sentiment: "satisfied", matchedRules: [{ name: "Cancellation — offer alternatives first", ruleId: "r-5", confidence: 0.92 }] }, repOutput: "Great choice! I've switched you to the Basic plan at $9.99/mo." }],
     flagged: false,
   },
   {
     id: "cl-5", ticketId: "t-4593", zendeskTicketId: "4593",
     zendeskUrl: "https://coastalliving.zendesk.com/agent/tickets/4593",
-    subject: "URGENT: Want to speak to a manager", customerName: "Robert Chen",
+    subject: "URGENT: Want to speak to a manager", customerName: "Robert Chen", customerEmail: "robert.c@email.com",
     initialIntent: "Delivery Complaint", finalIntent: "Manager Request", intentChanged: true,
+    initialSentiment: "angry", finalSentiment: "angry",
     outcome: "escalated", mode: "production", confidence: 0.65,
     ruleMatched: null, actionsTaken: ["Get Order Details"], totalTurns: 3, duration: 90,
     createdAt: "2026-03-26T08:00:00Z",
@@ -902,13 +939,17 @@ export const CONVERSATION_LOGS: ConversationLog[] = [
       { role: "internal", text: "[ESCALATION] Customer explicitly requested manager. High-value order ($450), 3 failed deliveries.", timestamp: "2026-03-26T08:00:32Z" },
       { role: "agent", text: "I completely understand your frustration, Robert. I'm escalating this to a senior team member right away.", timestamp: "2026-03-26T08:00:35Z" },
     ],
+    reasoningTurns: [{ turnNumber: 1, customerInput: "This is ridiculous! 3 times the driver said I wasn't home but I WAS. I want to speak to a manager NOW.", contextEnrichment: { fieldsExtracted: ["order_id: CLV-2026-4593", "value: $450"], queries: [{ action: "get_order", params: "CLV-2026-4593", status: "success", result: "Coastal Oak Bookshelf, $450, 3 failed deliveries" }] }, ruleRouting: { intent: "Delivery Complaint", intentConfidence: 0.65, sentiment: "angry", matchedRules: [] }, guardrailCheck: { result: "blocked", blockedRule: "Manager Request", blockedReason: "No rule for manager requests with repeated delivery failures" }, repOutput: "I completely understand your frustration, Robert. I'm escalating this to a senior team member right away." }],
+    escalationReason: "Customer explicitly requested manager. High-value order ($450), 3 failed deliveries.",
+    handoffNotes: "Customer is very upset about 3 failed delivery attempts on a $450 bookshelf. Explicitly requested to speak with a manager.",
     flagged: true, flagNote: "Customer very upset — 3 failed deliveries on $450 order.",
   },
   {
     id: "cl-6", ticketId: "t-4540", zendeskTicketId: "4540",
     zendeskUrl: "https://coastalliving.zendesk.com/agent/tickets/4540",
-    subject: "Do you ship to Hawaii?", customerName: "Lisa Nakamura",
+    subject: "Do you ship to Hawaii?", customerName: "Lisa Nakamura", customerEmail: "lisa.n@email.com",
     initialIntent: "Pre-sale Question", finalIntent: "Pre-sale Question", intentChanged: false,
+    initialSentiment: "neutral", finalSentiment: "positive",
     outcome: "resolved", mode: "training", confidence: 0.96,
     ruleMatched: "Shipping inquiry — check knowledge base",
     actionsTaken: [], totalTurns: 2, duration: 60, csat: 5,
@@ -923,6 +964,7 @@ export const CONVERSATION_LOGS: ConversationLog[] = [
       { role: "customer", text: "Hi! Do you ship to Hawaii? If so, how much?", timestamp: "2026-03-27T15:00:00Z" },
       { role: "internal", text: "[INTERNAL NOTE] Suggested reply: 'Yes, we ship to all 50 US states including Hawaii! Flat rate $12, 5-7 business days.'", timestamp: "2026-03-27T15:00:02Z" },
     ],
+    reasoningTurns: [{ turnNumber: 1, customerInput: "Hi! Do you ship to Hawaii? If so, how much?", ruleRouting: { intent: "Pre-sale Question", intentConfidence: 0.96, sentiment: "neutral", matchedRules: [{ name: "Shipping inquiry — check knowledge base", ruleId: "r-7", confidence: 0.96 }] }, knowledgeRetrieval: { query: "Hawaii shipping rate", resultsCount: 1, topScore: 0.95, belowThreshold: false }, repOutput: "[INTERNAL NOTE] Suggested: confirm Hawaii shipping at $12 flat rate." }],
     flagged: false,
   },
 ];
