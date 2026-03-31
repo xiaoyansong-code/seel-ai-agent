@@ -87,7 +87,7 @@ export function HireRepDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl w-full p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-5 pb-0">
-          <DialogTitle className="text-[15px] font-semibold">Configure AI Rep</DialogTitle>
+          <DialogTitle className="text-[15px] font-semibold">Hire Rep</DialogTitle>
           <DialogDescription className="text-[12px] text-muted-foreground">
             Set up your rep's identity and action permissions.
           </DialogDescription>

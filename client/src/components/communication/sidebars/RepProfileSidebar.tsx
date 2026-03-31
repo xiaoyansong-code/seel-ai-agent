@@ -10,6 +10,7 @@ interface RepProfileSidebarProps {
   identity: AgentIdentity;
   permissions: ActionPermission[];
   agentMode: AgentMode;
+  onEditSettings?: () => void;
 }
 
 const MODE_BADGE: Record<AgentMode, { label: string; className: string }> = {
@@ -40,6 +41,7 @@ export function RepProfileSidebar({
   identity,
   permissions,
   agentMode,
+  onEditSettings,
 }: RepProfileSidebarProps) {
   const [, navigate] = useLocation();
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -83,7 +85,7 @@ export function RepProfileSidebar({
         variant="outline"
         size="sm"
         className="h-7 text-[10px] w-full justify-start gap-1.5"
-        onClick={() => navigate("/communication")}
+        onClick={() => onEditSettings ? onEditSettings() : navigate("/communication")}
       >
         <Pencil className="w-3 h-3" />
         Edit settings

@@ -18,6 +18,7 @@ export interface CommunicationState {
   onboardingComplete: boolean;
   repHired: boolean;
   setRepHired: (v: boolean) => void;
+  resetOnboarding: () => void;
 }
 
 export function useCommunicationState(): CommunicationState {
@@ -27,6 +28,12 @@ export function useCommunicationState(): CommunicationState {
 
   const onboardingComplete = onboardingPhase === "done";
 
+  function resetOnboarding() {
+    setOnboardingPhase("welcome");
+    setRepHired(false);
+    setActiveView("teamlead");
+  }
+
   return {
     activeView,
     setActiveView,
@@ -35,5 +42,6 @@ export function useCommunicationState(): CommunicationState {
     onboardingComplete,
     repHired,
     setRepHired,
+    resetOnboarding,
   };
 }

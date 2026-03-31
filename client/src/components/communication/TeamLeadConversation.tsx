@@ -18,7 +18,9 @@ interface TeamLeadConversationProps {
   isOnboarding: boolean;
 }
 
-function formatRelativeTime(d: string) {
+// ── Helpers ────────────────────────────────────────────────
+
+export function formatRelativeTime(d: string) {
   const diff = Math.floor(
     (new Date("2026-03-30T10:00:00Z").getTime() - new Date(d).getTime()) / 60000,
   );
@@ -33,65 +35,99 @@ function formatRelativeTime(d: string) {
 
 function renderMd(text: string) {
   return text.split("\n").map((line, i) => {
-    if (line.trim() === "") return <div key={i} className="h-1.5" />;
+    if (line.trim() === "") return <div key={i} className="h-1" />;
     const parts = line.split(/(\*\*[^*]+\*\*)/g).map((seg, j) => {
       if (seg.startsWith("**") && seg.endsWith("**"))
-        return (
-          <strong key={j} className="font-semibold">
-            {seg.slice(2, -2)}
-          </strong>
-        );
+        return <strong key={j} className="font-semibold">{seg.slice(2, -2)}</strong>;
+      // blockquote marker >
+      if (j === 0 && seg.startsWith("> "))
+        return <span key={j} className="text-muted-foreground italic">{seg.slice(2)}</span>;
       return <span key={j}>{seg}</span>;
     });
-    return <p key={i}>{parts}</p>;
+    return <p key={i} className="leading-relaxed">{parts}</p>;
   });
 }
 
-function MessageBubble({ msg, small }: { msg: { sender: string; content: string }; small?: boolean }) {
-  if (msg.sender === "manager") {
-    return (
-      <div className="flex justify-end">
-        <div className={cn("rounded-xl rounded-tr-sm bg-indigo-600 text-white max-w-[85%]", small ? "px-3 py-2" : "px-3.5 py-2.5")}>
-          <p className={cn("leading-relaxed", small ? "text-[11px]" : "text-[12px]")}>{msg.content}</p>
-        </div>
-      </div>
-    );
-  }
+// ── Avatar helpers ─────────────────────────────────────────
+
+const MANAGER_COLORS: Record<string, string> = {
+  "Jordan Chen": "bg-violet-500",
+  "Alex Song": "bg-sky-500",
+};
+
+function getInitials(name: string) {
+  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+}
+
+// ── Left-aligned bubble for any participant ────────────────
+
+export function ChatBubble({
+  sender,
+  name,
+  content,
+  timestamp,
+  small = false,
+}: {
+  sender: "ai" | "manager";
+  name: string;
+  content: string;
+  timestamp: string;
+  small?: boolean;
+}) {
+  const isAI = sender === "ai";
+  const avatarBg = isAI ? "bg-indigo-600" : (MANAGER_COLORS[name] ?? "bg-violet-500");
+  const initials = isAI ? "TL" : getInitials(name);
+
   return (
-    <div className="flex gap-2">
-      <div className={cn("rounded-full bg-indigo-600 flex items-center justify-center shrink-0 mt-0.5", small ? "w-5 h-5" : "w-6 h-6")}>
-        <span className={cn("font-bold text-white", small ? "text-[7px]" : "text-[9px]")}>TL</span>
+    <div className="flex gap-2.5">
+      <div className={cn(
+        "rounded-full flex items-center justify-center shrink-0 mt-0.5",
+        small ? "w-6 h-6" : "w-7 h-7",
+        avatarBg,
+      )}>
+        <span className={cn("font-bold text-white", small ? "text-[8px]" : "text-[10px]")}>
+          {initials}
+        </span>
       </div>
-      <div className={cn("rounded-xl rounded-tl-sm bg-muted/40 max-w-[85%]", small ? "px-3 py-2" : "px-3.5 py-2.5")}>
-        <p className={cn("leading-relaxed text-foreground", small ? "text-[11px]" : "text-[12px]")}>{msg.content}</p>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-1.5 mb-1">
+          <span className={cn("font-semibold text-foreground", small ? "text-[10px]" : "text-[11px]")}>
+            {name}
+          </span>
+          <span className="text-[9px] text-muted-foreground/50">{formatRelativeTime(timestamp)}</span>
+        </div>
+        <div className={cn(
+          "rounded-xl rounded-tl-sm bg-muted/40 px-3.5 py-2.5",
+          small ? "text-[11px]" : "text-[12px]",
+          "leading-relaxed text-foreground",
+        )}>
+          {renderMd(content)}
+        </div>
       </div>
     </div>
   );
 }
 
-function GenericMessageBubble({ topic }: { topic: Topic }) {
-  const allMsgs = topic.messages;
+// ── Generic topic (knowledge_gap, escalation_review, etc.) ─
 
+function GenericTopicThread({ topic }: { topic: Topic }) {
+  const msgs = topic.messages;
   return (
-    <div className="space-y-1.5">
-      {/* Header — only show for first AI message */}
-      {allMsgs[0]?.sender === "ai" && (
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center shrink-0">
-            <span className="text-[10px] font-bold text-white">TL</span>
-          </div>
-          <span className="text-[11px] font-semibold text-foreground">Team Lead</span>
-          <span className="text-[9px] text-muted-foreground/50">{formatRelativeTime(topic.createdAt)}</span>
-        </div>
-      )}
-      {allMsgs.map((msg, i) => (
-        <div key={msg.id} className={msg.sender === "ai" && i === 0 ? "pl-9" : ""}>
-          <MessageBubble msg={msg} small={!(i === 0 && msg.sender === "ai")} />
-        </div>
+    <div className="space-y-3">
+      {msgs.map((msg) => (
+        <ChatBubble
+          key={msg.id}
+          sender={msg.sender}
+          name={msg.sender === "ai" ? "Team Lead" : (msg.managerName ?? "Jordan Chen")}
+          content={msg.content}
+          timestamp={msg.timestamp}
+        />
       ))}
     </div>
   );
 }
+
+// ── Main component ─────────────────────────────────────────
 
 export function TeamLeadConversation({
   topics,
@@ -121,7 +157,7 @@ export function TeamLeadConversation({
         </div>
         <p className="text-[13px] font-semibold text-foreground mb-1">Complete onboarding first</p>
         <p className="text-[12px] text-muted-foreground text-center max-w-xs leading-relaxed">
-          Follow the onboarding flow to connect your tools and set up your AI rep. Once done, your Team Lead conversation will appear here.
+          Follow the onboarding flow to connect your tools and set up your AI rep.
         </p>
       </div>
     );
@@ -130,10 +166,9 @@ export function TeamLeadConversation({
   return (
     <div className="flex flex-col h-full min-h-0">
       <ScrollArea className="flex-1">
-        <div className="px-4 py-4 space-y-5">
+        <div className="px-5 py-5 space-y-6 max-w-2xl">
           {sorted.map((topic) => {
-            const isPerformanceSummary =
-              topic.type === "performance_summary" || !!topic.dailyDigest;
+            const isPerformanceSummary = topic.type === "performance_summary" || !!topic.dailyDigest;
             const isRuleProposal = !!topic.proposedRule;
             const isQuestion = topic.type === "question";
 
@@ -144,10 +179,9 @@ export function TeamLeadConversation({
                   digest={{
                     date: topic.dailyDigest.periodLabel,
                     kpis: topic.dailyDigest.kpis,
-                    actionItemCount:
-                      topics.filter(
-                        (t) => t.proposedRule?.status === "pending" || t.type === "question",
-                      ).length,
+                    actionItemCount: topics.filter(
+                      (t) => t.proposedRule?.status === "pending" || t.type === "question",
+                    ).length,
                   }}
                 />
               );
@@ -178,7 +212,7 @@ export function TeamLeadConversation({
               );
             }
 
-            return <GenericMessageBubble key={topic.id} topic={topic} />;
+            return <GenericTopicThread key={topic.id} topic={topic} />;
           })}
           <div ref={bottomRef} />
         </div>

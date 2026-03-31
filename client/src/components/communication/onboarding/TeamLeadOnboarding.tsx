@@ -39,7 +39,7 @@ const PHASE_LABELS: Record<OnboardingPhase, string> = {
   connect_tools: "Connect Tools",
   upload_docs: "Upload Docs",
   parse_results: "Review Rules",
-  hire_rep: "Configure Rep",
+  hire_rep: "Hire Rep",
   sanity_check: "Sanity Check",
   choose_mode: "Choose Mode",
   complete: "Setup Complete",
@@ -438,7 +438,7 @@ export function TeamLeadOnboarding({
                     <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
                       <Settings className="w-5 h-5 text-indigo-600" />
                     </div>
-                    <p className="text-[12px] font-semibold text-indigo-700">Configure AI Rep</p>
+                    <p className="text-[12px] font-semibold text-indigo-700">Hire Rep</p>
                     <p className="text-[10px] text-muted-foreground text-center">
                       Set name, personality, language, and permissions
                     </p>
