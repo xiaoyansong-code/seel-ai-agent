@@ -91,11 +91,11 @@ function RuleCard({
   idx: number;
   onSelect: () => void;
 }) {
-  // One-line preview: first ~120 chars of policy
+  // One-line preview: first ~120 chars of content
   const preview =
-    rule.policy.length > 120
-      ? rule.policy.slice(0, 120) + "..."
-      : rule.policy;
+    rule.content.length > 120
+      ? rule.content.slice(0, 120) + "..."
+      : rule.content;
 
   return (
     <button
@@ -142,31 +142,8 @@ function RuleDetailSheet({
 
   const actionNames = (rule.actions ?? []).map(getActionName);
 
-  // Build full long-form content from policy + exceptions + escalation
-  // All rendered as continuous prose, no special formatting
-  const buildFullContent = () => {
-    const paragraphs: string[] = [];
-
-    // Main policy
-    paragraphs.push(rule.policy);
-
-    // Exceptions woven in as prose
-    if (rule.exceptions.length > 0) {
-      const exceptionText = rule.exceptions.length === 1
-        ? `There is one exception to this rule: ${rule.exceptions[0]}`
-        : `There are exceptions to this rule. ${rule.exceptions.map((ex, i) => `${i + 1}. ${ex}`).join(" ")}`;
-      paragraphs.push(exceptionText);
-    }
-
-    // Escalation woven in as prose
-    if (rule.escalation) {
-      paragraphs.push(
-        `When ${rule.escalation.trigger.toLowerCase()}, the recommended action is to ${rule.escalation.action.toLowerCase()}.`
-      );
-    }
-
-    return paragraphs;
-  };
+  // Content is now a single field, split by double newlines for paragraphs
+  const contentParagraphs = rule.content.split("\n\n").filter(Boolean);
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -220,9 +197,9 @@ function RuleDetailSheet({
           <ScrollArea className="flex-1">
             {activeTab === "content" ? (
               <div className="px-6 py-5 space-y-5">
-                {/* Long-form policy content */}
+                {/* Full content */}
                 <div className="space-y-4">
-                  {buildFullContent().map((paragraph, i) => (
+                  {contentParagraphs.map((paragraph, i) => (
                     <p
                       key={i}
                       className="text-[13px] text-foreground leading-[1.8] tracking-[0.01em]"
@@ -663,9 +640,7 @@ function UploadDocumentDialog({
         <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/40 mt-1">
           <Bot className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            After importing, Alex (Team Lead) will process the content and
-            extract rules. This typically takes 30-60 minutes. You'll be
-            notified when it's ready for review.
+            After importing, rules will be extracted automatically. You'll be notified when ready for review.
           </p>
         </div>
 
@@ -685,10 +660,10 @@ function UploadDocumentDialog({
             className="h-8 text-[12px]"
           >
             {activeMethod === "upload"
-              ? "Upload & Process"
+              ? "Upload"
               : activeMethod === "url"
-              ? "Import & Process"
-              : "Save & Process"}
+              ? "Import"
+              : "Save"}
           </Button>
         </div>
       </DialogContent>
@@ -715,7 +690,7 @@ export default function PlaybookPage() {
     return RULES.filter(
       (rule) =>
         rule.name.toLowerCase().includes(q) ||
-        rule.policy.toLowerCase().includes(q)
+        rule.content.toLowerCase().includes(q)
     );
   }, [ruleSearch]);
 
@@ -781,16 +756,7 @@ export default function PlaybookPage() {
           <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
             <Bot className="w-4 h-4 text-primary shrink-0 mt-0.5" />
             <p className="text-[12px] text-foreground leading-relaxed flex-1">
-              Your Playbook contains all the rules your AI Rep follows. Rules are
-              learned from uploaded documents and conversations with your{" "}
-              <a
-                href="/communication"
-                className="text-primary font-medium hover:underline"
-              >
-                Team Lead
-              </a>
-              . Click any rule to see full details, version history, and linked
-              actions.
+              Your playbook contains the rules and knowledge your AI rep uses to handle tickets. Rules are learned from documents and conversations.
             </p>
             <button
               onClick={() => setShowGuide(false)}
@@ -845,14 +811,7 @@ export default function PlaybookPage() {
             {/* Bottom help */}
             <div className="mt-3 text-center">
               <p className="text-[11px] text-muted-foreground">
-                Rules are updated through conversations in{" "}
-                <a
-                  href="/communication"
-                  className="text-primary hover:underline"
-                >
-                  Communication
-                </a>{" "}
-                or by uploading documents.
+                Rules update automatically from your conversations and uploaded documents.
               </p>
             </div>
           </div>

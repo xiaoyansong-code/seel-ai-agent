@@ -6,7 +6,7 @@
 
 // ── Types ──────────────────────────────────────────────────
 
-export type TopicType = "knowledge_gap" | "performance_report" | "performance_summary" | "open_question" | "escalation_review" | "rule_update";
+export type TopicType = "knowledge_gap" | "performance_report" | "performance_summary" | "open_question" | "escalation_review" | "rule_update" | "question";
 export type TopicStatus = "unread" | "read" | "resolved";
 export type MessageSender = "ai" | "manager";
 export type PermissionLevel = "autonomous" | "disabled";
@@ -25,7 +25,7 @@ export interface Topic {
   messages: Message[];
   sourceTicketId?: string;
   proposedRule?: ProposedRule;
-  weeklySummary?: {
+  dailyDigest?: {
     periodLabel: string;
     kpis: { label: string; value: string; delta: string; positive: boolean }[];
     topIntent: { name: string; resolution: string; volume: number };
@@ -59,6 +59,7 @@ export interface ProposedRule {
   category: string;
   evidence: string[];
   status: "pending" | "accepted" | "rejected";
+  confidence?: "high" | "medium" | "low";
 }
 
 export interface Guardrail {
@@ -79,16 +80,11 @@ export interface ActionPermission {
   guardrails?: Guardrail[];
   lastModified: string;
   dependsOn?: string[];
-  locked?: boolean;
-  accessType?: "read" | "write";
+  locked: boolean;
+  type: "read" | "write";
 }
 
 // ── SOP-level Rule ──────────────────────────────────────────
-
-export interface RuleEscalation {
-  trigger: string;
-  action: string;
-}
 
 export interface RuleVersion {
   version: number;
@@ -102,19 +98,16 @@ export interface RuleVersion {
 export interface SOPRule {
   id: string;
   name: string;
-  intent: string;
-  policy: string;
-  exceptions: string[];
-  escalation: RuleEscalation;
+  content: string;
   lastUpdated: string;
   updatedByTopicId?: string;
   sourceDocId?: string;
   tags?: string[];
-  actions?: string[];        // action IDs this rule can invoke
-  invocationCount: number;   // how many times this rule was matched
-  avgCsat: number;           // average CSAT score for tickets using this rule
-  deflectionRate: number;    // % of tickets fully resolved without escalation
-  versions: RuleVersion[];   // version history
+  actions?: string[];
+  invocationCount: number;
+  avgCsat: number;
+  deflectionRate: number;
+  versions: RuleVersion[];
 }
 
 export type Skill = SOPRule;
@@ -232,7 +225,7 @@ export const INTEGRATIONS: Integration[] = [
 ];
 
 export const ACTION_PERMISSIONS: ActionPermission[] = [
-  // Communication — locked
+  // ── Write Actions (visible in UI) ──
   {
     id: "ap-1",
     name: "Reply to customer",
@@ -240,7 +233,7 @@ export const ACTION_PERMISSIONS: ActionPermission[] = [
     category: "Communication",
     permission: "autonomous",
     locked: true,
-    accessType: "write",
+    type: "write",
     lastModified: "2026-03-10T14:00:00Z",
   },
   {
@@ -250,17 +243,58 @@ export const ACTION_PERMISSIONS: ActionPermission[] = [
     category: "Communication",
     permission: "autonomous",
     locked: true,
-    accessType: "write",
+    type: "write",
     lastModified: "2026-03-10T14:00:00Z",
   },
-  // Order Management
+  {
+    id: "ap-5",
+    name: "Cancel order",
+    description: "Cancel unfulfilled order and notify customer",
+    category: "Order Management",
+    permission: "disabled",
+    locked: false,
+    type: "write",
+    guardrails: [
+      { id: "g-5-1", label: "Only unfulfilled orders", type: "boolean", enabled: true },
+      { id: "g-5-2", label: "Within hours of placement", type: "number", value: 2, unit: "hours", enabled: true },
+    ],
+    lastModified: "2026-03-01T09:00:00Z",
+  },
+  {
+    id: "ap-8",
+    name: "Edit shipping address",
+    description: "Update shipping address on unfulfilled orders",
+    category: "Order Management",
+    permission: "disabled",
+    locked: false,
+    type: "write",
+    guardrails: [
+      { id: "g-8-1", label: "Only unfulfilled orders", type: "boolean", enabled: true },
+    ],
+    lastModified: "2026-03-01T09:00:00Z",
+  },
+  {
+    id: "ap-9",
+    name: "File Seel claim",
+    description: "Submit a Seel protection claim on behalf of the customer",
+    category: "Seel Protection",
+    permission: "disabled",
+    locked: false,
+    type: "write",
+    guardrails: [
+      { id: "g-9-1", label: "Requires customer confirmation", type: "boolean", enabled: true },
+    ],
+    lastModified: "2026-03-01T09:00:00Z",
+  },
+  // ── Read Actions (always enabled, not shown in config UI) ──
   {
     id: "ap-3",
     name: "Track shipment",
     description: "Look up shipment status and share with customer",
     category: "Order Management",
     permission: "autonomous",
-    accessType: "read",
+    locked: true,
+    type: "read",
     lastModified: "2026-02-28T09:00:00Z",
   },
   {
@@ -269,45 +303,45 @@ export const ACTION_PERMISSIONS: ActionPermission[] = [
     description: "Retrieve order information from Shopify",
     category: "Order Management",
     permission: "autonomous",
-    accessType: "read",
+    locked: true,
+    type: "read",
     lastModified: "2026-02-28T09:00:00Z",
   },
-  {
-    id: "ap-5",
-    name: "Cancel order",
-    description: "Cancel unfulfilled order and notify customer",
-    category: "Order Management",
-    permission: "disabled",
-    accessType: "write",
-    guardrails: [
-      { id: "g-5-1", label: "Only unfulfilled orders", type: "boolean", enabled: true },
-    ],
-    lastModified: "2026-03-01T09:00:00Z",
-  },
-  // Customer
   {
     id: "ap-6",
     name: "Look up customer info",
     description: "Retrieve customer profile and order history",
     category: "Customer",
     permission: "autonomous",
-    accessType: "read",
+    locked: true,
+    type: "read",
     lastModified: "2026-02-28T09:00:00Z",
   },
-  // Financial
   {
-    id: "ap-7",
-    name: "Process refund",
-    description: "Process refund to original payment method",
-    category: "Financial",
-    permission: "disabled",
-    accessType: "write",
-    guardrails: [
-      { id: "g-7-1", label: "Max amount", type: "number", value: 200, unit: "$", enabled: true },
-    ],
-    lastModified: "2026-03-10T14:00:00Z",
+    id: "ap-10",
+    name: "Look up product info",
+    description: "Retrieve product details, inventory, and pricing",
+    category: "Product",
+    permission: "autonomous",
+    locked: true,
+    type: "read",
+    lastModified: "2026-02-28T09:00:00Z",
+  },
+  {
+    id: "ap-11",
+    name: "Look up Seel protection",
+    description: "Check Seel protection status, coverage, and claim history",
+    category: "Seel Protection",
+    permission: "autonomous",
+    locked: true,
+    type: "read",
+    lastModified: "2026-02-28T09:00:00Z",
   },
 ];
+
+// Helper: only write actions shown in configuration UI
+export const WRITE_ACTIONS = ACTION_PERMISSIONS.filter(a => a.type === "write");
+export const READ_ACTIONS = ACTION_PERMISSIONS.filter(a => a.type === "read");
 
 // ── SOP Rules ──────────────────────────────────────────────
 
@@ -315,17 +349,7 @@ export const RULES: SOPRule[] = [
   {
     id: "rule-1",
     name: "Standard Return & Refund",
-    intent: "Returns / Refunds",
-    policy: "Process full refund for items returned within 30 days of delivery in original condition. Refund to original payment method only. For VIP customers (3+ completed orders), extend return window to 45 days. Verify order date and customer tier before processing. If the item is eligible, initiate refund through the payment gateway and send confirmation email.",
-    exceptions: [
-      "Final sale items are non-returnable.",
-      "Items without tags or showing signs of use are not eligible.",
-      "Spring Sale orders (Mar 15-31, 2026) have a 60-day return window.",
-    ],
-    escalation: {
-      trigger: "Customer requests refund to a different payment method, or order value exceeds $150.",
-      action: "Escalate to manager with order details and customer request.",
-    },
+    content: "Process full refund for items returned within 30 days of delivery in original condition. Refund to original payment method only. For VIP customers (3+ completed orders), extend return window to 45 days. Verify order date and customer tier before processing. If the item is eligible, initiate refund through the payment gateway and send confirmation email.\n\nExceptions: Final sale items are non-returnable. Items without tags or showing signs of use are not eligible. Spring Sale orders (Mar 15-31, 2026) have a 60-day return window.\n\nEscalate when: Customer requests refund to a different payment method, or order value exceeds $150. Escalate to manager with order details and customer request.",
     lastUpdated: "2026-03-20T09:00:00Z",
     updatedByTopicId: "t-4",
     sourceDocId: "doc-2",
@@ -343,16 +367,7 @@ export const RULES: SOPRule[] = [
   {
     id: "rule-2",
     name: "Where Is My Order (WISMO)",
-    intent: "Order Tracking",
-    policy: "Look up order in Shopify, retrieve shipment tracking. If shipped, share tracking link and estimated delivery date. If delayed >3 days past estimate, apologize and offer to contact carrier on customer's behalf. Always provide the tracking number and carrier name in the response.",
-    exceptions: [
-      "Never promise a specific delivery date — use estimated ranges.",
-      "If tracking shows no movement for 7+ days, offer 10% discount on next order.",
-    ],
-    escalation: {
-      trigger: "Package shows delivered but customer says not received, or carrier reports package lost.",
-      action: "Escalate to manager for carrier claim initiation.",
-    },
+    content: "Look up order in Shopify, retrieve shipment tracking. If shipped, share tracking link and estimated delivery date. If delayed >3 days past estimate, apologize and offer to contact carrier on customer's behalf. Always provide the tracking number and carrier name in the response.\n\nExceptions: Never promise a specific delivery date — use estimated ranges. If tracking shows no movement for 7+ days, offer 10% discount on next order.\n\nEscalate when: Package shows delivered but customer says not received, or carrier reports package lost. Escalate to manager for carrier claim initiation.",
     lastUpdated: "2026-03-01T09:00:00Z",
     sourceDocId: "doc-1",
     tags: ["Shipping", "WISMO"],
@@ -367,21 +382,12 @@ export const RULES: SOPRule[] = [
   {
     id: "rule-3",
     name: "Damaged / Wrong Item",
-    intent: "Product Issues",
-    policy: "For items under $80, process replacement or refund (customer's choice) without requiring photo evidence. For items $80+, request photo evidence before processing. Offer free return shipping for all defective/wrong items. Acknowledge the inconvenience and express empathy before offering resolution options.",
-    exceptions: [
-      "If customer reports damage on a final-sale item, still process replacement (not refund).",
-      "For wrong-item cases, do not require return of the incorrect item if value is under $80.",
-    ],
-    escalation: {
-      trigger: "Customer claims damage on item over $200, or multiple damage claims from same customer within 30 days.",
-      action: "Escalate to manager for fraud review before processing.",
-    },
+    content: "For items under $80, process replacement or refund (customer's choice) without requiring photo evidence. For items $80+, request photo evidence before processing. Offer free return shipping for all defective/wrong items. Acknowledge the inconvenience and express empathy before offering resolution options.\n\nExceptions: If customer reports damage on a final-sale item, still process replacement (not refund). For wrong-item cases, do not require return of the incorrect item if value is under $80.\n\nEscalate when: Customer claims damage on item over $200, or multiple damage claims from same customer within 30 days. Escalate to manager for fraud review before processing.",
     lastUpdated: "2026-03-12T14:00:00Z",
     updatedByTopicId: "t-3",
     sourceDocId: "doc-1",
     tags: ["Product Issues", "Damage"],
-    actions: ["ap-1", "ap-3", "ap-7"],
+    actions: ["ap-1", "ap-3"],
     invocationCount: 89,
     avgCsat: 4.2,
     deflectionRate: 68,
@@ -393,15 +399,7 @@ export const RULES: SOPRule[] = [
   {
     id: "rule-4",
     name: "Order Cancellation",
-    intent: "Cancellations",
-    policy: "Cancel unfulfilled orders immediately with full refund. For fulfilled/shipped orders, guide customer to the return process instead. Express sympathy for the inconvenience. Confirm the cancellation with an email notification to the customer.",
-    exceptions: [
-      "Custom/personalized orders cannot be cancelled once production has started.",
-    ],
-    escalation: {
-      trigger: "Customer insists on cancelling a shipped order and refuses return process.",
-      action: "Escalate to manager with order status and customer sentiment.",
-    },
+    content: "Cancel unfulfilled orders immediately with full refund. For fulfilled/shipped orders, guide customer to the return process instead. Express sympathy for the inconvenience. Confirm the cancellation with an email notification to the customer.\n\nExceptions: Custom/personalized orders cannot be cancelled once production has started.\n\nEscalate when: Customer insists on cancelling a shipped order and refuses return process. Escalate to manager with order status and customer sentiment.",
     lastUpdated: "2026-03-01T09:00:00Z",
     sourceDocId: "doc-1",
     tags: ["Cancellations"],
@@ -416,15 +414,7 @@ export const RULES: SOPRule[] = [
   {
     id: "rule-5",
     name: "Return Shipping Cost",
-    intent: "Returns",
-    policy: "Defective/wrong items: free return shipping (company pays). Change-of-mind returns: customer pays — provide prepaid label and deduct $8.95 from refund. Clearly explain the shipping cost policy to the customer before generating the return label.",
-    exceptions: [
-      "VIP customers (3+ orders) get free return shipping on first change-of-mind return per year.",
-    ],
-    escalation: {
-      trigger: "Customer disputes the $8.95 fee or claims item is defective when evidence suggests otherwise.",
-      action: "Escalate to manager for judgment call.",
-    },
+    content: "Defective/wrong items: free return shipping (company pays). Change-of-mind returns: customer pays — provide prepaid label and deduct $8.95 from refund. Clearly explain the shipping cost policy to the customer before generating the return label.\n\nExceptions: VIP customers (3+ orders) get free return shipping on first change-of-mind return per year.\n\nEscalate when: Customer disputes the $8.95 fee or claims item is defective when evidence suggests otherwise. Escalate to manager for judgment call.",
     lastUpdated: "2026-03-20T09:00:00Z",
     updatedByTopicId: "t-7",
     sourceDocId: "doc-2",
@@ -441,15 +431,7 @@ export const RULES: SOPRule[] = [
   {
     id: "rule-6",
     name: "International Returns",
-    intent: "Returns",
-    policy: "Return shipping is customer's responsibility for international orders. Customs duties are non-refundable (outside our control). For VIP customers, offer store credit equal to the duties amount as a goodwill gesture. Provide clear instructions on how to ship the item back internationally.",
-    exceptions: [
-      "Defective/wrong items shipped internationally still qualify for free return shipping.",
-    ],
-    escalation: {
-      trigger: "Customer threatens chargeback over customs duties, or return involves items over $300.",
-      action: "Escalate to manager immediately.",
-    },
+    content: "Return shipping is customer's responsibility for international orders. Customs duties are non-refundable (outside our control). For VIP customers, offer store credit equal to the duties amount as a goodwill gesture. Provide clear instructions on how to ship the item back internationally.\n\nExceptions: Defective/wrong items shipped internationally still qualify for free return shipping.\n\nEscalate when: Customer threatens chargeback over customs duties, or return involves items over $300. Escalate to manager immediately.",
     lastUpdated: "2026-03-25T16:00:00Z",
     updatedByTopicId: "t-8",
     sourceDocId: "doc-2",
@@ -570,6 +552,7 @@ export const TOPICS: Topic[] = [
       category: "Refunds",
       evidence: ["Ticket #4521 — customer wanted refund to PayPal instead of credit card", "Ticket #4533 — customer's original card expired", "Ticket #4540 — customer wanted refund to bank account"],
       status: "pending",
+      confidence: "high",
     },
     messages: [
       { id: "m-1-1", sender: "ai", content: "I've noticed a pattern over the past 3 days: **8 customers** have requested refunds to a different payment method than the one they used for purchase.\n\nCurrently, I escalate these because I don't have a clear rule. Here's what I've observed:\n\n- 5 customers wanted refund to PayPal (paid by credit card)\n- 2 customers had expired cards\n- 1 customer wanted a bank transfer\n\nI'd like to propose a rule:", timestamp: "2026-03-26T08:00:00Z", actions: [{ label: "Accept Rule", type: "accept" }, { label: "Modify & Accept", type: "modify_accept" }, { label: "Reject", type: "reject" }] },
@@ -579,16 +562,16 @@ export const TOPICS: Topic[] = [
   {
     id: "t-2",
     type: "performance_summary",
-    title: "Weekly Performance Summary (Mar 24–30)",
+    title: "Daily Digest — Mar 30, 2026",
     status: "unread",
     createdAt: "2026-03-30T06:00:00Z",
     updatedAt: "2026-03-30T06:00:00Z",
     preview: "This week Ava handled 156 tickets with a 78.5% auto-resolution rate...",
     messages: [
-      { id: "m-2-1", sender: "ai", content: "Here's the weekly performance summary. See the structured breakdown below.", timestamp: "2026-03-30T06:00:00Z" },
+      { id: "m-2-1", sender: "ai", content: "Here's your daily update. See the structured breakdown below.", timestamp: "2026-03-30T06:00:00Z" },
     ],
-    weeklySummary: {
-      periodLabel: "Mar 24–30, 2026",
+    dailyDigest: {
+      periodLabel: "Mar 30, 2026",
       kpis: [
         { label: "Tickets Handled", value: "156", delta: "+12%", positive: true },
         { label: "Auto-Resolution", value: "78.5%", delta: "+3.2%", positive: true },
@@ -599,7 +582,7 @@ export const TOPICS: Topic[] = [
       topIntent: { name: "WISMO", resolution: "92%", volume: 64 },
       worstIntent: { name: "Return & Refund", resolution: "54%", volume: 38, ruleName: "Return & Refund Handling", ruleLink: "/playbook" },
       recommendations: [
-        { text: "Return & Refund escalations increased 15% this week. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.", linkLabel: "Edit guardrail for Process Refund", linkPath: "/config" },
+        { text: "Return & Refund escalations increased 15% yesterday. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.", linkLabel: "Edit guardrail", linkPath: "/config" },
         { text: "WISMO resolution rate is at 92%, the highest across all intents. Consider documenting this rule pattern as a template for other intents.", linkLabel: "View WISMO rule", linkPath: "/playbook" },
         { text: "3 customers rated CSAT low citing overly formal tone on live chat. Consider switching to friendly tone for the chat channel.", linkLabel: "Edit Rep tone settings", linkPath: "/config" },
       ],
@@ -692,9 +675,27 @@ export const TOPICS: Topic[] = [
       category: "Returns",
       evidence: ["Ticket #4560 — UK customer confused about duties refund", "Ticket #4567 — Canadian customer expected free return shipping"],
       status: "pending",
+      confidence: "high",
     },
     messages: [
       { id: "m-8-1", sender: "ai", content: "I've been escalating all international return requests because I'm unsure about two things:\n\n1. **Return shipping for international orders** — who pays?\n2. **Customs duties** — are these refundable?\n\nThis week alone I escalated 5 tickets for this reason. Here's my proposed rule based on observing how your team handled them:\n\n> For international returns: return shipping is customer's responsibility. Customs duties are non-refundable (we can't control this). For VIP customers, offer store credit equal to the duties amount as goodwill.\n\nDoes this match your policy?", timestamp: "2026-03-25T16:00:00Z", actions: [{ label: "Accept Rule", type: "accept" }, { label: "Modify & Accept", type: "modify_accept" }, { label: "Reject", type: "reject" }] },
+    ],
+  },
+  {
+    id: "t-question-1",
+    type: "question",
+    title: "Payment methods — Afterpay support?",
+    status: "unread",
+    createdAt: "2026-03-30T09:01:00Z",
+    updatedAt: "2026-03-30T09:01:00Z",
+    preview: "4 customers asked about Afterpay this week. Not in knowledge base.",
+    messages: [
+      {
+        id: "mq-1",
+        sender: "ai",
+        content: "4 customers asked \"Do you support Afterpay?\" this week. I couldn't find this information in your documents. Do you support Afterpay as a payment method?",
+        timestamp: "2026-03-30T09:01:00Z",
+      },
     ],
   },
 ];
@@ -702,11 +703,11 @@ export const TOPICS: Topic[] = [
 // ── Performance Data ────────────────────────────────────────
 
 export const PERFORMANCE_SUMMARY: PerformanceMetric[] = [
-  { label: "Auto-Resolution Rate", value: 68, unit: "%", trend: 4, trendLabel: "vs last week" },
-  { label: "CSAT Score", value: 4.3, unit: "/5", trend: 0.2, trendLabel: "vs last week" },
-  { label: "Sentiment Changed", value: 8.3, unit: "%", trend: -1.1, trendLabel: "vs last week" },
-  { label: "First Response Time", value: 45, unit: "s", trend: -8, trendLabel: "vs last week" },
-  { label: "Full Resolution Time", value: 750, unit: "s", trend: -130, trendLabel: "vs last week" },
+  { label: "Auto-Resolution Rate", value: 68, unit: "%", trend: 4, trendLabel: "vs previous day" },
+  { label: "CSAT Score", value: 4.3, unit: "/5", trend: 0.2, trendLabel: "vs previous day" },
+  { label: "Sentiment Changed", value: 8.3, unit: "%", trend: -1.1, trendLabel: "vs previous day" },
+  { label: "First Response Time", value: 45, unit: "s", trend: -8, trendLabel: "vs previous day" },
+  { label: "Full Resolution Time", value: 750, unit: "s", trend: -130, trendLabel: "vs previous day" },
 ];
 
 export const DAILY_METRICS: DailyMetric[] = Array.from({ length: 30 }, (_, i) => {
@@ -799,10 +800,10 @@ export interface ConversationLog {
   suggestedReply?: string;
 }
 
-export const WEEKLY_SUMMARY = {
-  weekLabel: "Mar 24 \u2013 Mar 30, 2026",
+export const DAILY_DIGEST = {
+  dayLabel: "Mar 30, 2026",
   variables: {
-    period_label: "Mar 24\u201330, 2026",
+    period_label: "Mar 30, 2026",
     rep_name: "Ava",
     total_tickets: 156,
     delta_tickets: "+12%",
@@ -824,14 +825,14 @@ export const WEEKLY_SUMMARY = {
     worst_intent_volume: 38,
     worst_intent_rule_name: "Return & Refund Handling",
     link_to_rule: "/playbook",
-    actionable_suggestion: "Return & Refund escalations increased 15% this week. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.",
-    action_link_label: "Edit guardrail for Process Refund",
+    actionable_suggestion: "Return & Refund escalations increased 15% yesterday. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.",
+    action_link_label: "Edit guardrail",
     action_link_url: "/config",
     link_to_performance: "/performance",
   },
-  summaryTemplate: `\u{1F4CA} Weekly Performance Summary \u2014 {{period_label}}\n\nThis week {{rep_name}} handled {{total_tickets}} tickets ({{delta_tickets}} vs last week).\n\nKey metrics:\n\u2022 Auto-Resolution Rate: {{resolution_rate}} ({{delta_resolution}} vs last week)\n\u2022 CSAT: {{csat_score}} ({{delta_csat}} vs last week)\n\u2022 Sentiment Changed: {{sentiment_changed_rate}} ({{delta_sentiment_changed}} vs last week)\n\u2022 First Response Time: {{first_response_time}} ({{delta_frt}} vs last week)\n\u2022 Full Resolution Time: {{full_resolution_time}} ({{delta_full_rt}} vs last week)\n\nTop performing intent:\n  {{top_intent}} \u2014 {{top_intent_resolution}} resolution rate across {{top_intent_volume}} tickets\n\nNeeds improvement:\n  {{worst_intent}} \u2014 {{worst_intent_resolution}} resolution rate across {{worst_intent_volume}} tickets\n  \u2192 Review this rule: {{worst_intent_rule_name}}\n\nSuggestion:\n  {{actionable_suggestion}}\n  \u2192 {{action_link_label}}\n\nView full performance dashboard \u2192`,
+  summaryTemplate: `\u{1F4CA} Daily Digest \u2014 {{period_label}}\n\nYesterday {{rep_name}} handled {{total_tickets}} tickets ({{delta_tickets}} vs previous day).\n\nKey metrics:\n\u2022 Auto-Resolution Rate: {{resolution_rate}} ({{delta_resolution}} vs previous day)\n\u2022 CSAT: {{csat_score}} ({{delta_csat}} vs previous day)\n\u2022 Sentiment Changed: {{sentiment_changed_rate}} ({{delta_sentiment_changed}} vs previous day)\n\u2022 First Response Time: {{first_response_time}} ({{delta_frt}} vs previous day)\n\u2022 Full Resolution Time: {{full_resolution_time}} ({{delta_full_rt}} vs previous day)\n\nTop performing intent:\n  {{top_intent}} \u2014 {{top_intent_resolution}} resolution rate across {{top_intent_volume}} tickets\n\nNeeds improvement:\n  {{worst_intent}} \u2014 {{worst_intent_resolution}} resolution rate across {{worst_intent_volume}} tickets\n  \u2192 Review this rule: {{worst_intent_rule_name}}\n\nSuggestion:\n  {{actionable_suggestion}}\n  \u2192 {{action_link_label}}\n\nView full performance dashboard \u2192`,
   recommendations: [
-    { id: "rec-1", text: "Return & Refund escalations increased 15% this week. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.", linkLabel: "Edit guardrail for Process Refund", linkPath: "/config" },
+    { id: "rec-1", text: "Return & Refund escalations increased 15% yesterday. Most escalations involve orders over $200 where the refund exceeds the guardrail limit. Consider raising the guardrail or adding a rule for high-value returns.", linkLabel: "Edit guardrail", linkPath: "/config" },
     { id: "rec-2", text: "WISMO resolution rate is at 92%, the highest across all intents. Consider documenting this rule pattern as a template for other intents.", linkLabel: "View WISMO rule", linkPath: "/playbook" },
     { id: "rec-3", text: "3 customers rated CSAT low citing overly formal tone on live chat. Consider switching to friendly tone for the chat channel.", linkLabel: "Edit Rep tone settings", linkPath: "/config" },
   ],
