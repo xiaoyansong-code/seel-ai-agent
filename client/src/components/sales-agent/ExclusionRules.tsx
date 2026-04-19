@@ -1,0 +1,305 @@
+import { useState, type KeyboardEvent } from "react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useSalesAgent } from "@/lib/sales-agent/store";
+import { COLLECTIONS, PRODUCTS } from "@/lib/sales-agent/store";
+import {
+  Callout,
+  Chip,
+  Panel,
+  SAButton,
+  SAInput,
+  Segmented,
+} from "./primitives";
+import { ProductPicker, CollectionPicker } from "./Pickers";
+
+export default function ExclusionRules() {
+  const store = useSalesAgent();
+  const [expanded, setExpanded] = useState(true);
+
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
+
+  return (
+    <Panel className="overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="text-left">
+          <p className="text-[13px] font-semibold text-neutral-900">
+            Exclusion rules
+          </p>
+          <p className="text-[11px] text-neutral-500">
+            Applied globally to every strategy output.
+          </p>
+        </div>
+        {expanded ? (
+          <ChevronDown className="w-4 h-4 text-neutral-500" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-neutral-500" />
+        )}
+      </button>
+      {expanded && (
+        <div className="border-t border-neutral-100 divide-y divide-neutral-100">
+          <ExcludedProducts onOpen={() => setProductPickerOpen(true)} />
+          <ExcludedCollections onOpen={() => setCollectionPickerOpen(true)} />
+          <ExcludedTags />
+          <OutOfStockBehavior />
+        </div>
+      )}
+
+      <ProductPicker
+        open={productPickerOpen}
+        onClose={() => setProductPickerOpen(false)}
+        initialSelected={store.exclusion.productIds}
+        title="Exclude products"
+        onConfirm={(ids) => {
+          store.updateExclusion({ productIds: ids });
+          setProductPickerOpen(false);
+        }}
+      />
+      <CollectionPicker
+        open={collectionPickerOpen}
+        onClose={() => setCollectionPickerOpen(false)}
+        initialSelected={store.exclusion.collectionIds}
+        title="Exclude collections"
+        onConfirm={(ids) => {
+          store.updateExclusion({ collectionIds: ids });
+          setCollectionPickerOpen(false);
+        }}
+      />
+    </Panel>
+  );
+}
+
+/* ── Excluded products row ─────────────────────────────── */
+function ExcludedProducts({ onOpen }: { onOpen: () => void }) {
+  const store = useSalesAgent();
+  const items = store.exclusion.productIds
+    .map((id) => PRODUCTS.find((p) => p.id === id))
+    .filter(Boolean);
+
+  return (
+    <RuleRow
+      title="Excluded products"
+      hint="Never surface these, regardless of strategy."
+      action={
+        <SAButton variant="secondary" size="sm" onClick={onOpen}>
+          <Plus className="w-3 h-3" />
+          Add product
+        </SAButton>
+      }
+    >
+      {items.length === 0 ? (
+        <p className="text-[12px] text-neutral-500">No excluded products.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {items.map(
+            (p) =>
+              p && (
+                <Chip
+                  key={p.id}
+                  onRemove={() =>
+                    store.updateExclusion({
+                      productIds: store.exclusion.productIds.filter(
+                        (id) => id !== p.id,
+                      ),
+                    })
+                  }
+                >
+                  {p.title}
+                </Chip>
+              ),
+          )}
+        </div>
+      )}
+    </RuleRow>
+  );
+}
+
+/* ── Excluded collections row ──────────────────────────── */
+function ExcludedCollections({ onOpen }: { onOpen: () => void }) {
+  const store = useSalesAgent();
+  const items = store.exclusion.collectionIds
+    .map((id) => COLLECTIONS.find((c) => c.id === id))
+    .filter(Boolean);
+
+  return (
+    <RuleRow
+      title="Excluded collections"
+      hint="Exclude everything in these collections."
+      action={
+        <SAButton variant="secondary" size="sm" onClick={onOpen}>
+          <Plus className="w-3 h-3" />
+          Add collection
+        </SAButton>
+      }
+    >
+      {items.length === 0 ? (
+        <p className="text-[12px] text-neutral-500">No excluded collections.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {items.map(
+            (c) =>
+              c && (
+                <Chip
+                  key={c.id}
+                  onRemove={() =>
+                    store.updateExclusion({
+                      collectionIds: store.exclusion.collectionIds.filter(
+                        (id) => id !== c.id,
+                      ),
+                    })
+                  }
+                >
+                  {c.title}
+                </Chip>
+              ),
+          )}
+        </div>
+      )}
+    </RuleRow>
+  );
+}
+
+/* ── Excluded tags row (inline input) ─────────────────── */
+function ExcludedTags() {
+  const store = useSalesAgent();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+
+  const submit = () => {
+    const t = val.trim();
+    if (!t) {
+      setEditing(false);
+      setVal("");
+      return;
+    }
+    const exists = store.exclusion.tags.some(
+      (x) => x.toLowerCase() === t.toLowerCase(),
+    );
+    if (!exists) {
+      store.updateExclusion({ tags: [...store.exclusion.tags, t] });
+    }
+    setVal("");
+    setEditing(false);
+  };
+
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setVal("");
+      setEditing(false);
+    }
+  };
+
+  return (
+    <RuleRow
+      title="Excluded tags"
+      hint="Case-insensitive exact match. Enter to add, Esc to cancel."
+      action={
+        !editing && (
+          <SAButton
+            variant="secondary"
+            size="sm"
+            onClick={() => setEditing(true)}
+          >
+            <Plus className="w-3 h-3" />
+            Add tag
+          </SAButton>
+        )
+      }
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        {store.exclusion.tags.length === 0 && !editing && (
+          <p className="text-[12px] text-neutral-500">No excluded tags.</p>
+        )}
+        {store.exclusion.tags.map((t) => (
+          <Chip
+            key={t}
+            onRemove={() =>
+              store.updateExclusion({
+                tags: store.exclusion.tags.filter((x) => x !== t),
+              })
+            }
+          >
+            {t}
+          </Chip>
+        ))}
+        {editing && (
+          <SAInput
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            onKeyDown={onKey}
+            onBlur={submit}
+            autoFocus
+            placeholder="e.g. giftcard"
+            className="h-7 w-40"
+          />
+        )}
+      </div>
+    </RuleRow>
+  );
+}
+
+/* ── OOS behavior row ──────────────────────────────────── */
+function OutOfStockBehavior() {
+  const store = useSalesAgent();
+  const v = store.exclusion.outOfStockBehavior;
+  return (
+    <RuleRow
+      title="Out-of-stock products"
+      hint="Whether OOS products may appear in recommendations."
+      action={
+        <Segmented
+          value={v}
+          onChange={(val) =>
+            store.updateExclusion({ outOfStockBehavior: val })
+          }
+          options={[
+            { value: "hidden", label: "Hidden" },
+            { value: "shown", label: "Shown" },
+          ]}
+          size="sm"
+        />
+      }
+    >
+      {v === "shown" && (
+        <Callout tone="warn">
+          OOS products will be surfaced. Customers may see items they can't buy.
+        </Callout>
+      )}
+    </RuleRow>
+  );
+}
+
+/* ── Row container ─────────────────────────────────────── */
+function RuleRow({
+  title,
+  hint,
+  action,
+  children,
+}: {
+  title: string;
+  hint: string;
+  action: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("px-4 py-3")}>
+      <div className="flex items-start justify-between gap-4 mb-2">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-neutral-900">{title}</p>
+          <p className="text-[11px] text-neutral-500">{hint}</p>
+        </div>
+        <div className="shrink-0">{action}</div>
+      </div>
+      {children}
+    </div>
+  );
+}

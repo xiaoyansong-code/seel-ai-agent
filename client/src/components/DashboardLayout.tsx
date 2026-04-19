@@ -16,6 +16,9 @@ import {
   Bot,
   LayoutGrid,
   Bell,
+  Headphones,
+  Sparkles,
+  UserRound,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -35,10 +38,13 @@ const mainNav: NavItem[] = [
   { label: "Integrations", href: "/integrations", icon: Puzzle },
   { label: "Reviews", href: "/reviews-placeholder", icon: Star, disabled: true },
   { label: "AI support", href: "/", icon: Bot },
+  { label: "Support Agent", href: "/support-agent-placeholder", icon: Headphones, disabled: true },
+  { label: "Sales Agent", href: "/sales-agent", icon: Sparkles },
 ];
 
 const customizeNav: NavItem[] = [
   { label: "Widgets", href: "/widgets-placeholder", icon: LayoutGrid, disabled: true },
+  { label: "Customer Portal", href: "/customer-portal-placeholder", icon: UserRound, disabled: true },
   { label: "Notifications", href: "/notifications-placeholder", icon: Bell, disabled: true },
 ];
 

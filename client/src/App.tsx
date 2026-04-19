@@ -11,6 +11,8 @@ import PlaybookPage from "./pages/PlaybookPage";
 import ZendeskApp from "./pages/ZendeskApp";
 import CommunicationPage from "./pages/CommunicationPage";
 import IntegrationsPage from "./pages/IntegrationsPage";
+import SalesAgentPage from "./pages/SalesAgentPage";
+import { SalesAgentProvider } from "./lib/sales-agent/store";
 
 function Router() {
   return (
@@ -24,6 +26,10 @@ function Router() {
 
       {/* Global pages */}
       <Route path="/integrations" component={IntegrationsPage} />
+
+      {/* Sales Agent module */}
+      <Route path="/sales-agent" component={SalesAgentPage} />
+      <Route path="/sales-agent/:tab" component={SalesAgentPage} />
 
       {/* Legacy redirects */}
       <Route path="/messages">
@@ -55,12 +61,14 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <StoreProvider>
-          <TooltipProvider>
-            <Toaster />
-            <DashboardLayout>
-              <Router />
-            </DashboardLayout>
-          </TooltipProvider>
+          <SalesAgentProvider>
+            <TooltipProvider>
+              <Toaster />
+              <DashboardLayout>
+                <Router />
+              </DashboardLayout>
+            </TooltipProvider>
+          </SalesAgentProvider>
         </StoreProvider>
       </ThemeProvider>
     </ErrorBoundary>
