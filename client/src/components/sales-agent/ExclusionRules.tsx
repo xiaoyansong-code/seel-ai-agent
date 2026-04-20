@@ -1,11 +1,12 @@
 import { useState, type KeyboardEvent } from "react";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSalesAgent } from "@/lib/sales-agent/store";
 import { COLLECTIONS, PRODUCTS } from "@/lib/sales-agent/store";
 import {
   Callout,
   Chip,
+  InfoTip,
   Panel,
   SAButton,
   SAInput,
@@ -13,42 +14,36 @@ import {
 } from "./primitives";
 import { ProductPicker, CollectionPicker } from "./Pickers";
 
-export default function ExclusionRules() {
+interface Props {
+  /** Render as embedded sub-group (inside Own Product Strategies) */
+  embedded?: boolean;
+}
+
+export default function ExclusionRules({ embedded = false }: Props) {
   const store = useSalesAgent();
-  const [expanded, setExpanded] = useState(true);
 
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
 
   return (
-    <Panel className="overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3"
-      >
-        <div className="text-left">
-          <p className="text-[13px] font-semibold text-neutral-900">
-            Exclusion rules
-          </p>
-          <p className="text-[11px] text-neutral-500">
-            Applied globally to every strategy output.
-          </p>
-        </div>
-        {expanded ? (
-          <ChevronDown className="w-4 h-4 text-neutral-500" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-neutral-500" />
-        )}
-      </button>
-      {expanded && (
-        <div className="border-t border-neutral-100 divide-y divide-neutral-100">
+    <div className={cn(embedded && "mt-6")}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <h3 className="text-[13px] font-semibold text-neutral-900">
+          Exclusion rules
+        </h3>
+        <InfoTip>
+          Applied globally to every Own Product strategy output — these
+          products, collections, or tags never surface in recommendations.
+        </InfoTip>
+      </div>
+      <Panel className="overflow-hidden">
+        <div className="divide-y divide-neutral-100">
           <ExcludedProducts onOpen={() => setProductPickerOpen(true)} />
           <ExcludedCollections onOpen={() => setCollectionPickerOpen(true)} />
           <ExcludedTags />
           <OutOfStockBehavior />
         </div>
-      )}
+      </Panel>
 
       <ProductPicker
         open={productPickerOpen}
@@ -70,7 +65,7 @@ export default function ExclusionRules() {
           setCollectionPickerOpen(false);
         }}
       />
-    </Panel>
+    </div>
   );
 }
 
@@ -84,7 +79,7 @@ function ExcludedProducts({ onOpen }: { onOpen: () => void }) {
   return (
     <RuleRow
       title="Excluded products"
-      hint="Never surface these, regardless of strategy."
+      tip="Never surface these, regardless of strategy."
       action={
         <SAButton variant="secondary" size="sm" onClick={onOpen}>
           <Plus className="w-3 h-3" />
@@ -129,7 +124,7 @@ function ExcludedCollections({ onOpen }: { onOpen: () => void }) {
   return (
     <RuleRow
       title="Excluded collections"
-      hint="Exclude everything in these collections."
+      tip="Exclude everything in these collections."
       action={
         <SAButton variant="secondary" size="sm" onClick={onOpen}>
           <Plus className="w-3 h-3" />
@@ -201,7 +196,7 @@ function ExcludedTags() {
   return (
     <RuleRow
       title="Excluded tags"
-      hint="Case-insensitive exact match. Enter to add, Esc to cancel."
+      tip="Case-insensitive exact match. Press Enter to add, Esc to cancel."
       action={
         !editing && (
           <SAButton
@@ -254,7 +249,7 @@ function OutOfStockBehavior() {
   return (
     <RuleRow
       title="Out-of-stock products"
-      hint="Whether OOS products may appear in recommendations."
+      tip="Whether OOS products may appear in recommendations."
       action={
         <Segmented
           value={v}
@@ -281,21 +276,21 @@ function OutOfStockBehavior() {
 /* ── Row container ─────────────────────────────────────── */
 function RuleRow({
   title,
-  hint,
+  tip,
   action,
   children,
 }: {
   title: string;
-  hint: string;
+  tip: string;
   action: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className={cn("px-4 py-3")}>
       <div className="flex items-start justify-between gap-4 mb-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex items-center gap-1">
           <p className="text-[13px] font-medium text-neutral-900">{title}</p>
-          <p className="text-[11px] text-neutral-500">{hint}</p>
+          <InfoTip>{tip}</InfoTip>
         </div>
         <div className="shrink-0">{action}</div>
       </div>

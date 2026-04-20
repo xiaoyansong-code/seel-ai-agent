@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Callout,
+  Drawer,
   Field,
   Modal,
   Panel,
@@ -105,7 +106,7 @@ function draftToStrategy(d: DraftCommon, fallbackId: string): Strategy {
   };
 }
 
-export default function StrategyModal({ open, onClose, editingId }: Props) {
+export default function StrategyDrawer({ open, onClose, editingId }: Props) {
   const store = useSalesAgent();
   const existing = editingId
     ? store.strategies.find((s) => s.id === editingId) ?? null
@@ -163,11 +164,11 @@ export default function StrategyModal({ open, onClose, editingId }: Props) {
 
   return (
     <>
-      <Modal
-        open={open && !confirmDeleteOpen}
+      <Drawer
+        open={open}
         onClose={onClose}
         title={existing ? "Edit strategy" : "New strategy"}
-        width="max-w-[620px]"
+        width="w-[560px]"
         footer={
           <>
             {existing && (
@@ -188,7 +189,7 @@ export default function StrategyModal({ open, onClose, editingId }: Props) {
           </>
         }
       >
-        <div className="space-y-4">
+        <div className="p-5 space-y-4">
           {existing && isReferenced && (
             <Callout tone="warn" title="In use">
               This strategy is currently used by:{" "}
@@ -378,7 +379,7 @@ export default function StrategyModal({ open, onClose, editingId }: Props) {
             </div>
           )}
         </div>
-      </Modal>
+      </Drawer>
 
       {/* Delete confirmation */}
       {existing && (

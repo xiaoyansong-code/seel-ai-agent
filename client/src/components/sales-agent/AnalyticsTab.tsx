@@ -1,20 +1,23 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Download } from "lucide-react";
+import { ChevronDown, Download, Calendar } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
   Legend,
+  Cell,
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { useSalesAgent } from "@/lib/sales-agent/store";
 import { TOUCHPOINTS, touchpointLabel } from "@/lib/sales-agent/constants";
 import type { TouchpointId } from "@/lib/sales-agent/types";
-import { InfoTip, Panel, SAButton, SASelect } from "./primitives";
+import { InfoTip, Panel, SAButton, SAInput } from "./primitives";
 
 type TrendKey = "total" | TouchpointId;
 
@@ -27,7 +30,14 @@ const TREND_COLORS: Record<TrendKey, string> = {
   thank_you_page: "#ef4444",
 };
 
-type Range = "7d" | "30d" | "90d";
+type RangePreset = "7d" | "30d" | "90d" | "custom";
+
+interface Range {
+  preset: RangePreset;
+  /** YYYY-MM-DD; only meaningful when preset is "custom". */
+  start?: string;
+  end?: string;
+}
 
 /* ── Metric copy (used both in KPI and table header tooltips) ── */
 const METRIC_COPY: Record<
@@ -62,7 +72,7 @@ const METRIC_COPY: Record<
 
 export default function AnalyticsTab() {
   const store = useSalesAgent();
-  const [range, setRange] = useState<Range>("30d");
+  const [range, setRange] = useState<Range>({ preset: "30d" });
   const [selected, setSelected] = useState<TouchpointId[]>(
     TOUCHPOINTS.map((t) => t.id),
   );
@@ -105,7 +115,7 @@ export default function AnalyticsTab() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `sales-agent-${range}.csv`;
+    a.download = `sales-agent-${range.preset}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -116,14 +126,7 @@ export default function AnalyticsTab() {
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
           <label className="text-[12px] text-neutral-500">Time range</label>
-          <SASelect
-            value={range}
-            onChange={(e) => setRange(e.target.value as Range)}
-          >
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
-          </SASelect>
+          <DateRangePicker value={range} onChange={setRange} />
         </div>
         <TouchpointFilter selected={selected} onChange={setSelected} />
         <div className="ml-auto">
@@ -168,35 +171,46 @@ export default function AnalyticsTab() {
         />
       </div>
 
-      {/* Chart: Revenue Trend with per-touchpoint toggles */}
-      <Panel className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <p className="text-[14px] font-semibold text-neutral-900">
-                Revenue trend
-              </p>
-              <InfoTip>
-                Attributed revenue by day, over the selected window. Toggle
-                touchpoints to compare their contribution on the same axis.
-              </InfoTip>
-            </div>
-            <p className="text-[12px] text-neutral-500 mt-0.5">
-              Combined Revenue Trend and Revenue by Touchpoint in one view.
+      {/* Charts row: Revenue Trend + Revenue by Touchpoint */}
+      <div className="grid grid-cols-2 gap-3">
+        <Panel className="p-5">
+          <div className="flex items-center gap-1.5">
+            <p className="text-[14px] font-semibold text-neutral-900">
+              Revenue trend
             </p>
+            <InfoTip>
+              Attributed revenue by day. Toggle touchpoints to compare their
+              contribution on the same axis.
+            </InfoTip>
           </div>
-        </div>
-        {isEmpty ? (
-          <div className="h-[260px] mt-3">
-            <EmptyChart />
+          {isEmpty ? (
+            <div className="h-[300px] mt-3">
+              <EmptyChart />
+            </div>
+          ) : (
+            <RevenueTrendChart data={data} selected={selected} />
+          )}
+        </Panel>
+
+        <Panel className="p-5">
+          <div className="flex items-center gap-1.5">
+            <p className="text-[14px] font-semibold text-neutral-900">
+              Revenue by touchpoint
+            </p>
+            <InfoTip>
+              Attributed revenue contribution per touchpoint over the selected
+              window.
+            </InfoTip>
           </div>
-        ) : (
-          <RevenueTrendChart
-            data={data}
-            selected={selected}
-          />
-        )}
-      </Panel>
+          {isEmpty ? (
+            <div className="h-[300px] mt-3">
+              <EmptyChart />
+            </div>
+          ) : (
+            <RevenueByTouchpointChart data={data} selected={selected} />
+          )}
+        </Panel>
+      </div>
 
       {/* Detail table */}
       <Panel className="overflow-hidden">
@@ -286,6 +300,120 @@ export default function AnalyticsTab() {
           </div>
         )}
       </Panel>
+    </div>
+  );
+}
+
+/* ── Date range picker with custom range support ──────── */
+function DateRangePicker({
+  value,
+  onChange,
+}: {
+  value: Range;
+  onChange: (r: Range) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const label =
+    value.preset === "7d"
+      ? "Last 7 days"
+      : value.preset === "30d"
+        ? "Last 30 days"
+        : value.preset === "90d"
+          ? "Last 90 days"
+          : value.start && value.end
+            ? `${value.start} → ${value.end}`
+            : "Custom";
+
+  const presets: { key: RangePreset; label: string }[] = [
+    { key: "7d", label: "Last 7 days" },
+    { key: "30d", label: "Last 30 days" },
+    { key: "90d", label: "Last 90 days" },
+  ];
+
+  return (
+    <div className="relative">
+      <SAButton variant="secondary" size="md" onClick={() => setOpen((v) => !v)}>
+        <Calendar className="w-3 h-3" />
+        {label}
+        <ChevronDown className="w-3 h-3 opacity-60" />
+      </SAButton>
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="absolute z-20 mt-1 left-0 w-[280px] bg-white border border-neutral-200 rounded-md shadow-[0_10px_24px_-8px_rgba(0,0,0,0.18)] py-1">
+            {presets.map((p) => {
+              const active = value.preset === p.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => {
+                    onChange({ preset: p.key });
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 text-[13px] hover:bg-neutral-50",
+                    active && "text-primary font-medium",
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+            <div className="border-t border-neutral-100 my-1" />
+            <div className="px-3 py-2">
+              <p className="text-[11px] font-medium text-neutral-500 uppercase tracking-[0.06em] mb-1.5">
+                Custom range
+              </p>
+              <div className="space-y-1.5">
+                <div>
+                  <label className="text-[11px] text-neutral-500">From</label>
+                  <SAInput
+                    type="date"
+                    value={value.start ?? ""}
+                    onChange={(e) =>
+                      onChange({
+                        preset: "custom",
+                        start: e.target.value,
+                        end: value.end,
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500">To</label>
+                  <SAInput
+                    type="date"
+                    value={value.end ?? ""}
+                    onChange={(e) =>
+                      onChange({
+                        preset: "custom",
+                        start: value.start,
+                        end: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-end pt-1">
+                  <SAButton
+                    variant="primary"
+                    size="sm"
+                    disabled={!value.start || !value.end}
+                    onClick={() => setOpen(false)}
+                  >
+                    Apply
+                  </SAButton>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -426,7 +554,6 @@ function RevenueTrendChart({
     () => new Set<TrendKey>(["total"]),
   );
 
-  // Per-touchpoint share of total revenue → scales daily series proportionally.
   const shareByTp = useMemo(() => {
     const map = new Map<TouchpointId, number>();
     const total = data.byTouchpoint.reduce((s, r) => s + r.revenue, 0);
@@ -436,7 +563,6 @@ function RevenueTrendChart({
     return map;
   }, [data.byTouchpoint]);
 
-  // Daily rows keyed by touchpoint + total, for multi-line chart.
   const chartData = useMemo(() => {
     return data.daily.map((d) => {
       const row: Record<string, number | string> = {
@@ -451,13 +577,6 @@ function RevenueTrendChart({
     });
   }, [data.daily, shareByTp]);
 
-  // Revenue totals per touchpoint for the toggle chips.
-  const totalsByTp = useMemo(() => {
-    const map = new Map<TouchpointId, number>();
-    data.byTouchpoint.forEach((r) => map.set(r.touchpointId, r.revenue));
-    return map;
-  }, [data.byTouchpoint]);
-
   const toggleKey = (k: TrendKey) => {
     setActiveKeys((prev) => {
       const next = new Set(prev);
@@ -468,37 +587,30 @@ function RevenueTrendChart({
     });
   };
 
-  // Visible touchpoints filtered by the top-level selector.
   const visibleTps = TOUCHPOINTS.filter((t) => selected.includes(t.id));
 
   return (
     <>
-      {/* Toggle chips */}
+      {/* Toggle chips integrated with chart — series color + name only */}
       <div className="flex items-center gap-1.5 flex-wrap mt-3">
-        <TrendChip
-          label="All touchpoints"
+        <TrendToggle
+          label="All"
           active={activeKeys.has("total")}
           color={TREND_COLORS.total}
-          value={formatCurrency(data.revenue)}
           onClick={() => toggleKey("total")}
         />
-        {visibleTps.map((t) => {
-          const active = activeKeys.has(t.id);
-          const revenue = totalsByTp.get(t.id) ?? 0;
-          return (
-            <TrendChip
-              key={t.id}
-              label={touchpointLabel(t.id)}
-              active={active}
-              color={TREND_COLORS[t.id]}
-              value={formatCurrency(revenue)}
-              onClick={() => toggleKey(t.id)}
-            />
-          );
-        })}
+        {visibleTps.map((t) => (
+          <TrendToggle
+            key={t.id}
+            label={touchpointLabel(t.id)}
+            active={activeKeys.has(t.id)}
+            color={TREND_COLORS[t.id]}
+            onClick={() => toggleKey(t.id)}
+          />
+        ))}
       </div>
 
-      <div className="h-[280px] mt-4">
+      <div className="h-[260px] mt-3">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={chartData}
@@ -576,22 +688,94 @@ function RevenueTrendChart({
   );
 }
 
+/* ── Revenue by touchpoint horizontal bar chart ────────── */
+function RevenueByTouchpointChart({
+  data,
+  selected,
+}: {
+  data: import("@/lib/sales-agent/types").AnalyticsData;
+  selected: TouchpointId[];
+}) {
+  const chartData = useMemo(() => {
+    return data.byTouchpoint
+      .filter((r) => selected.includes(r.touchpointId))
+      .map((r) => ({
+        id: r.touchpointId,
+        name: touchpointLabel(r.touchpointId),
+        revenue: r.revenue,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [data.byTouchpoint, selected]);
+
+  return (
+    <div className="h-[300px] mt-3">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={chartData}
+          layout="vertical"
+          margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#e5e5e5"
+            horizontal={false}
+          />
+          <XAxis
+            type="number"
+            tick={{ fontSize: 11, fill: "#737373" }}
+            tickLine={false}
+            axisLine={{ stroke: "#e5e5e5" }}
+            tickFormatter={(v) => `$${v}`}
+          />
+          <YAxis
+            type="category"
+            dataKey="name"
+            tick={{ fontSize: 11, fill: "#525252" }}
+            tickLine={false}
+            axisLine={false}
+            width={120}
+          />
+          <Tooltip
+            contentStyle={{
+              background: "#111",
+              border: "none",
+              borderRadius: 6,
+              color: "#fff",
+              fontSize: 12,
+              padding: "6px 8px",
+            }}
+            labelStyle={{ color: "#a3a3a3" }}
+            cursor={{ fill: "rgba(0,0,0,0.03)" }}
+            formatter={(v: number) => [formatCurrency(v), "Revenue"]}
+          />
+          <Bar dataKey="revenue" radius={[0, 3, 3, 0]}>
+            {chartData.map((row) => (
+              <Cell
+                key={row.id}
+                fill={TREND_COLORS[row.id as TouchpointId] ?? "var(--primary)"}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function trendKeyLabel(k: TrendKey): string {
   if (k === "total") return "All touchpoints";
   return touchpointLabel(k);
 }
 
-function TrendChip({
+function TrendToggle({
   label,
   active,
   color,
-  value,
   onClick,
 }: {
   label: string;
   active: boolean;
   color: string;
-  value: string;
   onClick: () => void;
 }) {
   return (
@@ -613,7 +797,6 @@ function TrendChip({
         }}
       />
       <span className="font-medium">{label}</span>
-      <span className="text-neutral-400 tabular-nums">{value}</span>
     </button>
   );
 }
@@ -621,7 +804,7 @@ function TrendChip({
 /* ── Empty chart ───────────────────────────────────────── */
 function EmptyChart() {
   return (
-    <div className="h-[180px] flex items-center justify-center">
+    <div className="h-full flex items-center justify-center">
       <p className="text-[12px] text-neutral-400">No data yet</p>
     </div>
   );
