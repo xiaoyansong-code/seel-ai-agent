@@ -46,6 +46,7 @@ export const ACTIVE_STRATEGIES: Strategy[] = [
     name: "Top Sellers · 30d",
     type: "best_sellers",
     timeWindow: 30,
+    sortBy: "revenue",
     maxProducts: 5,
     updatedAt: "2026-04-12T10:24:00Z",
   },

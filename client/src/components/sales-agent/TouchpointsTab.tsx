@@ -120,6 +120,10 @@ const TOUCHPOINT_ICON: Record<TouchpointId, typeof Search> = {
   wfp_email: Mail,
 };
 
+type TypeFilter = "all" | "search" | "exclusive";
+type StatusFilter = "all" | "on" | "off";
+type StageFilter = "all" | "pre" | "post";
+
 export default function TouchpointsTab() {
   const store = useSalesAgent();
   const visible = useMemo(
@@ -127,6 +131,11 @@ export default function TouchpointsTab() {
       TOUCHPOINTS.filter((t) => store.platform === "shopify" || !t.shopifyOnly),
     [store.platform],
   );
+
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+
   const [selectedId, setSelectedId] = useState<TouchpointId>(
     visible[0]?.id ?? "seel_rc",
   );
@@ -138,7 +147,31 @@ export default function TouchpointsTab() {
     onConfirm: () => void;
   } | null>(null);
 
-  const selected = visible.find((t) => t.id === selectedId) ?? visible[0];
+  const filtered = useMemo(() => {
+    return visible.filter((t) => {
+      // Type filter
+      if (typeFilter === "search" && !t.tags?.includes("ai_powered")) return false;
+      if (typeFilter === "exclusive" && !t.tags?.includes("seel_exclusive"))
+        return false;
+      // Stage filter (collapse live_chat into pre)
+      if (stageFilter === "pre" && t.stage === "post_purchase") return false;
+      if (stageFilter === "post" && t.stage !== "post_purchase") return false;
+      // Status filter — On requires enabled AND dependency met.
+      const tp = store.touchpoints.find((x) => x.id === t.id);
+      const depMet =
+        !t.dependencyKey || store.dependency[t.dependencyKey] === true;
+      const isOn = !!tp?.enabled && depMet;
+      if (statusFilter === "on" && !isOn) return false;
+      if (statusFilter === "off" && isOn) return false;
+      return true;
+    });
+  }, [visible, typeFilter, statusFilter, stageFilter, store.touchpoints, store.dependency]);
+
+  const selected =
+    filtered.find((t) => t.id === selectedId) ??
+    filtered[0] ??
+    visible.find((t) => t.id === selectedId) ??
+    visible[0];
 
   const grouped = useMemo(() => {
     const g: Record<Stage, TouchpointMeta[]> = {
@@ -146,39 +179,57 @@ export default function TouchpointsTab() {
       live_chat: [],
       post_purchase: [],
     };
-    visible.forEach((t) => g[t.stage].push(t));
+    filtered.forEach((t) => g[t.stage].push(t));
     return g;
-  }, [visible]);
+  }, [filtered]);
 
   return (
     <div className="flex h-full min-h-0">
       {/* Left column: touchpoint cards */}
       <div className="w-[340px] shrink-0 border-r border-[#E0E0E0] bg-[#F9FAFB] overflow-auto">
-        <div className="px-5 py-6 space-y-6">
-          {(Object.keys(grouped) as Stage[]).map((stage) => {
-            if (grouped[stage].length === 0) return null;
-            return (
-              <div key={stage}>
-                <p className="text-[12px] font-semibold text-[#8C8C8C] uppercase tracking-[0.08em] mb-2 px-0.5">
-                  {STAGE_LABEL[stage]}
-                </p>
-                <div className="space-y-2">
-                  {grouped[stage].map((t) => (
-                    <TouchpointCard
-                      key={t.id}
-                      meta={t}
-                      active={selected?.id === t.id}
-                      onClick={() => setSelectedId(t.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div className="px-5 py-5 space-y-5">
+          <TouchpointFilters
+            typeFilter={typeFilter}
+            statusFilter={statusFilter}
+            stageFilter={stageFilter}
+            onTypeChange={setTypeFilter}
+            onStatusChange={setStatusFilter}
+            onStageChange={setStageFilter}
+          />
+
+          {filtered.length === 0 ? (
+            <div className="text-[12px] text-[#8C8C8C] bg-white border border-[#E4E4E0] rounded-lg px-3 py-4 text-center">
+              No touchpoints match these filters.
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {(Object.keys(grouped) as Stage[]).map((stage) => {
+                if (grouped[stage].length === 0) return null;
+                return (
+                  <div key={stage}>
+                    <p className="text-[12px] font-semibold text-[#8C8C8C] uppercase tracking-[0.08em] mb-2 px-0.5">
+                      {STAGE_LABEL[stage]}
+                    </p>
+                    <div className="space-y-2">
+                      {grouped[stage].map((t) => (
+                        <TouchpointCard
+                          key={t.id}
+                          meta={t}
+                          active={selected?.id === t.id}
+                          onClick={() => setSelectedId(t.id)}
+                          onRequestConfirm={(c) => setConfirm(c)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right column: detail with stacked sections */}
+      {/* Right column: detail with Setting / Stats tabs */}
       <div className="flex-1 min-w-0 overflow-auto">
         <div className="max-w-[760px] px-8 py-8">
           {selected && (
@@ -221,20 +272,138 @@ export default function TouchpointsTab() {
   );
 }
 
+/* ── Filter chips at top of touchpoint list ───────────────── */
+function TouchpointFilters({
+  typeFilter,
+  statusFilter,
+  stageFilter,
+  onTypeChange,
+  onStatusChange,
+  onStageChange,
+}: {
+  typeFilter: TypeFilter;
+  statusFilter: StatusFilter;
+  stageFilter: StageFilter;
+  onTypeChange: (v: TypeFilter) => void;
+  onStatusChange: (v: StatusFilter) => void;
+  onStageChange: (v: StageFilter) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <FilterRow label="Type">
+        <TagFilter<TypeFilter>
+          value={typeFilter}
+          onChange={onTypeChange}
+          options={[
+            { value: "all", label: "All" },
+            { value: "search", label: "Search" },
+            { value: "exclusive", label: "Exclusive" },
+          ]}
+        />
+      </FilterRow>
+      <FilterRow label="Status">
+        <TagFilter<StatusFilter>
+          value={statusFilter}
+          onChange={onStatusChange}
+          options={[
+            { value: "all", label: "All" },
+            { value: "on", label: "On" },
+            { value: "off", label: "Off" },
+          ]}
+        />
+      </FilterRow>
+      <FilterRow label="Stage">
+        <TagFilter<StageFilter>
+          value={stageFilter}
+          onChange={onStageChange}
+          options={[
+            { value: "all", label: "All" },
+            { value: "pre", label: "Pre-purchase" },
+            { value: "post", label: "Post-purchase" },
+          ]}
+        />
+      </FilterRow>
+    </div>
+  );
+}
+
+function FilterRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold text-[#8C8C8C] uppercase tracking-[0.08em] mb-1.5 px-0.5">
+        {label}
+      </p>
+      <div className="-mx-0.5 overflow-x-auto">{children}</div>
+    </div>
+  );
+}
+
+function TagFilter<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+}) {
+  return (
+    <div className="flex items-center gap-1.5 px-0.5 min-w-max">
+      {options.map((o) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "inline-flex items-center h-7 px-2.5 rounded-full text-[12px] font-medium whitespace-nowrap transition-colors border",
+              active
+                ? "bg-[#1A1A1A] text-white border-[#1A1A1A]"
+                : "bg-white text-[#52525B] border-[#E4E4E0] hover:border-[#1A1A1A] hover:text-[#1A1A1A]",
+            )}
+            aria-pressed={active}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Touchpoint card ──────────────────────────────────── */
 function TouchpointCard({
   meta,
   active,
   onClick,
+  onRequestConfirm,
 }: {
   meta: TouchpointMeta;
   active: boolean;
   onClick: () => void;
+  onRequestConfirm: (c: {
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }) => void;
 }) {
   const store = useSalesAgent();
   const tp = store.touchpoints.find((t) => t.id === meta.id);
   const depMet =
     !meta.dependencyKey || store.dependency[meta.dependencyKey] === true;
+  const shopifyPlusMet = !meta.requiresShopifyPlus || store.dependency.shopifyPlus;
+  const needsStrategy = meta.picksStrategy && !tp?.strategyId;
+  // Toggle is disabled if any required prereq is not met, or the widget is preview-only.
+  const toggleDisabled =
+    !depMet || !shopifyPlusMet || meta.previewOnly || needsStrategy;
+
   const Icon = TOUCHPOINT_ICON[meta.id];
 
   const isOn = !!tp?.enabled && depMet;
@@ -243,6 +412,19 @@ function TouchpointCard({
 
   // Only show Seel-exclusive tag in the list
   const showTag = meta.tags?.includes("seel_exclusive");
+
+  const handleToggle = (v: boolean) => {
+    if (toggleDisabled) return;
+    if (v) {
+      onRequestConfirm({
+        title: `Turn on ${meta.label}?`,
+        body: `Once enabled, Sales Agent recommendations will be served on ${meta.label} in production. You can switch it off at any time.`,
+        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
+      });
+    } else {
+      store.updateTouchpoint(meta.id, { enabled: false });
+    }
+  };
 
   return (
     <button
@@ -266,17 +448,39 @@ function TouchpointCard({
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          {/* Title row: title + Seel-exclusive tag inline */}
-          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-            <p className="text-[14px] font-semibold text-[#202223] truncate">
-              {meta.label}
-            </p>
-            {showTag && <TouchpointTagChip tag="seel_exclusive" />}
-            {meta.previewOnly && (
-              <span className="text-[12px] text-[#5C5F62] bg-[#E7EBF5] border border-[#DADEE9] px-1.5 py-[1px] rounded shrink-0">
-                preview
-              </span>
-            )}
+          {/* Title row: title + Seel-exclusive tag inline + inline toggle */}
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+              <p className="text-[14px] font-semibold text-[#202223] truncate">
+                {meta.label}
+              </p>
+              {showTag && <TouchpointTagChip tag="seel_exclusive" />}
+              {meta.previewOnly && (
+                <span className="text-[12px] text-[#5C5F62] bg-[#E7EBF5] border border-[#DADEE9] px-1.5 py-[1px] rounded shrink-0">
+                  preview
+                </span>
+              )}
+            </div>
+            <span
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0"
+              title={
+                toggleDisabled
+                  ? needsStrategy
+                    ? "Select a strategy before enabling."
+                    : meta.previewOnly
+                      ? "Available in V2."
+                      : "Dependency not met."
+                  : undefined
+              }
+            >
+              <SAToggle
+                checked={isOn}
+                disabled={toggleDisabled}
+                onChange={handleToggle}
+                ariaLabel={`Enable ${meta.label}`}
+              />
+            </span>
           </div>
           <p className="text-[12px] text-[#6B7280] leading-snug line-clamp-2">
             {meta.description}
@@ -318,7 +522,9 @@ function TouchpointCard({
   );
 }
 
-/* ── Detail container — flat, two stacked sections ──────── */
+/* ── Detail container — tabs: Setting / Stats ──────────── */
+type DetailTab = "setting" | "stats";
+
 function TouchpointDetail({
   meta,
   onRequestConfirm,
@@ -332,6 +538,7 @@ function TouchpointDetail({
 }) {
   const store = useSalesAgent();
   const Icon = TOUCHPOINT_ICON[meta.id];
+  const [tab, setTab] = useState<DetailTab>("setting");
   if (meta.id === "thank_you_page")
     return <ThankYouPageDetail onRequestConfirm={onRequestConfirm} />;
   return (
@@ -362,40 +569,67 @@ function TouchpointDetail({
         <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
       )}
 
-      <DetailSection title="Setting">
-        {meta.dependencyKey ? (
-          <DependencySetting
-            meta={meta}
-            onRequestConfirm={onRequestConfirm}
-          />
-        ) : (
-          <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
-        )}
-      </DetailSection>
+      <DetailTabs tab={tab} onChange={setTab} />
 
-      <DetailSection title="Statistics">
-        <TouchpointStats touchpointId={meta.id} />
-      </DetailSection>
+      {tab === "setting" ? (
+        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
+          {meta.dependencyKey ? (
+            <DependencySetting
+              meta={meta}
+              onRequestConfirm={onRequestConfirm}
+            />
+          ) : (
+            <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
+          )}
+        </div>
+      ) : (
+        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
+          <TouchpointStats touchpointId={meta.id} />
+        </div>
+      )}
     </div>
   );
 }
 
-function DetailSection({
-  title,
-  children,
+function DetailTabs({
+  tab,
+  onChange,
 }: {
-  title: string;
-  children: React.ReactNode;
+  tab: DetailTab;
+  onChange: (v: DetailTab) => void;
 }) {
+  const items: { value: DetailTab; label: string }[] = [
+    { value: "setting", label: "Setting" },
+    { value: "stats", label: "Stats" },
+  ];
   return (
-    <section>
-      <h3 className="text-[14px] font-semibold text-[#202223] mb-2">
-        {title}
-      </h3>
-      <div className="bg-white border border-[#E0E0E0] rounded-[10px]">
-        {children}
-      </div>
-    </section>
+    <div className="border-b border-[#E4E4E0] flex items-center gap-4">
+      {items.map((i) => {
+        const active = tab === i.value;
+        return (
+          <button
+            key={i.value}
+            type="button"
+            onClick={() => onChange(i.value)}
+            className={cn(
+              "relative pb-2 text-[14px] font-medium transition-colors",
+              active
+                ? "text-[#1A1A1A]"
+                : "text-[#52525B] hover:text-[#1A1A1A]",
+            )}
+            aria-pressed={active}
+          >
+            {i.label}
+            {active && (
+              <span
+                aria-hidden="true"
+                className="absolute left-0 right-0 -bottom-[1px] h-[2px] bg-[#1A1A1A]"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -654,6 +888,7 @@ function ThankYouPageDetail({
   const store = useSalesAgent();
   const meta = TOUCHPOINTS.find((t) => t.id === "thank_you_page")!;
   const [drawerWidgetId, setDrawerWidgetId] = useState<string | null>(null);
+  const [tab, setTab] = useState<DetailTab>("setting");
   const widget = store.thankYouWidgets.find((w) => w.id === drawerWidgetId);
 
   return (
@@ -689,7 +924,10 @@ function ThankYouPageDetail({
         previews of the upcoming capability set.
       </Callout>
 
-      <DetailSection title="Setting">
+      <DetailTabs tab={tab} onChange={setTab} />
+
+      {tab === "setting" ? (
+        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
         <div className="px-5 py-5 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-[14px] font-medium text-[#202223]">
@@ -735,11 +973,12 @@ function ThankYouPageDetail({
             })}
           </div>
         </div>
-      </DetailSection>
-
-      <DetailSection title="Statistics">
-        <TouchpointStats touchpointId="thank_you_page" />
-      </DetailSection>
+        </div>
+      ) : (
+        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
+          <TouchpointStats touchpointId="thank_you_page" />
+        </div>
+      )}
 
       <ThankYouWidgetDrawer
         open={!!widget}

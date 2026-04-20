@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Callout,
   Drawer,
@@ -11,13 +11,18 @@ import {
   Segmented,
 } from "./primitives";
 import type {
+  BestSellersSortBy,
   ManualMode,
   Strategy,
   StrategyType,
   TimeWindowDays,
 } from "@/lib/sales-agent/types";
 import { useSalesAgent } from "@/lib/sales-agent/store";
-import { touchpointLabel, TIME_WINDOW_OPTIONS } from "@/lib/sales-agent/constants";
+import {
+  SORT_BY_OPTIONS,
+  touchpointLabel,
+  TIME_WINDOW_OPTIONS,
+} from "@/lib/sales-agent/constants";
 import { ProductPicker, CollectionPicker } from "./Pickers";
 import { PRODUCTS, COLLECTIONS } from "@/lib/sales-agent/store";
 
@@ -34,6 +39,7 @@ type DraftCommon = {
   type: StrategyType;
   maxProducts: number;
   timeWindow: TimeWindowDays;
+  sortBy: BestSellersSortBy;
   manualMode: ManualMode;
   productIds: string[];
   collectionId: string | null;
@@ -46,6 +52,7 @@ function emptyDraft(): DraftCommon {
     type: "best_sellers",
     maxProducts: 5,
     timeWindow: 30,
+    sortBy: "revenue",
     manualMode: "products",
     productIds: [],
     collectionId: null,
@@ -59,6 +66,7 @@ function draftFromStrategy(s: Strategy): DraftCommon {
     type: s.type,
     maxProducts: s.maxProducts,
     timeWindow: s.type === "best_sellers" || s.type === "new_arrivals" ? s.timeWindow : 30,
+    sortBy: s.type === "best_sellers" ? s.sortBy : "revenue",
     manualMode: s.type === "manual" ? s.mode : "products",
     productIds: s.type === "manual" ? s.productIds : [],
     collectionId: s.type === "manual" ? s.collectionId : null,
@@ -74,6 +82,7 @@ function draftToStrategy(d: DraftCommon, fallbackId: string): Strategy {
       name: d.name,
       type: "best_sellers",
       timeWindow: d.timeWindow,
+      sortBy: d.sortBy,
       maxProducts: d.maxProducts,
       updatedAt,
     };
@@ -119,12 +128,14 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (existing) setDraft(draftFromStrategy(existing));
     else setDraft(emptyDraft());
     setConfirmDeleteOpen(false);
+    setConfirmSaveOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId]);
 
@@ -133,6 +144,35 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
     [editingId, store],
   );
   const isReferenced = referencedBy.length > 0;
+
+  /** Count of widgets (touchpoints + thank-you-page widgets) using this strategy. */
+  const widgetCount = useMemo(() => {
+    if (!editingId) return 0;
+    let n = 0;
+    store.touchpoints.forEach((t) => {
+      if (t.strategyId === editingId) n += 1;
+    });
+    store.thankYouWidgets.forEach((w) => {
+      if (w.strategyId === editingId) n += 1;
+    });
+    return n;
+  }, [editingId, store.touchpoints, store.thankYouWidgets]);
+  const touchpointCount = referencedBy.length;
+
+  /** Detect destructive changes against the persisted strategy. */
+  const isDestructive = useMemo(() => {
+    if (!existing) return false;
+    if (existing.type !== draft.type) return true;
+    if (existing.type === "manual") {
+      const wasModeA = existing.mode === "products";
+      const isModeA = draft.type === "manual" && draft.manualMode === "products";
+      if (wasModeA && !isModeA) return true; // switched from A to B
+      if (wasModeA && isModeA && existing.productIds.length > 0 && draft.productIds.length === 0) {
+        return true; // cleared list
+      }
+    }
+    return false;
+  }, [existing, draft]);
 
   const canSave = draft.name.trim().length > 0 && (
     draft.type !== "manual" ||
@@ -147,7 +187,7 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
     { value: "manual", label: "Manual Pick" },
   ];
 
-  const save = () => {
+  const commitSave = () => {
     const s = draftToStrategy(
       draft,
       `s_${Math.random().toString(36).slice(2, 9)}`,
@@ -157,10 +197,33 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
     onClose();
   };
 
-  const selectedProducts = PRODUCTS.filter((p) =>
-    draft.productIds.includes(p.id),
+  /** Save click — if editing an existing strategy and it's either referenced
+   *  or the change is destructive, show a confirmation modal first. */
+  const save = () => {
+    if (existing && (isReferenced || isDestructive)) {
+      setConfirmSaveOpen(true);
+      return;
+    }
+    commitSave();
+  };
+
+  const selectedProducts = useMemo(
+    () =>
+      draft.productIds
+        .map((id) => PRODUCTS.find((p) => p.id === id))
+        .filter((p): p is NonNullable<typeof p> => !!p),
+    [draft.productIds],
   );
   const selectedCollection = COLLECTIONS.find((c) => c.id === draft.collectionId);
+
+  const reorderProducts = (from: number, to: number) => {
+    setDraft((d) => {
+      const next = d.productIds.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...d, productIds: next };
+    });
+  };
 
   return (
     <>
@@ -217,7 +280,7 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
 
           {/* Type-specific fields */}
           {draft.type === "best_sellers" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               <Field label="Time window">
                 <SASelect
                   value={String(draft.timeWindow)}
@@ -227,8 +290,27 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
                       timeWindow: Number(e.target.value) as TimeWindowDays,
                     }))
                   }
+                  className="w-full"
                 >
                   {TIME_WINDOW_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </SASelect>
+              </Field>
+              <Field label="Sort by">
+                <SASelect
+                  value={draft.sortBy}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      sortBy: e.target.value as BestSellersSortBy,
+                    }))
+                  }
+                  className="w-full"
+                >
+                  {SORT_BY_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
@@ -325,25 +407,10 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
                       No products picked yet.
                     </p>
                   ) : (
-                    <div className="space-y-1">
-                      {selectedProducts.map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex items-center gap-2 py-1"
-                        >
-                          <div
-                            className="w-7 h-7 rounded border border-[#E0E0E0] shrink-0"
-                            style={{ backgroundColor: p.image }}
-                          />
-                          <span className="text-[14px] text-[#202223] truncate flex-1">
-                            {p.title}
-                          </span>
-                          <span className="text-[12px] text-[#6B7280] tabular-nums">
-                            ${p.price}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <ReorderableProductList
+                      products={selectedProducts}
+                      onReorder={reorderProducts}
+                    />
                   )}
                 </Panel>
               ) : (
@@ -380,6 +447,61 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
           )}
         </div>
       </Drawer>
+
+      {/* Save confirmation — referenced or destructive */}
+      {existing && (
+        <Modal
+          open={confirmSaveOpen}
+          onClose={() => setConfirmSaveOpen(false)}
+          title="Save changes?"
+          width="max-w-[460px]"
+          footer={
+            <>
+              <SAButton
+                variant="ghost"
+                onClick={() => setConfirmSaveOpen(false)}
+              >
+                Cancel
+              </SAButton>
+              <SAButton
+                variant="primary"
+                onClick={() => {
+                  setConfirmSaveOpen(false);
+                  commitSave();
+                }}
+              >
+                Save
+              </SAButton>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            {isReferenced && (
+              <>
+                <p className="text-[14px] text-[#1A1A1A] leading-relaxed">
+                  This strategy is used by {widgetCount}{" "}
+                  {widgetCount === 1 ? "widget" : "widgets"} across{" "}
+                  {touchpointCount}{" "}
+                  {touchpointCount === 1 ? "touchpoint" : "touchpoints"}.
+                  Changes apply immediately. Historical attribution is preserved
+                  via snapshot.
+                </p>
+                <ul className="text-[14px] text-[#52525B] list-disc pl-5">
+                  {referencedBy.map((id) => (
+                    <li key={id}>{touchpointLabel(id)}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {isDestructive && (
+              <p className="text-[12px] text-[#52525B] leading-relaxed pt-1">
+                To preserve the current strategy as a baseline, cancel and use
+                Duplicate &amp; edit instead.
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {/* Delete confirmation */}
       {existing && (
@@ -448,7 +570,12 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
         initialSelected={draft.productIds}
         maxSelection={20}
         onConfirm={(ids) => {
-          setDraft((d) => ({ ...d, productIds: ids }));
+          // Preserve existing order; append new selections at the end; drop removed.
+          setDraft((d) => {
+            const keep = d.productIds.filter((id) => ids.includes(id));
+            const added = ids.filter((id) => !d.productIds.includes(id));
+            return { ...d, productIds: [...keep, ...added] };
+          });
           setProductPickerOpen(false);
         }}
       />
@@ -464,6 +591,136 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
         }}
       />
     </>
+  );
+}
+
+/* ── Drag handle icon (stroke, sidebar-aligned) ────────── */
+function DragHandleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="6" r="1" />
+      <circle cx="9" cy="12" r="1" />
+      <circle cx="9" cy="18" r="1" />
+      <circle cx="15" cy="6" r="1" />
+      <circle cx="15" cy="12" r="1" />
+      <circle cx="15" cy="18" r="1" />
+    </svg>
+  );
+}
+
+/* ── Reorderable product list (HTML5 drag) ──────────────── */
+function ReorderableProductList({
+  products,
+  onReorder,
+}: {
+  products: { id: string; title: string; price: number; image: string }[];
+  onReorder: (from: number, to: number) => void;
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const hoverPos = useRef<"before" | "after">("before");
+  const showHandle = products.length > 1;
+
+  const onDragStart = (e: React.DragEvent, i: number) => {
+    setDragIndex(i);
+    e.dataTransfer.effectAllowed = "move";
+    // Required for Firefox:
+    e.dataTransfer.setData("text/plain", String(i));
+  };
+
+  const onDragOver = (e: React.DragEvent, i: number) => {
+    if (dragIndex === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    hoverPos.current = e.clientY - rect.top < rect.height / 2 ? "before" : "after";
+    setHoverIndex(i);
+  };
+
+  const onDrop = (e: React.DragEvent, i: number) => {
+    if (dragIndex === null) return;
+    e.preventDefault();
+    let to = hoverPos.current === "after" ? i + 1 : i;
+    if (dragIndex < to) to -= 1;
+    if (to !== dragIndex) onReorder(dragIndex, to);
+    setDragIndex(null);
+    setHoverIndex(null);
+  };
+
+  const onDragEnd = () => {
+    setDragIndex(null);
+    setHoverIndex(null);
+  };
+
+  return (
+    <div className="space-y-0">
+      {products.map((p, i) => {
+        const isDragging = dragIndex === i;
+        const showBorderBefore =
+          hoverIndex === i && hoverPos.current === "before" && dragIndex !== null;
+        const showBorderAfter =
+          hoverIndex === i && hoverPos.current === "after" && dragIndex !== null;
+        return (
+          <div
+            key={p.id}
+            draggable={showHandle}
+            onDragStart={(e) => onDragStart(e, i)}
+            onDragOver={(e) => onDragOver(e, i)}
+            onDrop={(e) => onDrop(e, i)}
+            onDragEnd={onDragEnd}
+            className="relative"
+          >
+            {showBorderBefore && (
+              <div
+                className="absolute left-0 right-0 -top-[1px] h-[2px] bg-[#1A1A1A] pointer-events-none"
+                aria-hidden="true"
+              />
+            )}
+            <div
+              className={`flex items-center gap-2 py-1 ${
+                isDragging ? "opacity-50" : ""
+              }`}
+            >
+              {showHandle && (
+                <span
+                  className="shrink-0 text-[#8C8C8C] cursor-grab active:cursor-grabbing"
+                  aria-label="Drag to reorder"
+                >
+                  <DragHandleIcon />
+                </span>
+              )}
+              <div
+                className="w-7 h-7 rounded border border-[#E0E0E0] shrink-0"
+                style={{ backgroundColor: p.image }}
+              />
+              <span className="text-[14px] text-[#202223] truncate flex-1">
+                {p.title}
+              </span>
+              <span className="text-[12px] text-[#6B7280] tabular-nums">
+                ${p.price}
+              </span>
+            </div>
+            {showBorderAfter && (
+              <div
+                className="absolute left-0 right-0 -bottom-[1px] h-[2px] bg-[#1A1A1A] pointer-events-none"
+                aria-hidden="true"
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

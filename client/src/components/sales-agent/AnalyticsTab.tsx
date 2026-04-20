@@ -10,8 +10,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
-  Cell,
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { useSalesAgent } from "@/lib/sales-agent/store";
@@ -170,9 +168,9 @@ export default function AnalyticsTab() {
         />
       </div>
 
-      {/* Charts row: Revenue Trend + Revenue by Touchpoint */}
-      <div className="grid grid-cols-2 gap-4">
-        <Panel className="p-6">
+      {/* Charts row: Revenue Trend (2/3) + Revenue by Touchpoint (1/3) */}
+      <div className="grid grid-cols-3 gap-4">
+        <Panel className="p-6 col-span-2">
           <div className="flex items-center gap-1.5">
             <p className="text-[18px] font-semibold text-[#202223]">
               Revenue trend
@@ -191,7 +189,7 @@ export default function AnalyticsTab() {
           )}
         </Panel>
 
-        <Panel className="p-6">
+        <Panel className="p-6 col-span-1">
           <div className="flex items-center gap-1.5">
             <p className="text-[18px] font-semibold text-[#202223]">
               Revenue by touchpoint
@@ -215,7 +213,10 @@ export default function AnalyticsTab() {
       <Panel className="overflow-hidden">
         <div className="px-6 py-5 border-b border-[#F0F0F0]">
           <p className="text-[18px] font-semibold text-[#202223]">
-            Touchpoint × Widget × Strategy
+            Performance breakdown
+          </p>
+          <p className="text-[12px] text-[#6B7280] mt-0.5">
+            Revenue and engagement per touchpoint, widget, and strategy.
           </p>
         </div>
         <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.4fr)_110px_90px_90px_150px] px-6 py-4 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[14px] font-semibold text-[#202223]">
@@ -642,18 +643,11 @@ function RevenueTrendChart({
                 fontSize: 12,
                 padding: "6px 8px",
               }}
-              labelStyle={{ color: "#A3A3A3" }}
+              labelStyle={{ color: "#FFFFFF" }}
               formatter={(v: number, name: string) => [
                 formatCurrency(v),
                 trendKeyLabel(name as TrendKey),
               ]}
-            />
-            <Legend
-              verticalAlign="bottom"
-              height={24}
-              iconType="circle"
-              wrapperStyle={{ fontSize: 12, color: "#5C5F62" }}
-              formatter={(v) => trendKeyLabel(v as TrendKey)}
             />
             {activeKeys.has("total") && (
               <Line
@@ -712,7 +706,7 @@ function RevenueByTouchpointChart({
         <BarChart
           data={chartData}
           layout="vertical"
-          margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
+          margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -732,7 +726,7 @@ function RevenueByTouchpointChart({
             tick={{ fontSize: 12, fill: "#5C5F62" }}
             tickLine={false}
             axisLine={false}
-            width={120}
+            width={110}
           />
           <Tooltip
             contentStyle={{
@@ -743,18 +737,11 @@ function RevenueByTouchpointChart({
               fontSize: 12,
               padding: "6px 8px",
             }}
-            labelStyle={{ color: "#A3A3A3" }}
+            labelStyle={{ color: "#FFFFFF" }}
             cursor={{ fill: "rgba(0,0,0,0.03)" }}
             formatter={(v: number) => [formatCurrency(v), "Revenue"]}
           />
-          <Bar dataKey="revenue" radius={[0, 3, 3, 0]}>
-            {chartData.map((row) => (
-              <Cell
-                key={row.id}
-                fill={TREND_COLORS[row.id as TouchpointId] ?? "#2121C4"}
-              />
-            ))}
-          </Bar>
+          <Bar dataKey="revenue" fill="#1A1A1A" radius={[0, 3, 3, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

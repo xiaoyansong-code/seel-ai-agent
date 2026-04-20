@@ -24,6 +24,8 @@ export type ManualMode = "products" | "collection";
 
 export type TimeWindowDays = 7 | 30 | 60 | 90;
 
+export type BestSellersSortBy = "revenue" | "units" | "orders";
+
 export interface Product {
   id: string;
   title: string;
@@ -58,6 +60,7 @@ export interface BaseStrategy {
 export interface BestSellersStrategy extends BaseStrategy {
   type: "best_sellers";
   timeWindow: TimeWindowDays;
+  sortBy: BestSellersSortBy;
 }
 
 export interface SimilarStrategy extends BaseStrategy {

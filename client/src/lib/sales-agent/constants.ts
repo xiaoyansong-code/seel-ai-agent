@@ -1,4 +1,4 @@
-import type { Stage, StrategyType, TouchpointId, TouchpointTag } from "./types";
+import type { BestSellersSortBy, Stage, StrategyType, TouchpointId, TouchpointTag } from "./types";
 
 export interface TouchpointMeta {
   id: TouchpointId;
@@ -117,6 +117,12 @@ export const TIME_WINDOW_OPTIONS = [
   { value: 60, label: "60 days" },
   { value: 90, label: "90 days" },
 ] as const;
+
+export const SORT_BY_OPTIONS: { value: BestSellersSortBy; label: string }[] = [
+  { value: "revenue", label: "Total revenue" },
+  { value: "units", label: "Units sold" },
+  { value: "orders", label: "Distinct orders" },
+];
 
 export function touchpointLabel(id: TouchpointId): string {
   return TOUCHPOINTS.find((t) => t.id === id)?.label ?? id;

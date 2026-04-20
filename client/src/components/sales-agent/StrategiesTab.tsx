@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
-import { Plus, Copy } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+} from "lucide-react";
 import { useSalesAgent } from "@/lib/sales-agent/store";
-import { InfoTip, Panel, SAButton } from "./primitives";
+import { Chip, InfoTip, Panel, SAButton, Segmented } from "./primitives";
 import ExclusionRules from "./ExclusionRules";
 import StrategyDrawer from "./StrategyDrawer";
 import {
@@ -9,6 +16,11 @@ import {
   touchpointLabel,
 } from "@/lib/sales-agent/constants";
 import type { Strategy } from "@/lib/sales-agent/types";
+import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 10;
+
+type UsedByFilter = "all" | "used" | "unused";
 
 export default function StrategiesTab() {
   const store = useSalesAgent();
@@ -30,10 +42,13 @@ export default function StrategiesTab() {
     const copy: Strategy = {
       ...src,
       id: newId,
-      name: `${src.name} (copy)`,
+      name: `${src.name} (Copy)`,
       updatedAt: new Date().toISOString(),
     };
     store.addStrategy(copy);
+    // Jump straight to Edit panel for the newly created copy.
+    setEditingId(newId);
+    setModalOpen(true);
   };
 
   return (
@@ -61,10 +76,7 @@ export default function StrategiesTab() {
           </SAButton>
         </div>
 
-        <StrategyTable
-          onEdit={openEdit}
-          onDuplicate={duplicate}
-        />
+        <StrategyTable onEdit={openEdit} onDuplicate={duplicate} />
 
         {/* Exclusion rules scoped to Own Product Strategies */}
         <ExclusionRules embedded />
@@ -128,6 +140,8 @@ function StrategyTable({
   onDuplicate: (id: string) => void;
 }) {
   const store = useSalesAgent();
+  const [filter, setFilter] = useState<UsedByFilter>("all");
+  const [page, setPage] = useState(1);
 
   const rows = useMemo(() => {
     return store.strategies.map((s) => {
@@ -135,6 +149,21 @@ function StrategyTable({
       return { s, refs };
     });
   }, [store.strategies, store.touchpoints, store.thankYouWidgets]);
+
+  const filtered = useMemo(() => {
+    if (filter === "used") return rows.filter((r) => r.refs.length > 0);
+    if (filter === "unused") return rows.filter((r) => r.refs.length === 0);
+    return rows;
+  }, [rows, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedRows = filtered.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
+
+  const showPagination = filtered.length > PAGE_SIZE;
 
   if (rows.length === 0) {
     return (
@@ -150,26 +179,79 @@ function StrategyTable({
   }
 
   return (
-    <Panel className="overflow-hidden">
-      <div className="grid grid-cols-[minmax(0,2fr)_120px_minmax(0,1.4fr)_120px_150px] items-center px-4 py-4 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[14px] font-semibold text-[#202223]">
-        <div>Name</div>
-        <div>Type</div>
-        <div>Used by</div>
-        <div>Updated</div>
-        <div className="text-right">Actions</div>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Segmented<UsedByFilter>
+          value={filter}
+          onChange={(v) => {
+            setFilter(v);
+            setPage(1);
+          }}
+          options={[
+            { value: "all", label: "All" },
+            { value: "used", label: "In use" },
+            { value: "unused", label: "Unused" },
+          ]}
+          size="sm"
+        />
+        <p className="text-[12px] text-[#8C8C8C]">
+          {filtered.length} {filtered.length === 1 ? "strategy" : "strategies"}
+        </p>
       </div>
-      <div className="divide-y divide-[#F0F0F0]">
-        {rows.map(({ s, refs }) => (
-          <StrategyRow
-            key={s.id}
-            strategy={s}
-            refs={refs}
-            onEdit={onEdit}
-            onDuplicate={onDuplicate}
-          />
-        ))}
-      </div>
-    </Panel>
+
+      <Panel className="overflow-hidden">
+        <div className="grid grid-cols-[minmax(0,1.6fr)_120px_minmax(0,1.8fr)_110px_96px] items-center px-4 py-3 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[13px] font-semibold text-[#202223]">
+          <div>Name</div>
+          <div>Type</div>
+          <div>Used by</div>
+          <div>Updated</div>
+          <div className="text-right">Actions</div>
+        </div>
+        <div className="divide-y divide-[#F0F0F0]">
+          {pagedRows.length === 0 ? (
+            <div className="py-10 text-center text-[13px] text-[#6B7280]">
+              No strategies match this filter.
+            </div>
+          ) : (
+            pagedRows.map(({ s, refs }) => (
+              <StrategyRow
+                key={s.id}
+                strategy={s}
+                refs={refs}
+                onEdit={onEdit}
+                onDuplicate={onDuplicate}
+              />
+            ))
+          )}
+        </div>
+      </Panel>
+
+      {showPagination && (
+        <div className="flex items-center justify-end gap-2">
+          <span className="text-[12px] text-[#8C8C8C]">
+            Page {safePage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-[#E4E4E0] text-[#5C5F62] hover:text-[#1A1A1A] hover:border-[#D9D9D9] disabled:opacity-40 disabled:pointer-events-none"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-[#E4E4E0] text-[#5C5F62] hover:text-[#1A1A1A] hover:border-[#D9D9D9] disabled:opacity-40 disabled:pointer-events-none"
+            aria-label="Next page"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -184,53 +266,120 @@ function StrategyRow({
   onEdit: (id: string) => void;
   onDuplicate: (id: string) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <div className="grid grid-cols-[minmax(0,2fr)_120px_minmax(0,1.4fr)_120px_150px] items-center px-4 py-4 text-[14px] text-[#202223] hover:bg-[#F5F5F5]">
-      <div className="min-w-0">
-        <p className="font-medium truncate">{strategy.name}</p>
-        <p className="text-[12px] text-[#6B7280] truncate">
-          {strategyDetail(strategy)}
-        </p>
+    <div className="grid grid-cols-[minmax(0,1.6fr)_120px_minmax(0,1.8fr)_110px_96px] items-center px-4 py-3 text-[13px] text-[#202223] hover:bg-[#F5F5F5]">
+      <div className="min-w-0 pr-3">
+        <p className="font-medium truncate text-[13px]">{strategy.name}</p>
       </div>
-      <div className="text-[#5C5F62]">
+      <div className="text-[#5C5F62] text-[13px]">
         {STRATEGY_TYPE_LABEL[strategy.type]}
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 pr-3">
         {refs.length === 0 ? (
           <span className="text-[12px] text-[#8C8C8C]">Unused</span>
         ) : (
-          <span className="text-[12px] text-[#5C5F62] truncate block">
-            {refs.map((r) => touchpointLabel(r as never)).join(", ")}
-          </span>
+          <div className="flex flex-wrap gap-1">
+            {refs.map((r) => (
+              <Chip key={r}>{touchpointLabel(r as never)}</Chip>
+            ))}
+          </div>
         )}
       </div>
       <div className="text-[12px] text-[#6B7280] tabular-nums">
         {formatDate(strategy.updatedAt)}
       </div>
-      <div className="flex items-center justify-end gap-1">
-        <SAButton
-          variant="ghost"
-          size="sm"
-          onClick={() => onDuplicate(strategy.id)}
-          title="Duplicate strategy"
+      <div className="flex items-center justify-end gap-0.5">
+        <IconButton
+          label="Edit strategy"
+          onClick={() => onEdit(strategy.id)}
         >
-          <Copy className="w-3 h-3" />
-          Duplicate
-        </SAButton>
-        <SAButton variant="ghost" size="sm" onClick={() => onEdit(strategy.id)}>
-          Edit
-        </SAButton>
+          <Pencil className="w-3.5 h-3.5" />
+        </IconButton>
+        <div className="relative">
+          <IconButton
+            label="More actions"
+            onClick={() => setMenuOpen((v) => !v)}
+            active={menuOpen}
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </IconButton>
+          {menuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setMenuOpen(false)}
+                aria-hidden="true"
+              />
+              <div className="absolute z-20 right-0 mt-1 w-[160px] bg-white border border-[#E4E4E0] rounded-md shadow-[0_10px_24px_-8px_rgba(0,0,0,0.18)] py-1">
+                <MenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDuplicate(strategy.id);
+                  }}
+                  icon={<Copy className="w-3.5 h-3.5" />}
+                >
+                  Duplicate
+                </MenuItem>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function strategyDetail(s: Strategy): string {
-  if (s.type === "best_sellers") return `Top performers from last ${s.timeWindow}d`;
-  if (s.type === "new_arrivals") return `New in last ${s.timeWindow}d`;
-  if (s.type === "similar") return `Similar to shopper's latest purchase`;
-  if (s.mode === "products") return `${s.productIds.length} hand-picked products`;
-  return `Sourced from a collection`;
+function IconButton({
+  children,
+  onClick,
+  label,
+  active = false,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "h-7 w-7 inline-flex items-center justify-center rounded-md text-[#5C5F62] hover:bg-[#F2F6FE] hover:text-[#1A1A1A]",
+        active && "bg-[#F2F6FE] text-[#1A1A1A]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MenuItem({
+  onClick,
+  icon,
+  children,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-2 px-3 py-1.5 text-[13px] text-[#1A1A1A] hover:bg-[#F5F5F5]"
+    >
+      <span className="text-[#8C8C8C]">{icon}</span>
+      {children}
+    </button>
+  );
 }
 
 function formatDate(iso: string): string {
