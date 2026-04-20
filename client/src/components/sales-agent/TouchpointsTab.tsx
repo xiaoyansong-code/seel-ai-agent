@@ -9,12 +9,11 @@ import {
 } from "@/lib/sales-agent/constants";
 import type { Stage, TouchpointId, TouchpointTag } from "@/lib/sales-agent/types";
 import {
-  Accordion,
   Callout,
   Drawer,
   Field,
   InfoTip,
-  Panel,
+  Modal,
   SAButton,
   SAInput,
   SASelect,
@@ -132,6 +131,13 @@ export default function TouchpointsTab() {
     visible[0]?.id ?? "seel_rc",
   );
 
+  // Confirm dialog for enable actions
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   const selected = visible.find((t) => t.id === selectedId) ?? visible[0];
 
   const grouped = useMemo(() => {
@@ -172,12 +178,45 @@ export default function TouchpointsTab() {
         </div>
       </div>
 
-      {/* Right column: detail with two accordions */}
+      {/* Right column: detail with stacked sections */}
       <div className="flex-1 min-w-0 overflow-auto">
         <div className="max-w-[760px] px-8 py-8">
-          {selected && <TouchpointDetail meta={selected} />}
+          {selected && (
+            <TouchpointDetail
+              meta={selected}
+              onRequestConfirm={(c) => setConfirm(c)}
+            />
+          )}
         </div>
       </div>
+
+      {/* Enable confirmation */}
+      <Modal
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        title={confirm?.title ?? ""}
+        width="max-w-[420px]"
+        footer={
+          <>
+            <SAButton variant="ghost" onClick={() => setConfirm(null)}>
+              Cancel
+            </SAButton>
+            <SAButton
+              variant="primary"
+              onClick={() => {
+                confirm?.onConfirm();
+                setConfirm(null);
+              }}
+            >
+              Confirm
+            </SAButton>
+          </>
+        }
+      >
+        <p className="text-[14px] text-[#5C5F62] leading-relaxed">
+          {confirm?.body}
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -196,18 +235,14 @@ function TouchpointCard({
   const tp = store.touchpoints.find((t) => t.id === meta.id);
   const depMet =
     !meta.dependencyKey || store.dependency[meta.dependencyKey] === true;
-  const strategy = store.strategies.find((s) => s.id === tp?.strategyId);
   const Icon = TOUCHPOINT_ICON[meta.id];
 
-  let statusKind: "on" | "off" | "warn" = "off";
-  let statusLabel = "Off";
-  if (!depMet && meta.dependencyKey) {
-    statusKind = "warn";
-    statusLabel = "Dependency unmet";
-  } else if (tp?.enabled) {
-    statusKind = "on";
-    statusLabel = "On";
-  }
+  const isOn = !!tp?.enabled && depMet;
+  const row = store.analytics.rows.find((r) => r.touchpointId === meta.id);
+  const revenue = row?.revenue ?? 0;
+
+  // Only show Seel-exclusive tag in the list
+  const showTag = meta.tags?.includes("seel_exclusive");
 
   return (
     <button
@@ -231,48 +266,49 @@ function TouchpointCard({
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
+          {/* Title row: title + Seel-exclusive tag inline */}
           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
             <p className="text-[14px] font-semibold text-[#202223] truncate">
               {meta.label}
             </p>
+            {showTag && <TouchpointTagChip tag="seel_exclusive" />}
             {meta.previewOnly && (
               <span className="text-[12px] text-[#5C5F62] bg-[#E7EBF5] border border-[#DADEE9] px-1.5 py-[1px] rounded shrink-0">
                 preview
               </span>
             )}
           </div>
-          {(meta.tags?.length || meta.requiresShopifyPlus) && (
-            <div className="flex items-center gap-1 flex-wrap mb-1.5">
-              {meta.tags?.map((tag) => (
-                <TouchpointTagChip key={tag} tag={tag} />
-              ))}
-              {meta.requiresShopifyPlus && (
-                <span className="inline-flex items-center h-5 px-1.5 rounded border text-[12px] font-medium leading-none bg-[#F7F7FC] text-[#5C5F62] border-[#DADEE9]">
-                  Shopify Plus
-                </span>
-              )}
-            </div>
-          )}
           <p className="text-[12px] text-[#6B7280] leading-snug line-clamp-2">
             {meta.description}
           </p>
           <div className="flex items-center gap-1.5 mt-2 text-[12px]">
-            <StatusDot kind={statusKind} />
+            <StatusDot kind={isOn ? "on" : "off"} />
             <span
               className={cn(
-                statusKind === "on" && "text-[#235935]",
-                statusKind === "warn" && "text-[#D97706]",
-                statusKind === "off" && "text-[#6B7280]",
+                isOn ? "text-[#235935]" : "text-[#6B7280]",
               )}
             >
-              {statusLabel}
+              {isOn ? "On" : "Off"}
             </span>
-            {strategy && (
+            {isOn && (
               <>
                 <span className="text-[#D9D9D9]">·</span>
-                <span className="text-[#6B7280] truncate">
-                  {strategy.name}
+                <span className="text-[#5C5F62] tabular-nums">
+                  ${revenue.toLocaleString()} last 30d
                 </span>
+              </>
+            )}
+            {!depMet && meta.dependencyKey && (
+              <>
+                <span className="text-[#D9D9D9]">·</span>
+                <Link href="/">
+                  <span
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-[#2121C4] hover:underline"
+                  >
+                    Set up
+                  </span>
+                </Link>
               </>
             )}
           </div>
@@ -282,13 +318,24 @@ function TouchpointCard({
   );
 }
 
-/* ── Detail container with two accordions ────────────── */
-function TouchpointDetail({ meta }: { meta: TouchpointMeta }) {
+/* ── Detail container — flat, two stacked sections ──────── */
+function TouchpointDetail({
+  meta,
+  onRequestConfirm,
+}: {
+  meta: TouchpointMeta;
+  onRequestConfirm: (c: {
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }) => void;
+}) {
   const store = useSalesAgent();
   const Icon = TOUCHPOINT_ICON[meta.id];
-  if (meta.id === "thank_you_page") return <ThankYouPageDetail />;
+  if (meta.id === "thank_you_page")
+    return <ThankYouPageDetail onRequestConfirm={onRequestConfirm} />;
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header className="flex items-start gap-3 pb-1">
         <div className="w-10 h-10 rounded-lg bg-[#ECE9FF] flex items-center justify-center shrink-0 text-[#2121C4]">
           <Icon className="w-5 h-5" />
@@ -315,31 +362,73 @@ function TouchpointDetail({ meta }: { meta: TouchpointMeta }) {
         <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
       )}
 
-      <Accordion title="Setting" defaultOpen={true}>
-        <div className="px-5 py-5">
-          {meta.dependencyKey ? (
-            <DependencySetting meta={meta} />
-          ) : (
-            <StrategySetting meta={meta} />
-          )}
-        </div>
-      </Accordion>
+      <DetailSection title="Setting">
+        {meta.dependencyKey ? (
+          <DependencySetting
+            meta={meta}
+            onRequestConfirm={onRequestConfirm}
+          />
+        ) : (
+          <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
+        )}
+      </DetailSection>
 
-      <Accordion title="Statistics" defaultOpen={true}>
+      <DetailSection title="Statistics">
         <TouchpointStats touchpointId={meta.id} />
-      </Accordion>
+      </DetailSection>
     </div>
   );
 }
 
+function DetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <h3 className="text-[14px] font-semibold text-[#202223] mb-2">
+        {title}
+      </h3>
+      <div className="bg-white border border-[#E0E0E0] rounded-[10px]">
+        {children}
+      </div>
+    </section>
+  );
+}
+
 /* ── Setting: Search Bar / LiveChat Widget ───────────── */
-function DependencySetting({ meta }: { meta: TouchpointMeta }) {
+function DependencySetting({
+  meta,
+  onRequestConfirm,
+}: {
+  meta: TouchpointMeta;
+  onRequestConfirm: (c: {
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }) => void;
+}) {
   const store = useSalesAgent();
   const tp = store.touchpoints.find((t) => t.id === meta.id)!;
   const depMet = store.dependency[meta.dependencyKey!];
 
+  const handleToggle = (v: boolean) => {
+    if (v) {
+      onRequestConfirm({
+        title: `Turn on ${meta.label}?`,
+        body: `Once enabled, Sales Agent recommendations will be served on ${meta.label} in production. You can switch it off at any time.`,
+        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
+      });
+    } else {
+      store.updateTouchpoint(meta.id, { enabled: false });
+    }
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="px-5 py-5 space-y-4">
       {!depMet && (
         <Callout tone="warn" title="Dependency not met">
           <p>
@@ -350,7 +439,7 @@ function DependencySetting({ meta }: { meta: TouchpointMeta }) {
           <div className="mt-2">
             <Link href="/">
               <SAButton variant="secondary" size="sm">
-                Go to Support Agent
+                Set up
               </SAButton>
             </Link>
           </div>
@@ -367,7 +456,7 @@ function DependencySetting({ meta }: { meta: TouchpointMeta }) {
         <SAToggle
           checked={tp.enabled}
           disabled={!depMet}
-          onChange={(v) => store.updateTouchpoint(meta.id, { enabled: v })}
+          onChange={handleToggle}
         />
       </div>
 
@@ -380,13 +469,53 @@ function DependencySetting({ meta }: { meta: TouchpointMeta }) {
 }
 
 /* ── Setting: Seel RC / WFP Email ──────────────────────── */
-function StrategySetting({ meta }: { meta: TouchpointMeta }) {
+function StrategySetting({
+  meta,
+  onRequestConfirm,
+}: {
+  meta: TouchpointMeta;
+  onRequestConfirm: (c: {
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }) => void;
+}) {
   const store = useSalesAgent();
   const [, navigate] = useLocation();
   const tp = store.touchpoints.find((t) => t.id === meta.id)!;
 
+  const handleToggle = (v: boolean) => {
+    if (v) {
+      onRequestConfirm({
+        title: `Turn on ${meta.label}?`,
+        body: `Once enabled, recommendations from the selected strategy will be served at this touchpoint. You can switch it off at any time.`,
+        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
+      });
+    } else {
+      store.updateTouchpoint(meta.id, { enabled: false });
+    }
+  };
+
+  const handleStrategyChange = (v: string) => {
+    if (v === "__new__") {
+      navigate("/sales-agent/strategies");
+      return;
+    }
+    const next = v || null;
+    if (tp.enabled && next !== tp.strategyId) {
+      onRequestConfirm({
+        title: `Change strategy for ${meta.label}?`,
+        body: `This touchpoint is live. Changes apply immediately to shoppers in production.`,
+        onConfirm: () =>
+          store.updateTouchpoint(meta.id, { strategyId: next }),
+      });
+    } else {
+      store.updateTouchpoint(meta.id, { strategyId: next });
+    }
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="px-5 py-5 space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[14px] font-medium text-[#202223]">Enabled</p>
@@ -394,10 +523,7 @@ function StrategySetting({ meta }: { meta: TouchpointMeta }) {
             Serve recommendations at this touchpoint.
           </p>
         </div>
-        <SAToggle
-          checked={tp.enabled}
-          onChange={(v) => store.updateTouchpoint(meta.id, { enabled: v })}
-        />
+        <SAToggle checked={tp.enabled} onChange={handleToggle} />
       </div>
 
       <div className="border-t border-[#F0F0F0] pt-4">
@@ -408,14 +534,7 @@ function StrategySetting({ meta }: { meta: TouchpointMeta }) {
           <div className="flex items-center gap-2">
             <SASelect
               value={tp.strategyId ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "__new__") {
-                  navigate("/sales-agent/strategies");
-                  return;
-                }
-                store.updateTouchpoint(meta.id, { strategyId: v || null });
-              }}
+              onChange={(e) => handleStrategyChange(e.target.value)}
               className="flex-1"
             >
               <option value="">— None selected —</option>
@@ -523,14 +642,22 @@ function formatDeltaInline(d: number): string {
 }
 
 /* ── Thank You Page detail (V2 preview) ────────────────── */
-function ThankYouPageDetail() {
+function ThankYouPageDetail({
+  onRequestConfirm,
+}: {
+  onRequestConfirm: (c: {
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }) => void;
+}) {
   const store = useSalesAgent();
   const meta = TOUCHPOINTS.find((t) => t.id === "thank_you_page")!;
   const [drawerWidgetId, setDrawerWidgetId] = useState<string | null>(null);
   const widget = store.thankYouWidgets.find((w) => w.id === drawerWidgetId);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header className="flex items-start gap-3 pb-1">
         <div className="w-10 h-10 rounded-lg bg-[#F7F7FC] border border-[#E0E0E0] flex items-center justify-center shrink-0 text-[#5C5F62]">
           <Package className="w-5 h-5" />
@@ -562,7 +689,7 @@ function ThankYouPageDetail() {
         previews of the upcoming capability set.
       </Callout>
 
-      <Accordion title="Setting" defaultOpen={true}>
+      <DetailSection title="Setting">
         <div className="px-5 py-5 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-[14px] font-medium text-[#202223]">
@@ -608,16 +735,17 @@ function ThankYouPageDetail() {
             })}
           </div>
         </div>
-      </Accordion>
+      </DetailSection>
 
-      <Accordion title="Statistics" defaultOpen={true}>
+      <DetailSection title="Statistics">
         <TouchpointStats touchpointId="thank_you_page" />
-      </Accordion>
+      </DetailSection>
 
       <ThankYouWidgetDrawer
         open={!!widget}
         widgetId={drawerWidgetId}
         onClose={() => setDrawerWidgetId(null)}
+        onRequestConfirm={onRequestConfirm}
       />
     </div>
   );
@@ -628,15 +756,35 @@ function ThankYouWidgetDrawer({
   open,
   widgetId,
   onClose,
+  onRequestConfirm,
 }: {
   open: boolean;
   widgetId: string | null;
   onClose: () => void;
+  onRequestConfirm: (c: {
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }) => void;
 }) {
   const store = useSalesAgent();
   const [v2Open, setV2Open] = useState(false);
   const widget = store.thankYouWidgets.find((w) => w.id === widgetId);
   if (!widget && !open) return null;
+
+  const handleToggle = (v: boolean) => {
+    if (!widget) return;
+    if (v) {
+      onRequestConfirm({
+        title: `Turn on "${widget.name}"?`,
+        body: "Widget will start appearing on the Thank You Page for eligible shoppers.",
+        onConfirm: () =>
+          store.updateThankYouWidget(widget.id, { enabled: true }),
+      });
+    } else {
+      store.updateThankYouWidget(widget.id, { enabled: false });
+    }
+  };
 
   return (
     <Drawer
@@ -680,12 +828,7 @@ function ThankYouWidgetDrawer({
                 Toggle this widget on the Thank You Page.
               </p>
             </div>
-            <SAToggle
-              checked={widget.enabled}
-              onChange={(v) =>
-                store.updateThankYouWidget(widget.id, { enabled: v })
-              }
-            />
+            <SAToggle checked={widget.enabled} onChange={handleToggle} />
           </div>
 
           <Field label="Strategy" htmlFor="ty_strategy">

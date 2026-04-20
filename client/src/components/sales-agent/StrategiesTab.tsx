@@ -3,7 +3,7 @@ import { Plus, Copy } from "lucide-react";
 import { useSalesAgent } from "@/lib/sales-agent/store";
 import { InfoTip, Panel, SAButton } from "./primitives";
 import ExclusionRules from "./ExclusionRules";
-import StrategyModal from "./StrategyModal";
+import StrategyDrawer from "./StrategyDrawer";
 import {
   STRATEGY_TYPE_LABEL,
   touchpointLabel,
@@ -65,6 +65,9 @@ export default function StrategiesTab() {
           onEdit={openEdit}
           onDuplicate={duplicate}
         />
+
+        {/* Exclusion rules scoped to Own Product Strategies */}
+        <ExclusionRules embedded />
       </section>
 
       {/* Network Product Strategies — coming soon */}
@@ -90,10 +93,7 @@ export default function StrategiesTab() {
         <NetworkProductsPlaceholder />
       </section>
 
-      {/* Exclusion rules — bottom */}
-      <ExclusionRules />
-
-      <StrategyModal
+      <StrategyDrawer
         open={modalOpen}
         editingId={editingId}
         onClose={() => setModalOpen(false)}
