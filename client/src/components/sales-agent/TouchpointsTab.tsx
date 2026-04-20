@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { useSalesAgent } from "@/lib/sales-agent/store";
 import {
@@ -26,9 +26,9 @@ import {
   Package,
   Search,
   Mail,
-  Undo2,
   Check,
   Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
@@ -111,12 +111,39 @@ function ShopifyPlusWidget({ met }: { met: boolean }) {
   );
 }
 
+/* ── Custom Seel RC icon — stylized shield-parcel with a return arc,
+ *    signifying "worry-free resolution". Linear, single-stroke. */
+function SeelRCIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {/* Shield outline */}
+      <path d="M12 3 L4.5 5.75 V11.5 C4.5 16 7.75 19.75 12 21 C16.25 19.75 19.5 16 19.5 11.5 V5.75 Z" />
+      {/* Return arrow curling inside */}
+      <path d="M9 13.25 C9 11.25 10.5 10 12.25 10 C13.6 10 14.75 10.75 15.25 12" />
+      <path d="M15.5 10 V12 H13.5" />
+    </svg>
+  );
+}
+
+type TouchpointIconComponent =
+  | LucideIcon
+  | ((props: { className?: string }) => ReactElement);
+
 /* ── Icon per touchpoint ───────────────────────────────── */
-const TOUCHPOINT_ICON: Record<TouchpointId, typeof Search> = {
+const TOUCHPOINT_ICON: Record<TouchpointId, TouchpointIconComponent> = {
   search_bar: Search,
   live_widget: MessageSquare,
   thank_you_page: Package,
-  seel_rc: Undo2,
+  seel_rc: SeelRCIcon,
   wfp_email: Mail,
 };
 
@@ -170,7 +197,6 @@ export default function TouchpointsTab() {
                       meta={t}
                       active={selected?.id === t.id}
                       onClick={() => setSelectedId(t.id)}
-                      onRequestConfirm={(c) => setConfirm(c)}
                     />
                   ))}
                 </div>
@@ -228,52 +254,21 @@ function TouchpointCard({
   meta,
   active,
   onClick,
-  onRequestConfirm,
 }: {
   meta: TouchpointMeta;
   active: boolean;
   onClick: () => void;
-  onRequestConfirm: (c: {
-    title: string;
-    body: string;
-    onConfirm: () => void;
-  }) => void;
 }) {
   const store = useSalesAgent();
   const tp = store.touchpoints.find((t) => t.id === meta.id);
   const depMet =
     !meta.dependencyKey || store.dependency[meta.dependencyKey] === true;
-  const shopifyPlusMet = !meta.requiresShopifyPlus || store.dependency.shopifyPlus;
-  const needsStrategy = meta.picksStrategy && !tp?.strategyId;
-  // Toggle is disabled if any required prereq is not met, or the widget is preview-only.
-  const toggleDisabled =
-    !depMet || !shopifyPlusMet || meta.previewOnly || needsStrategy;
-
   const Icon = TOUCHPOINT_ICON[meta.id];
 
   const isOn = !!tp?.enabled && depMet;
-  const row = store.analytics.rows.find((r) => r.touchpointId === meta.id);
-  const revenue = row?.revenue ?? 0;
 
   // Only show Seel-exclusive tag in the list
   const showTag = meta.tags?.includes("seel_exclusive");
-
-  const handleToggle = (v: boolean) => {
-    if (toggleDisabled) return;
-    if (v) {
-      onRequestConfirm({
-        title: `Turn on ${meta.label}?`,
-        body: `Once enabled, Sales Agent recommendations will be served on ${meta.label} in production. You can switch it off at any time.`,
-        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
-      });
-    } else {
-      onRequestConfirm({
-        title: `Turn off ${meta.label}?`,
-        body: `Shoppers will stop seeing Sales Agent recommendations at ${meta.label}. You can turn it back on any time.`,
-        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: false }),
-      });
-    }
-  };
 
   return (
     <button
@@ -297,60 +292,25 @@ function TouchpointCard({
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          {/* Title row: title + Seel-exclusive tag inline + inline toggle */}
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
-              <p className="text-[14px] font-semibold text-[#202223] truncate">
-                {meta.label}
-              </p>
-              {showTag && <TouchpointTagChip tag="seel_exclusive" />}
-              {meta.previewOnly && (
-                <span className="text-[12px] text-[#5C5F62] bg-[#E7EBF5] border border-[#DADEE9] px-1.5 py-[1px] rounded shrink-0">
-                  preview
-                </span>
-              )}
-            </div>
-            <span
-              onClick={(e) => e.stopPropagation()}
-              className="shrink-0"
-              title={
-                toggleDisabled
-                  ? needsStrategy
-                    ? "Select a strategy before enabling."
-                    : meta.previewOnly
-                      ? "Available in V2."
-                      : "Dependency not met."
-                  : undefined
-              }
-            >
-              <SAToggle
-                checked={isOn}
-                disabled={toggleDisabled}
-                onChange={handleToggle}
-                ariaLabel={`Enable ${meta.label}`}
-              />
-            </span>
+          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+            <p className="text-[14px] font-semibold text-[#202223] truncate">
+              {meta.label}
+            </p>
+            {showTag && <TouchpointTagChip tag="seel_exclusive" />}
+            {meta.previewOnly && (
+              <span className="text-[12px] text-[#5C5F62] bg-[#E7EBF5] border border-[#DADEE9] px-1.5 py-[1px] rounded shrink-0">
+                preview
+              </span>
+            )}
           </div>
           <p className="text-[12px] text-[#6B7280] leading-snug line-clamp-2">
             {meta.description}
           </p>
           <div className="flex items-center gap-1.5 mt-2 text-[12px]">
             <StatusDot kind={isOn ? "on" : "off"} />
-            <span
-              className={cn(
-                isOn ? "text-[#235935]" : "text-[#6B7280]",
-              )}
-            >
+            <span className={cn(isOn ? "text-[#235935]" : "text-[#6B7280]")}>
               {isOn ? "On" : "Off"}
             </span>
-            {isOn && (
-              <>
-                <span className="text-[#D9D9D9]">·</span>
-                <span className="text-[#5C5F62] tabular-nums">
-                  ${revenue.toLocaleString()} last 30d
-                </span>
-              </>
-            )}
             {!depMet && meta.dependencyKey && (
               <>
                 <span className="text-[#D9D9D9]">·</span>
@@ -371,9 +331,7 @@ function TouchpointCard({
   );
 }
 
-/* ── Detail container — tabs: Setting / Stats ──────────── */
-type DetailTab = "setting" | "stats";
-
+/* ── Detail container — stacked Setting / Statistics sections ── */
 function TouchpointDetail({
   meta,
   onRequestConfirm,
@@ -387,118 +345,21 @@ function TouchpointDetail({
 }) {
   const store = useSalesAgent();
   const Icon = TOUCHPOINT_ICON[meta.id];
-  const [tab, setTab] = useState<DetailTab>("setting");
   if (meta.id === "thank_you_page")
     return <ThankYouPageDetail onRequestConfirm={onRequestConfirm} />;
-  return (
-    <div className="space-y-6">
-      <header className="flex items-start gap-3 pb-1">
-        <div className="w-10 h-10 rounded-lg bg-[#ECE9FF] flex items-center justify-center shrink-0 text-[#2121C4]">
-          <Icon className="w-5 h-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[12px] text-[#8C8C8C] uppercase tracking-[0.08em]">
-            {STAGE_LABEL[meta.stage]}
-          </p>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-[24px] font-bold text-[#202223] leading-tight">
-              {meta.label}
-            </h2>
-            {meta.tags?.map((tag) => (
-              <TouchpointTagChip key={tag} tag={tag} />
-            ))}
-          </div>
-          <p className="text-[14px] text-[#6B7280] mt-1">
-            {meta.description}
-          </p>
-        </div>
-      </header>
 
-      {meta.requiresShopifyPlus && (
-        <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
-      )}
+  const tp = store.touchpoints.find((t) => t.id === meta.id);
+  const depMet =
+    !meta.dependencyKey || store.dependency[meta.dependencyKey] === true;
+  const shopifyPlusMet =
+    !meta.requiresShopifyPlus || store.dependency.shopifyPlus;
+  const needsStrategy = meta.picksStrategy && !tp?.strategyId;
+  const toggleDisabled =
+    !depMet || !shopifyPlusMet || meta.previewOnly || needsStrategy;
+  const isOn = !!tp?.enabled && depMet;
 
-      <DetailTabs tab={tab} onChange={setTab} />
-
-      {tab === "setting" ? (
-        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
-          {meta.dependencyKey ? (
-            <DependencySetting
-              meta={meta}
-              onRequestConfirm={onRequestConfirm}
-            />
-          ) : (
-            <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
-          )}
-        </div>
-      ) : (
-        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
-          <TouchpointStats touchpointId={meta.id} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DetailTabs({
-  tab,
-  onChange,
-}: {
-  tab: DetailTab;
-  onChange: (v: DetailTab) => void;
-}) {
-  const items: { value: DetailTab; label: string }[] = [
-    { value: "setting", label: "Setting" },
-    { value: "stats", label: "Stats" },
-  ];
-  return (
-    <div className="border-b border-[#E4E4E0] flex items-center gap-4">
-      {items.map((i) => {
-        const active = tab === i.value;
-        return (
-          <button
-            key={i.value}
-            type="button"
-            onClick={() => onChange(i.value)}
-            className={cn(
-              "relative pb-2 text-[14px] font-medium transition-colors",
-              active
-                ? "text-[#1A1A1A]"
-                : "text-[#52525B] hover:text-[#1A1A1A]",
-            )}
-            aria-pressed={active}
-          >
-            {i.label}
-            {active && (
-              <span
-                aria-hidden="true"
-                className="absolute left-0 right-0 -bottom-[1px] h-[2px] bg-[#1A1A1A]"
-              />
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── Setting: Search Bar / LiveChat Widget ───────────── */
-function DependencySetting({
-  meta,
-  onRequestConfirm,
-}: {
-  meta: TouchpointMeta;
-  onRequestConfirm: (c: {
-    title: string;
-    body: string;
-    onConfirm: () => void;
-  }) => void;
-}) {
-  const store = useSalesAgent();
-  const tp = store.touchpoints.find((t) => t.id === meta.id)!;
-  const depMet = store.dependency[meta.dependencyKey!];
-
-  const handleToggle = (v: boolean) => {
+  const handleHeaderToggle = (v: boolean) => {
+    if (toggleDisabled) return;
     if (v) {
       onRequestConfirm({
         title: `Turn on ${meta.label}?`,
@@ -513,6 +374,95 @@ function DependencySetting({
       });
     }
   };
+
+  // Setting section only has content beyond Enable when there's a dependency
+  // warning, a strategy picker, or a help note — which is true for all five
+  // current touchpoints. Flag kept explicit so we can drop empty Settings later.
+  const settingHasContent = true;
+
+  return (
+    <div className="space-y-6">
+      <header className="flex items-start gap-3 pb-1">
+        <div className="w-10 h-10 rounded-lg bg-[#ECE9FF] flex items-center justify-center shrink-0 text-[#2121C4]">
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] text-[#8C8C8C] uppercase tracking-[0.08em]">
+            {STAGE_LABEL[meta.stage]}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-[24px] font-bold text-[#202223] leading-tight">
+              {meta.label}
+            </h2>
+            {meta.tags?.includes("seel_exclusive") && (
+              <TouchpointTagChip tag="seel_exclusive" />
+            )}
+          </div>
+          <p className="text-[14px] text-[#6B7280] mt-1">{meta.description}</p>
+        </div>
+        <div
+          className="shrink-0 pt-1"
+          title={
+            toggleDisabled
+              ? needsStrategy
+                ? "Select a strategy before enabling."
+                : meta.previewOnly
+                  ? "Available in V2."
+                  : "Dependency not met."
+              : undefined
+          }
+        >
+          <SAToggle
+            checked={isOn}
+            disabled={toggleDisabled}
+            onChange={handleHeaderToggle}
+            ariaLabel={`Enable ${meta.label}`}
+          />
+        </div>
+      </header>
+
+      {meta.requiresShopifyPlus && (
+        <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
+      )}
+
+      {settingHasContent && (
+        <DetailSection title="Setting">
+          {meta.dependencyKey ? (
+            <DependencySetting meta={meta} />
+          ) : (
+            <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
+          )}
+        </DetailSection>
+      )}
+
+      <DetailSection title="Statistics">
+        <TouchpointStats touchpointId={meta.id} />
+      </DetailSection>
+    </div>
+  );
+}
+
+function DetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <h3 className="text-[14px] font-semibold text-[#202223] mb-2">{title}</h3>
+      <div className="bg-white border border-[#E0E0E0] rounded-[10px]">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/* ── Setting: Search Bar / LiveChat Widget ───────────── */
+function DependencySetting({ meta }: { meta: TouchpointMeta }) {
+  const store = useSalesAgent();
+  const depMet = store.dependency[meta.dependencyKey!];
 
   return (
     <div className="px-5 py-5 space-y-4">
@@ -532,20 +482,6 @@ function DependencySetting({
           </div>
         </Callout>
       )}
-
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[14px] font-medium text-[#202223]">Enabled</p>
-          <p className="text-[12px] text-[#6B7280] mt-0.5">
-            Show Sales Agent recommendations on {meta.label}.
-          </p>
-        </div>
-        <SAToggle
-          checked={tp.enabled}
-          disabled={!depMet}
-          onChange={handleToggle}
-        />
-      </div>
 
       <div className="text-[12px] text-[#6B7280] bg-[#F9FAFB] border border-[#E0E0E0] rounded-lg px-3 py-2.5">
         Recommendations on {meta.label} are driven by the shopper's real-time
@@ -571,22 +507,6 @@ function StrategySetting({
   const [, navigate] = useLocation();
   const tp = store.touchpoints.find((t) => t.id === meta.id)!;
 
-  const handleToggle = (v: boolean) => {
-    if (v) {
-      onRequestConfirm({
-        title: `Turn on ${meta.label}?`,
-        body: `Once enabled, recommendations from the selected strategy will be served at this touchpoint. You can switch it off at any time.`,
-        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
-      });
-    } else {
-      onRequestConfirm({
-        title: `Turn off ${meta.label}?`,
-        body: `Shoppers will stop seeing recommendations at ${meta.label}. You can turn it back on any time.`,
-        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: false }),
-      });
-    }
-  };
-
   const handleStrategyChange = (v: string) => {
     if (v === "__new__") {
       navigate("/sales-agent/strategies");
@@ -606,40 +526,28 @@ function StrategySetting({
   };
 
   return (
-    <div className="px-5 py-5 space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[14px] font-medium text-[#202223]">Enabled</p>
-          <p className="text-[12px] text-[#6B7280] mt-0.5">
-            Serve recommendations at this touchpoint.
-          </p>
+    <div className="px-5 py-5">
+      <Field
+        label="Strategy"
+        help="This strategy is shared with other touchpoints using it."
+      >
+        <div className="flex items-center gap-2">
+          <SASelect
+            value={tp.strategyId ?? ""}
+            onChange={(e) => handleStrategyChange(e.target.value)}
+            className="flex-1"
+          >
+            <option value="">— None selected —</option>
+            {store.strategies.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+            <option disabled>──────────</option>
+            <option value="__new__">+ Create new strategy…</option>
+          </SASelect>
         </div>
-        <SAToggle checked={tp.enabled} onChange={handleToggle} />
-      </div>
-
-      <div className="border-t border-[#F0F0F0] pt-4">
-        <Field
-          label="Strategy"
-          help="This strategy is shared with other touchpoints using it."
-        >
-          <div className="flex items-center gap-2">
-            <SASelect
-              value={tp.strategyId ?? ""}
-              onChange={(e) => handleStrategyChange(e.target.value)}
-              className="flex-1"
-            >
-              <option value="">— None selected —</option>
-              {store.strategies.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-              <option disabled>──────────</option>
-              <option value="__new__">+ Create new strategy…</option>
-            </SASelect>
-          </div>
-        </Field>
-      </div>
+      </Field>
     </div>
   );
 }
@@ -745,7 +653,6 @@ function ThankYouPageDetail({
   const store = useSalesAgent();
   const meta = TOUCHPOINTS.find((t) => t.id === "thank_you_page")!;
   const [drawerWidgetId, setDrawerWidgetId] = useState<string | null>(null);
-  const [tab, setTab] = useState<DetailTab>("setting");
   const widget = store.thankYouWidgets.find((w) => w.id === drawerWidgetId);
 
   return (
@@ -754,7 +661,7 @@ function ThankYouPageDetail({
         <div className="w-10 h-10 rounded-lg bg-[#F7F7FC] border border-[#E0E0E0] flex items-center justify-center shrink-0 text-[#5C5F62]">
           <Package className="w-5 h-5" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-[12px] text-[#8C8C8C] uppercase tracking-[0.08em]">
             Post-purchase
           </p>
@@ -762,13 +669,21 @@ function ThankYouPageDetail({
             <h2 className="text-[24px] font-bold text-[#202223] leading-tight">
               Thank You Page
             </h2>
-            {meta.tags?.map((tag) => (
-              <TouchpointTagChip key={tag} tag={tag} />
-            ))}
+            {meta.tags?.includes("seel_exclusive") && (
+              <TouchpointTagChip tag="seel_exclusive" />
+            )}
           </div>
           <p className="text-[14px] text-[#6B7280] mt-1">
             Order confirmation recommendations.
           </p>
+        </div>
+        <div className="shrink-0 pt-1" title="Available in V2.">
+          <SAToggle
+            checked={false}
+            disabled
+            onChange={() => {}}
+            ariaLabel="Enable Thank You Page"
+          />
         </div>
       </header>
 
@@ -781,10 +696,7 @@ function ThankYouPageDetail({
         previews of the upcoming capability set.
       </Callout>
 
-      <DetailTabs tab={tab} onChange={setTab} />
-
-      {tab === "setting" ? (
-        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
+      <DetailSection title="Setting">
         <div className="px-5 py-5 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-[14px] font-medium text-[#202223]">
@@ -830,12 +742,11 @@ function ThankYouPageDetail({
             })}
           </div>
         </div>
-        </div>
-      ) : (
-        <div className="bg-white border border-[#E4E4E0] rounded-[10px]">
-          <TouchpointStats touchpointId="thank_you_page" />
-        </div>
-      )}
+      </DetailSection>
+
+      <DetailSection title="Statistics">
+        <TouchpointStats touchpointId="thank_you_page" />
+      </DetailSection>
 
       <ThankYouWidgetDrawer
         open={!!widget}

@@ -10,6 +10,11 @@ import {
 } from "lucide-react";
 import { useSalesAgent } from "@/lib/sales-agent/store";
 import { Chip, InfoTip, Modal, Panel, SAButton, Segmented } from "./primitives";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import ExclusionRules from "./ExclusionRules";
 import StrategyDrawer from "./StrategyDrawer";
 import {
@@ -266,7 +271,7 @@ function StrategyTable({
       </div>
 
       <Panel className="overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,1.6fr)_120px_minmax(0,1.8fr)_110px_96px] items-center px-4 py-3 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[13px] font-semibold text-[#202223]">
+        <div className="grid grid-cols-[minmax(0,1.6fr)_120px_minmax(0,1.8fr)_170px_112px] items-center px-4 py-3 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[13px] font-semibold text-[#202223]">
           <div>Name</div>
           <div>Type</div>
           <div>Used by</div>
@@ -338,7 +343,7 @@ function StrategyRow({
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="grid grid-cols-[minmax(0,1.6fr)_120px_minmax(0,1.8fr)_110px_96px] items-center px-4 py-3 text-[13px] text-[#202223] hover:bg-[#F5F5F5]">
+    <div className="grid grid-cols-[minmax(0,1.6fr)_120px_minmax(0,1.8fr)_170px_112px] items-center px-4 py-3 text-[13px] text-[#202223] hover:bg-[#F5F5F5]">
       <div className="min-w-0 pr-3">
         <p className="font-medium truncate text-[13px]">{strategy.name}</p>
       </div>
@@ -346,15 +351,7 @@ function StrategyRow({
         {STRATEGY_TYPE_LABEL[strategy.type]}
       </div>
       <div className="min-w-0 pr-3">
-        {refs.length === 0 ? (
-          <span className="text-[12px] text-[#8C8C8C]">Unused</span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {refs.map((r) => (
-              <Chip key={r}>{touchpointLabel(r as never)}</Chip>
-            ))}
-          </div>
-        )}
+        <UsedByCell refs={refs} />
       </div>
       <div className="text-[12px] text-[#6B7280] tabular-nums">
         {formatDate(strategy.updatedAt)}
@@ -403,6 +400,48 @@ function StrategyRow({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* Used-by cell — shows up to 2 chips on a single line, then "+N" overflow
+ * with a hover tooltip listing the remaining touchpoint labels. */
+function UsedByCell({ refs }: { refs: string[] }) {
+  if (refs.length === 0) {
+    return <span className="text-[12px] text-[#8C8C8C]">Unused</span>;
+  }
+  const MAX_VISIBLE = 2;
+  const visible = refs.slice(0, MAX_VISIBLE);
+  const rest = refs.slice(MAX_VISIBLE);
+  return (
+    <div className="flex items-center gap-1 min-w-0 whitespace-nowrap overflow-hidden">
+      {visible.map((r) => (
+        <Chip key={r}>{touchpointLabel(r as never)}</Chip>
+      ))}
+      {rest.length > 0 && (
+        <Tooltip delayDuration={150}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center h-6 px-2 rounded border border-[#DADEE9] bg-[#E7EBF5] text-[#5C5F62] text-[12px] font-medium hover:text-[#1A1A1A]"
+              aria-label={`${rest.length} more touchpoints`}
+            >
+              +{rest.length}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="top"
+            sideOffset={6}
+            className="max-w-[260px] bg-[#202223] text-white text-[12px] leading-snug px-2.5 py-1.5 rounded-md"
+          >
+            <div className="space-y-0.5">
+              {refs.map((r) => (
+                <div key={r}>{touchpointLabel(r as never)}</div>
+              ))}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 }
@@ -468,7 +507,13 @@ function MenuItem({
 function formatDate(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   } catch {
     return "—";
   }

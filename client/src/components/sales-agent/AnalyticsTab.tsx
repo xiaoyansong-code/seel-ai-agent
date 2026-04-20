@@ -648,6 +648,7 @@ function RevenueTrendChart({
                 padding: "6px 8px",
               }}
               labelStyle={{ color: "#FFFFFF" }}
+              itemStyle={{ color: "#FFFFFF" }}
               formatter={(v: number, name: string) => [
                 formatCurrency(v),
                 trendKeyLabel(name as TrendKey),
@@ -772,19 +773,13 @@ function TrendToggle({
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-[12px] transition-colors",
-        active
-          ? "bg-white border-[#DADEE9] text-[#202223]"
-          : "bg-[#F7F7FC] border-[#E0E0E0] text-[#8C8C8C] hover:text-[#202223]",
-      )}
+      className="inline-flex items-center gap-1.5 h-7 px-1.5 bg-transparent text-[12px] transition-colors"
       aria-pressed={active}
+      style={{ color: active ? color : "#8C8C8C" }}
     >
       <span
         className="inline-block w-2 h-2 rounded-full shrink-0"
-        style={{
-          backgroundColor: active ? color : "#D9D9D9",
-        }}
+        style={{ backgroundColor: active ? color : "#D9D9D9" }}
       />
       <span className="font-medium">{label}</span>
     </button>
