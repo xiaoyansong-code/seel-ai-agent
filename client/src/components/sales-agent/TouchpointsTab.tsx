@@ -8,9 +8,11 @@ import {
 } from "@/lib/sales-agent/constants";
 import type { Stage, TouchpointId } from "@/lib/sales-agent/types";
 import {
+  Accordion,
   Callout,
   Drawer,
   Field,
+  InfoTip,
   Panel,
   SAButton,
   SAInput,
@@ -18,8 +20,24 @@ import {
   SAToggle,
   StatusDot,
 } from "./primitives";
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  MessageSquare,
+  Package,
+  Search,
+  Mail,
+  Undo2,
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
+
+/* ── Icon per touchpoint ───────────────────────────────── */
+const TOUCHPOINT_ICON: Record<TouchpointId, typeof Search> = {
+  search_bar: Search,
+  live_widget: MessageSquare,
+  thank_you_page: Package,
+  seel_rc: Undo2,
+  wfp_email: Mail,
+};
 
 export default function TouchpointsTab() {
   const store = useSalesAgent();
@@ -32,7 +50,6 @@ export default function TouchpointsTab() {
     visible[0]?.id ?? "seel_rc",
   );
 
-  // If the selected touchpoint is filtered out by platform, fall back
   const selected = visible.find((t) => t.id === selectedId) ?? visible[0];
 
   // Group by stage
@@ -48,22 +65,19 @@ export default function TouchpointsTab() {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left list */}
-      <div className="w-[280px] shrink-0 border-r border-neutral-200 bg-white overflow-auto">
-        <div className="px-3 py-3">
-          <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-500 mb-2 px-1">
-            Touchpoints
-          </p>
+      {/* Left column: touchpoint cards */}
+      <div className="w-[340px] shrink-0 border-r border-neutral-200 bg-[#fafafa] overflow-auto">
+        <div className="px-4 py-5 space-y-5">
           {(Object.keys(grouped) as Stage[]).map((stage) => {
             if (grouped[stage].length === 0) return null;
             return (
-              <div key={stage} className="mb-3 last:mb-0">
-                <p className="text-[11px] text-neutral-500 px-1 mb-1">
+              <div key={stage}>
+                <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-[0.08em] mb-2 px-0.5">
                   {STAGE_LABEL[stage]}
                 </p>
-                <div className="space-y-0.5">
+                <div className="space-y-2">
                   {grouped[stage].map((t) => (
-                    <TouchpointListRow
+                    <TouchpointCard
                       key={t.id}
                       meta={t}
                       active={selected?.id === t.id}
@@ -77,18 +91,18 @@ export default function TouchpointsTab() {
         </div>
       </div>
 
-      {/* Right config */}
+      {/* Right column: detail with two accordions */}
       <div className="flex-1 min-w-0 overflow-auto">
         <div className="max-w-[760px] px-6 py-6">
-          {selected && <TouchpointConfig meta={selected} />}
+          {selected && <TouchpointDetail meta={selected} />}
         </div>
       </div>
     </div>
   );
 }
 
-/* ── List row ──────────────────────────────────────────── */
-function TouchpointListRow({
+/* ── Touchpoint card ──────────────────────────────────── */
+function TouchpointCard({
   meta,
   active,
   onClick,
@@ -101,63 +115,134 @@ function TouchpointListRow({
   const tp = store.touchpoints.find((t) => t.id === meta.id);
   const depMet =
     !meta.dependencyKey || store.dependency[meta.dependencyKey] === true;
+  const strategy = store.strategies.find((s) => s.id === tp?.strategyId);
+  const Icon = TOUCHPOINT_ICON[meta.id];
 
   let statusKind: "on" | "off" | "warn" = "off";
-  if (!depMet && meta.dependencyKey) statusKind = "warn";
-  else if (tp?.enabled) statusKind = "on";
+  let statusLabel = "Off";
+  if (!depMet && meta.dependencyKey) {
+    statusKind = "warn";
+    statusLabel = "Dependency unmet";
+  } else if (tp?.enabled) {
+    statusKind = "on";
+    statusLabel = "On";
+  }
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[4px] text-left",
+        "w-full text-left bg-white border rounded-lg p-3 transition-all",
         active
-          ? "bg-neutral-100 text-neutral-900"
-          : "text-neutral-700 hover:bg-neutral-50",
+          ? "border-primary/40 ring-2 ring-primary/10"
+          : "border-neutral-200 hover:border-neutral-300",
       )}
     >
-      <StatusDot kind={statusKind} />
-      <span className="text-[13px] truncate flex-1">{meta.label}</span>
-      {meta.previewOnly && (
-        <span className="text-[10px] text-neutral-500 border border-neutral-300 px-1 rounded-[3px]">
-          preview
-        </span>
-      )}
+      <div className="flex items-start gap-2.5">
+        <div
+          className={cn(
+            "w-8 h-8 rounded-md flex items-center justify-center shrink-0 border",
+            active
+              ? "bg-primary/8 border-primary/20 text-primary"
+              : "bg-neutral-50 border-neutral-200 text-neutral-600",
+          )}
+        >
+          <Icon className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <p className="text-[13px] font-semibold text-neutral-900 truncate">
+              {meta.label}
+            </p>
+            {meta.previewOnly && (
+              <span className="text-[10px] text-neutral-500 bg-neutral-100 border border-neutral-200 px-1 py-[1px] rounded shrink-0">
+                preview
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">
+            {meta.description}
+          </p>
+          <div className="flex items-center gap-1.5 mt-2 text-[11px]">
+            <StatusDot kind={statusKind} />
+            <span
+              className={cn(
+                statusKind === "on" && "text-emerald-700",
+                statusKind === "warn" && "text-amber-700",
+                statusKind === "off" && "text-neutral-500",
+              )}
+            >
+              {statusLabel}
+            </span>
+            {strategy && (
+              <>
+                <span className="text-neutral-300">·</span>
+                <span className="text-neutral-500 truncate">
+                  {strategy.name}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </button>
   );
 }
 
-/* ── Config panel ──────────────────────────────────────── */
-function TouchpointConfig({ meta }: { meta: TouchpointMeta }) {
-  if (meta.id === "thank_you_page") return <ThankYouPagePanel />;
-  if (meta.dependencyKey) return <DependencyTouchpointPanel meta={meta} />;
-  return <StrategyTouchpointPanel meta={meta} />;
+/* ── Detail container with two accordions ────────────── */
+function TouchpointDetail({ meta }: { meta: TouchpointMeta }) {
+  const Icon = TOUCHPOINT_ICON[meta.id];
+  if (meta.id === "thank_you_page") return <ThankYouPageDetail />;
+  return (
+    <div className="space-y-4">
+      <header className="flex items-start gap-3 pb-1">
+        <div className="w-10 h-10 rounded-md bg-primary/8 border border-primary/15 flex items-center justify-center shrink-0 text-primary">
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] text-neutral-500 uppercase tracking-[0.08em]">
+            {STAGE_LABEL[meta.stage]}
+          </p>
+          <h2 className="text-[18px] font-bold text-neutral-900 leading-tight">
+            {meta.label}
+          </h2>
+          <p className="text-[13px] text-neutral-500 mt-0.5">
+            {meta.description}
+          </p>
+        </div>
+      </header>
+
+      <Accordion title="Setting" defaultOpen={true}>
+        <div className="px-5 py-4">
+          {meta.dependencyKey ? (
+            <DependencySetting meta={meta} />
+          ) : (
+            <StrategySetting meta={meta} />
+          )}
+        </div>
+      </Accordion>
+
+      <Accordion title="Statistics" defaultOpen={true}>
+        <TouchpointStats touchpointId={meta.id} />
+      </Accordion>
+    </div>
+  );
 }
 
-/* ── Search Bar / LiveWidget panel ─────────────────────── */
-function DependencyTouchpointPanel({ meta }: { meta: TouchpointMeta }) {
+/* ── Setting: Search Bar / LiveChat Widget ───────────── */
+function DependencySetting({ meta }: { meta: TouchpointMeta }) {
   const store = useSalesAgent();
   const tp = store.touchpoints.find((t) => t.id === meta.id)!;
   const depMet = store.dependency[meta.dependencyKey!];
 
   return (
     <div className="space-y-4">
-      <header>
-        <p className="text-[11px] text-neutral-500 uppercase tracking-[0.06em]">
-          {STAGE_LABEL[meta.stage]}
-        </p>
-        <h2 className="text-[16px] font-semibold text-neutral-900 mt-0.5">
-          {meta.label}
-        </h2>
-        <p className="text-[12px] text-neutral-500 mt-0.5">{meta.description}</p>
-      </header>
-
       {!depMet && (
         <Callout tone="warn" title="Dependency not met">
           <p>
             {meta.id === "search_bar"
               ? "AI Search is not enabled for this store. Enable Search Bar in Support Agent before turning on this touchpoint."
-              : "LiveWidget is not connected to the storefront. Enable it from Support Agent before turning on this touchpoint."}
+              : "LiveChat Widget is not connected to the storefront. Enable it from Support Agent before turning on this touchpoint."}
           </p>
           <div className="mt-2">
             <Link href="/">
@@ -169,122 +254,194 @@ function DependencyTouchpointPanel({ meta }: { meta: TouchpointMeta }) {
         </Callout>
       )}
 
-      <Panel className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[13px] font-medium text-neutral-900">Enabled</p>
-            <p className="text-[12px] text-neutral-500 mt-0.5">
-              Show Sales Agent recommendations on {meta.label}.
-            </p>
-          </div>
-          <SAToggle
-            checked={tp.enabled}
-            disabled={!depMet}
-            onChange={(v) => store.updateTouchpoint(meta.id, { enabled: v })}
-          />
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[13px] font-medium text-neutral-900">Enabled</p>
+          <p className="text-[12px] text-neutral-500 mt-0.5">
+            Show Sales Agent recommendations on {meta.label}.
+          </p>
         </div>
-      </Panel>
+        <SAToggle
+          checked={tp.enabled}
+          disabled={!depMet}
+          onChange={(v) => store.updateTouchpoint(meta.id, { enabled: v })}
+        />
+      </div>
 
-      <Callout tone="info">
+      <div className="text-[12px] text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-md px-3 py-2">
         Recommendations on {meta.label} are driven by the shopper's real-time
         query or conversation, so no explicit strategy is selected.
-      </Callout>
+      </div>
     </div>
   );
 }
 
-/* ── Seel RC / WFP Email panel ──────────────────────────── */
-function StrategyTouchpointPanel({ meta }: { meta: TouchpointMeta }) {
+/* ── Setting: Seel RC / WFP Email ──────────────────────── */
+function StrategySetting({ meta }: { meta: TouchpointMeta }) {
   const store = useSalesAgent();
   const [, navigate] = useLocation();
   const tp = store.touchpoints.find((t) => t.id === meta.id)!;
 
-  const currentStrategy = store.strategies.find((s) => s.id === tp.strategyId);
-
   return (
     <div className="space-y-4">
-      <header>
-        <p className="text-[11px] text-neutral-500 uppercase tracking-[0.06em]">
-          {STAGE_LABEL[meta.stage]}
-        </p>
-        <h2 className="text-[16px] font-semibold text-neutral-900 mt-0.5">
-          {meta.label}
-        </h2>
-        <p className="text-[12px] text-neutral-500 mt-0.5">{meta.description}</p>
-      </header>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[13px] font-medium text-neutral-900">Enabled</p>
+          <p className="text-[12px] text-neutral-500 mt-0.5">
+            Serve recommendations at this touchpoint.
+          </p>
+        </div>
+        <SAToggle
+          checked={tp.enabled}
+          onChange={(v) => store.updateTouchpoint(meta.id, { enabled: v })}
+        />
+      </div>
 
-      <Panel className="p-4 space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[13px] font-medium text-neutral-900">Enabled</p>
-            <p className="text-[12px] text-neutral-500 mt-0.5">
-              Serve recommendations at this touchpoint.
-            </p>
+      <div className="border-t border-neutral-100 pt-4">
+        <Field
+          label="Strategy"
+          help="This strategy is shared with other touchpoints using it."
+        >
+          <div className="flex items-center gap-2">
+            <SASelect
+              value={tp.strategyId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__new__") {
+                  navigate("/sales-agent/strategies");
+                  return;
+                }
+                store.updateTouchpoint(meta.id, { strategyId: v || null });
+              }}
+              className="flex-1"
+            >
+              <option value="">— None selected —</option>
+              {store.strategies.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+              <option disabled>──────────</option>
+              <option value="__new__">+ Create new strategy…</option>
+            </SASelect>
           </div>
-          <SAToggle
-            checked={tp.enabled}
-            onChange={(v) => store.updateTouchpoint(meta.id, { enabled: v })}
-          />
-        </div>
-
-        <div className="border-t border-neutral-100 pt-4">
-          <Field
-            label="Strategy"
-            help={
-              currentStrategy
-                ? "This strategy is shared with other touchpoints using it."
-                : "Select a strategy to start serving recommendations."
-            }
-          >
-            <div className="flex items-center gap-2">
-              <SASelect
-                value={tp.strategyId ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === "__new__") {
-                    navigate("/sales-agent/strategies");
-                    return;
-                  }
-                  store.updateTouchpoint(meta.id, { strategyId: v || null });
-                }}
-                className="flex-1"
-              >
-                <option value="">— None selected —</option>
-                {store.strategies.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-                <option disabled>──────────</option>
-                <option value="__new__">+ Create new strategy…</option>
-              </SASelect>
-            </div>
-          </Field>
-        </div>
-      </Panel>
+        </Field>
+      </div>
     </div>
   );
 }
 
-/* ── Thank You Page panel (V2 preview) ─────────────────── */
-function ThankYouPagePanel() {
+/* ── Statistics (per-touchpoint) ───────────────────────── */
+function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
+  const store = useSalesAgent();
+  const row = store.analytics.rows.find((r) => r.touchpointId === touchpointId);
+  const isEmpty = !row || row.impressions === 0;
+
+  if (isEmpty) {
+    return (
+      <div className="px-5 py-6 text-center text-[12px] text-neutral-500">
+        No traffic in the last 30 days.
+      </div>
+    );
+  }
+
+  const ctr = row.impressions > 0 ? row.clicks / row.impressions : 0;
+
+  const cells: {
+    label: string;
+    value: string;
+    tip: string;
+    sub?: string;
+  }[] = [
+    {
+      label: "Impressions",
+      value: row.impressions.toLocaleString(),
+      tip: "Times recommendations were shown at this touchpoint.",
+    },
+    {
+      label: "CTR",
+      value: `${(ctr * 100).toFixed(1)}%`,
+      tip: "Clicks divided by impressions.",
+    },
+    {
+      label: "Orders",
+      value: row.orders.toLocaleString(),
+      tip: "Orders attributed to this touchpoint within the 7-day window.",
+    },
+    {
+      label: "Revenue",
+      value: `$${row.revenue.toLocaleString()}`,
+      tip: "Attributed revenue from recommended products (Own products only).",
+      sub: formatDeltaInline(row.delta),
+    },
+  ];
+
+  return (
+    <div className="px-5 py-4 space-y-4">
+      <div className="grid grid-cols-4 gap-4">
+        {cells.map((c) => (
+          <div key={c.label}>
+            <div className="flex items-center gap-1 text-[11px] text-neutral-500">
+              <span className="uppercase tracking-[0.06em] font-medium">
+                {c.label}
+              </span>
+              <InfoTip>{c.tip}</InfoTip>
+            </div>
+            <p className="text-[18px] font-semibold text-neutral-900 tabular-nums mt-0.5">
+              {c.value}
+            </p>
+            {c.sub && (
+              <p className="text-[11px] mt-0.5 tabular-nums">
+                <span
+                  className={cn(
+                    c.sub.startsWith("+") && "text-emerald-700",
+                    c.sub.startsWith("−") && "text-red-700",
+                  )}
+                >
+                  {c.sub}
+                </span>
+                <span className="text-neutral-400 ml-1">vs previous</span>
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-neutral-400 pt-2 border-t border-neutral-100">
+        Last 30 days · attribution window 7 days.
+      </p>
+    </div>
+  );
+}
+
+function formatDeltaInline(d: number): string {
+  if (d === 0) return "0.0%";
+  const pct = Math.abs(d * 100).toFixed(1);
+  return d > 0 ? `+${pct}%` : `−${pct}%`;
+}
+
+/* ── Thank You Page detail (V2 preview) ────────────────── */
+function ThankYouPageDetail() {
   const store = useSalesAgent();
   const [drawerWidgetId, setDrawerWidgetId] = useState<string | null>(null);
-
   const widget = store.thankYouWidgets.find((w) => w.id === drawerWidgetId);
 
   return (
     <div className="space-y-4">
-      <header>
-        <p className="text-[11px] text-neutral-500 uppercase tracking-[0.06em]">
-          Post-purchase
-        </p>
-        <h2 className="text-[16px] font-semibold text-neutral-900 mt-0.5">
-          Thank You Page
-        </h2>
-        <p className="text-[12px] text-neutral-500 mt-0.5">
-          Order confirmation recommendations.
-        </p>
+      <header className="flex items-start gap-3 pb-1">
+        <div className="w-10 h-10 rounded-md bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 text-neutral-600">
+          <Package className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] text-neutral-500 uppercase tracking-[0.08em]">
+            Post-purchase
+          </p>
+          <h2 className="text-[18px] font-bold text-neutral-900 leading-tight">
+            Thank You Page
+          </h2>
+          <p className="text-[13px] text-neutral-500 mt-0.5">
+            Order confirmation recommendations.
+          </p>
+        </div>
       </header>
 
       <Callout tone="info" title="Preview — not in this release">
@@ -292,47 +449,57 @@ function ThankYouPagePanel() {
         previews of the upcoming capability set.
       </Callout>
 
-      <div className="flex items-center justify-between">
-        <p className="text-[13px] font-medium text-neutral-800">
-          Widgets ({store.thankYouWidgets.length})
-        </p>
-        <SAButton variant="secondary" size="sm" disabled>
-          Add widget
-        </SAButton>
-      </div>
+      <Accordion title="Setting" defaultOpen={true}>
+        <div className="px-5 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] font-medium text-neutral-800">
+              Widgets ({store.thankYouWidgets.length})
+            </p>
+            <SAButton variant="secondary" size="sm" disabled>
+              Add widget
+            </SAButton>
+          </div>
 
-      <Panel className="divide-y divide-neutral-100">
-        {store.thankYouWidgets.map((w) => {
-          const strategy = store.strategies.find((s) => s.id === w.strategyId);
-          return (
-            <div
-              key={w.id}
-              className="flex items-center gap-4 px-4 py-3"
-            >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <StatusDot kind={w.enabled ? "on" : "off"} />
-                <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-neutral-900 truncate">
-                    {w.name}
-                  </p>
-                  <p className="text-[11px] text-neutral-500 truncate">
-                    {strategy?.name ?? "No strategy"} · {w.productCount} products · CTA "
-                    {w.ctaLabel}"
-                  </p>
+          <div className="border border-neutral-200 rounded-md divide-y divide-neutral-100">
+            {store.thankYouWidgets.map((w) => {
+              const strategy = store.strategies.find(
+                (s) => s.id === w.strategyId,
+              );
+              return (
+                <div
+                  key={w.id}
+                  className="flex items-center gap-4 px-4 py-3"
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <StatusDot kind={w.enabled ? "on" : "off"} />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-neutral-900 truncate">
+                        {w.name}
+                      </p>
+                      <p className="text-[11px] text-neutral-500 truncate">
+                        {strategy?.name ?? "No strategy"} · {w.productCount}{" "}
+                        products · CTA "{w.ctaLabel}"
+                      </p>
+                    </div>
+                  </div>
+                  <SAButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDrawerWidgetId(w.id)}
+                  >
+                    Edit
+                    <ChevronRight className="w-3 h-3 ml-0.5 opacity-60" />
+                  </SAButton>
                 </div>
-              </div>
-              <SAButton
-                variant="ghost"
-                size="sm"
-                onClick={() => setDrawerWidgetId(w.id)}
-              >
-                Edit
-                <ChevronRight className="w-3 h-3 ml-0.5 opacity-60" />
-              </SAButton>
-            </div>
-          );
-        })}
-      </Panel>
+              );
+            })}
+          </div>
+        </div>
+      </Accordion>
+
+      <Accordion title="Statistics" defaultOpen={true}>
+        <TouchpointStats touchpointId="thank_you_page" />
+      </Accordion>
 
       <ThankYouWidgetDrawer
         open={!!widget}
@@ -377,7 +544,7 @@ function ThankYouWidgetDrawer({
       }
     >
       {widget && (
-        <div className="p-4 space-y-4">
+        <div className="p-5 space-y-4">
           <Callout tone="info">
             This drawer is a V2 preview. Fields are editable locally, but Save
             is disabled for this release.
@@ -479,8 +646,7 @@ function ThankYouWidgetDrawer({
             </Field>
           </div>
 
-          {/* V2 capabilities — collapsed, disabled */}
-          <div className="border border-neutral-200 rounded-[4px]">
+          <div className="border border-neutral-200 rounded-md">
             <button
               type="button"
               onClick={() => setV2Open((v) => !v)}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useSalesAgent } from "@/lib/sales-agent/store";
-import { Panel, SAButton } from "./primitives";
+import { InfoTip, Panel, SAButton } from "./primitives";
 import ExclusionRules from "./ExclusionRules";
 import StrategyModal from "./StrategyModal";
 import {
@@ -11,7 +11,6 @@ import {
 import type { Strategy } from "@/lib/sales-agent/types";
 
 export default function StrategiesTab() {
-  const store = useSalesAgent();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -25,16 +24,25 @@ export default function StrategiesTab() {
   };
 
   return (
-    <div className="max-w-[1040px] mx-auto px-6 py-6 space-y-5">
-      <ExclusionRules />
-
+    <div className="max-w-[1040px] mx-auto px-6 py-6 space-y-6">
+      {/* Strategies list — top */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-[14px] font-semibold text-neutral-900">
-              Strategies
-            </h2>
-            <p className="text-[12px] text-neutral-500">
+            <div className="flex items-center gap-2">
+              <h2 className="text-[16px] font-bold text-neutral-900">
+                Strategies
+              </h2>
+              <span className="inline-flex items-center h-5 px-1.5 rounded bg-primary/8 text-primary text-[11px] font-medium">
+                Online Products
+              </span>
+              <InfoTip>
+                Strategies currently operate on your store's Own products.
+                Network Products (Seel-network inventory) are coming in a
+                future release.
+              </InfoTip>
+            </div>
+            <p className="text-[13px] text-neutral-500 mt-0.5">
               Reusable recipes referenced by touchpoints.
             </p>
           </div>
@@ -45,13 +53,43 @@ export default function StrategiesTab() {
         </div>
 
         <StrategyTable onEdit={openEdit} />
+
+        <NetworkProductsTeaser />
       </section>
+
+      {/* Exclusion rules — bottom */}
+      <ExclusionRules />
 
       <StrategyModal
         open={modalOpen}
         editingId={editingId}
         onClose={() => setModalOpen(false)}
       />
+    </div>
+  );
+}
+
+/* ── Network Products teaser (future scope) ────────────── */
+function NetworkProductsTeaser() {
+  return (
+    <div className="border border-dashed border-neutral-300 rounded-lg px-4 py-3 flex items-center justify-between bg-neutral-50/50">
+      <div>
+        <div className="flex items-center gap-2">
+          <p className="text-[13px] font-medium text-neutral-700">
+            Network Products
+          </p>
+          <span className="inline-flex items-center h-5 px-1.5 rounded bg-neutral-200 text-neutral-600 text-[11px] font-medium">
+            Coming soon
+          </span>
+        </div>
+        <p className="text-[12px] text-neutral-500 mt-0.5">
+          Recommend products from the Seel network to capture demand your
+          catalog doesn't serve.
+        </p>
+      </div>
+      <SAButton variant="secondary" size="sm" disabled>
+        Not available
+      </SAButton>
     </div>
   );
 }

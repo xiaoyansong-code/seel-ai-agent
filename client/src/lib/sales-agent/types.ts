@@ -1,4 +1,11 @@
-/* Sales Agent types */
+/* Sales Agent types
+ *
+ * SCOPE NOTE: All strategies in this module currently source from "Online
+ * Products" (the merchant's own Shopify/Shopline catalog). A future release
+ * will introduce "Network Products" (Seel-network inventory) as an additional
+ * source. When that lands, Strategy will gain a `scope: "online" | "network"`
+ * discriminator; for now all strategies are implicitly `"online"`.
+ */
 
 export type TouchpointId =
   | "search_bar"

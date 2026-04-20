@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Download } from "lucide-react";
+import { ChevronDown, Download } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -13,14 +13,40 @@ import { cn } from "@/lib/utils";
 import { useSalesAgent } from "@/lib/sales-agent/store";
 import { TOUCHPOINTS, touchpointLabel } from "@/lib/sales-agent/constants";
 import type { TouchpointId } from "@/lib/sales-agent/types";
-import {
-  Callout,
-  Panel,
-  SAButton,
-  SASelect,
-} from "./primitives";
+import { InfoTip, Panel, SAButton, SASelect } from "./primitives";
 
 type Range = "7d" | "30d" | "90d";
+
+/* ── Metric copy (used both in KPI and table header tooltips) ── */
+const METRIC_COPY: Record<
+  "revenue" | "orders" | "ctr" | "aov" | "impressions",
+  { label: string; definition: string }
+> = {
+  revenue: {
+    label: "Attributed Revenue",
+    definition:
+      "Revenue from orders containing a product surfaced by Sales Agent (Own products only). Sum over the selected window.",
+  },
+  orders: {
+    label: "Orders Influenced",
+    definition:
+      "Distinct orders that include a recommended product, counted within a 7-day click-to-purchase attribution window.",
+  },
+  ctr: {
+    label: "CTR",
+    definition: "Clicks divided by impressions across Sales Agent touchpoints.",
+  },
+  aov: {
+    label: "AOV of Influenced Orders",
+    definition:
+      "Average order value for orders attributed to Sales Agent. Calculated as Attributed Revenue ÷ Orders Influenced.",
+  },
+  impressions: {
+    label: "Impressions",
+    definition:
+      "Number of times recommendations were shown at a touchpoint within the selected window.",
+  },
+};
 
 export default function AnalyticsTab() {
   const store = useSalesAgent();
@@ -46,7 +72,7 @@ export default function AnalyticsTab() {
       "CTR",
       "Orders",
       "Revenue",
-      "Delta",
+      "Revenue Δ",
     ];
     const lines = filteredRows.map((r) => {
       const ctr = r.impressions > 0 ? r.clicks / r.impressions : 0;
@@ -99,19 +125,19 @@ export default function AnalyticsTab() {
       {/* KPI cards */}
       <div className="grid grid-cols-4 gap-3">
         <KpiCard
-          label="Attributed Revenue"
+          label={METRIC_COPY.revenue.label}
           value={isEmpty ? "—" : formatCurrency(data.revenue)}
           delta={data.deltaRevenue}
-          hint="Revenue from orders containing a Sales Agent recommendation (Own products)."
+          tip={METRIC_COPY.revenue.definition}
         />
         <KpiCard
-          label="Orders Influenced"
+          label={METRIC_COPY.orders.label}
           value={isEmpty ? "—" : data.orders.toLocaleString()}
           delta={data.deltaOrders}
-          hint="Orders within the 7-day attribution window that include a recommended product."
+          tip={METRIC_COPY.orders.definition}
         />
         <KpiCard
-          label="CTR"
+          label={METRIC_COPY.ctr.label}
           value={
             isEmpty
               ? "—"
@@ -120,26 +146,26 @@ export default function AnalyticsTab() {
                 )
           }
           delta={data.deltaCtr}
-          hint="Clicks divided by impressions across all Sales Agent touchpoints."
+          tip={METRIC_COPY.ctr.definition}
         />
         <KpiCard
-          label="AOV of Influenced Orders"
+          label={METRIC_COPY.aov.label}
           value={isEmpty ? "—" : formatCurrency(data.aov)}
           delta={data.deltaAov}
-          hint="Average order value for orders attributed to Sales Agent."
+          tip={METRIC_COPY.aov.definition}
         />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-[2fr_1fr] gap-3">
-        <Panel className="p-4">
-          <p className="text-[13px] font-medium text-neutral-900">
-            Revenue trend
-          </p>
-          <p className="text-[11px] text-neutral-500 mb-2">
-            Attributed revenue by day
-          </p>
-          <div className="h-[220px]">
+        <Panel className="p-5">
+          <div className="flex items-center gap-1.5">
+            <p className="text-[14px] font-semibold text-neutral-900">
+              Revenue trend
+            </p>
+            <InfoTip>Attributed revenue by day, over the selected window.</InfoTip>
+          </div>
+          <div className="h-[220px] mt-3">
             {isEmpty ? (
               <EmptyChart />
             ) : (
@@ -173,7 +199,7 @@ export default function AnalyticsTab() {
                     contentStyle={{
                       background: "#111",
                       border: "none",
-                      borderRadius: 4,
+                      borderRadius: 6,
                       color: "#fff",
                       fontSize: 12,
                       padding: "6px 8px",
@@ -184,10 +210,10 @@ export default function AnalyticsTab() {
                   <Line
                     type="monotone"
                     dataKey="revenue"
-                    stroke="#171717"
-                    strokeWidth={1.5}
+                    stroke="var(--primary)"
+                    strokeWidth={1.75}
                     dot={false}
-                    activeDot={{ r: 3, fill: "#171717" }}
+                    activeDot={{ r: 3, fill: "var(--primary)" }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -195,40 +221,55 @@ export default function AnalyticsTab() {
           </div>
         </Panel>
 
-        <Panel className="p-4">
-          <p className="text-[13px] font-medium text-neutral-900">
-            Revenue by touchpoint
-          </p>
-          <p className="text-[11px] text-neutral-500 mb-3">
-            Share of attributed revenue
-          </p>
-          {isEmpty ? (
-            <EmptyChart />
-          ) : (
-            <TouchpointBars data={data.byTouchpoint} total={data.revenue} />
-          )}
+        <Panel className="p-5">
+          <div className="flex items-center gap-1.5">
+            <p className="text-[14px] font-semibold text-neutral-900">
+              Revenue by touchpoint
+            </p>
+            <InfoTip>
+              Share of attributed revenue contributed by each touchpoint.
+            </InfoTip>
+          </div>
+          <div className="mt-4">
+            {isEmpty ? (
+              <EmptyChart />
+            ) : (
+              <TouchpointBars data={data.byTouchpoint} total={data.revenue} />
+            )}
+          </div>
         </Panel>
       </div>
 
       {/* Detail table */}
       <Panel className="overflow-hidden">
-        <div className="px-4 py-3 border-b border-neutral-100">
-          <p className="text-[13px] font-semibold text-neutral-900">
+        <div className="px-5 py-4 border-b border-neutral-100">
+          <p className="text-[14px] font-semibold text-neutral-900">
             Touchpoint × Widget × Strategy
           </p>
-          <p className="text-[11px] text-neutral-500">
-            Detailed breakdown of the selected time range.
-          </p>
         </div>
-        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.4fr)_90px_80px_80px_100px_70px] px-4 py-2.5 bg-neutral-50 border-b border-neutral-100 text-[11px] font-medium text-neutral-500 uppercase tracking-[0.06em]">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.4fr)_110px_90px_90px_150px] px-5 py-2.5 bg-neutral-50 border-b border-neutral-100 text-[11px] font-semibold text-neutral-500 uppercase tracking-[0.06em]">
           <div>Touchpoint</div>
           <div>Widget</div>
           <div>Strategy</div>
-          <div className="text-right">Impr.</div>
-          <div className="text-right">CTR</div>
-          <div className="text-right">Orders</div>
-          <div className="text-right">Revenue</div>
-          <div className="text-right">Δ</div>
+          <div className="flex items-center gap-1 justify-end">
+            <span>Impr.</span>
+            <InfoTip>{METRIC_COPY.impressions.definition}</InfoTip>
+          </div>
+          <div className="flex items-center gap-1 justify-end">
+            <span>CTR</span>
+            <InfoTip>{METRIC_COPY.ctr.definition}</InfoTip>
+          </div>
+          <div className="flex items-center gap-1 justify-end">
+            <span>Orders</span>
+            <InfoTip>{METRIC_COPY.orders.definition}</InfoTip>
+          </div>
+          <div className="flex items-center gap-1 justify-end">
+            <span>Revenue</span>
+            <InfoTip>
+              {METRIC_COPY.revenue.definition} Parenthesis shows change vs the
+              previous equal-length window.
+            </InfoTip>
+          </div>
         </div>
         {filteredRows.length === 0 ? (
           <div className="py-8 text-center text-[12px] text-neutral-500">
@@ -244,9 +285,9 @@ export default function AnalyticsTab() {
               return (
                 <div
                   key={`${r.touchpointId}-${r.widget}`}
-                  className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.4fr)_90px_80px_80px_100px_70px] items-center px-4 py-2.5 text-[13px] text-neutral-900 hover:bg-neutral-50"
+                  className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.4fr)_110px_90px_90px_150px] items-center px-5 py-3 text-[13px] text-neutral-900 hover:bg-neutral-50"
                 >
-                  <div className="truncate">
+                  <div className="truncate font-medium">
                     {touchpointLabel(r.touchpointId)}
                   </div>
                   <div className="truncate text-neutral-500 font-mono text-[12px]">
@@ -267,10 +308,19 @@ export default function AnalyticsTab() {
                     {r.orders.toLocaleString()}
                   </div>
                   <div className="text-right tabular-nums">
-                    {formatCurrency(r.revenue)}
-                  </div>
-                  <div className="text-right tabular-nums">
-                    <DeltaText value={r.delta} />
+                    <span className="font-medium">
+                      {formatCurrency(r.revenue)}
+                    </span>
+                    <span
+                      className={cn(
+                        "ml-1.5 text-[11px]",
+                        r.delta > 0 && "text-emerald-700",
+                        r.delta < 0 && "text-red-700",
+                        r.delta === 0 && "text-neutral-400",
+                      )}
+                    >
+                      ({formatDelta(r.delta)})
+                    </span>
                   </div>
                 </div>
               );
@@ -278,15 +328,6 @@ export default function AnalyticsTab() {
           </div>
         )}
       </Panel>
-
-      <MetricDefinitions />
-
-      {isEmpty && (
-        <Callout tone="info">
-          No traffic has been attributed in this window yet. KPI values and
-          charts will populate once the Sales Agent serves live recommendations.
-        </Callout>
-      )}
     </div>
   );
 }
@@ -310,11 +351,7 @@ function TouchpointFilter({
 
   return (
     <div className="relative">
-      <SAButton
-        variant="secondary"
-        size="md"
-        onClick={() => setOpen((v) => !v)}
-      >
+      <SAButton variant="secondary" size="md" onClick={() => setOpen((v) => !v)}>
         {label}
         <ChevronDown className="w-3 h-3 opacity-60" />
       </SAButton>
@@ -325,7 +362,7 @@ function TouchpointFilter({
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
-          <div className="absolute z-20 mt-1 left-0 w-[240px] bg-white border border-neutral-200 rounded-[4px] shadow-[0_10px_24px_-8px_rgba(0,0,0,0.18)] py-1">
+          <div className="absolute z-20 mt-1 left-0 w-[240px] bg-white border border-neutral-200 rounded-md shadow-[0_10px_24px_-8px_rgba(0,0,0,0.18)] py-1">
             <button
               className="w-full text-left px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50"
               onClick={() =>
@@ -349,7 +386,7 @@ function TouchpointFilter({
                       if (checked) onChange(selected.filter((x) => x !== t.id));
                       else onChange([...selected, t.id]);
                     }}
-                    className="h-3.5 w-3.5 accent-neutral-900"
+                    className="h-3.5 w-3.5 accent-[var(--primary)]"
                   />
                   {t.label}
                 </label>
@@ -367,24 +404,26 @@ function KpiCard({
   label,
   value,
   delta,
-  hint,
+  tip,
 }: {
   label: string;
   value: string;
   delta: number | null;
-  hint: string;
+  tip: string;
 }) {
   return (
-    <Panel className="p-3.5">
-      <p className="text-[12px] text-neutral-500">{label}</p>
-      <p className="text-[22px] font-semibold text-neutral-900 tabular-nums leading-tight mt-1">
+    <Panel className="px-4 py-4">
+      <div className="flex items-center gap-1 text-[12px] text-neutral-500">
+        <span>{label}</span>
+        <InfoTip>{tip}</InfoTip>
+      </div>
+      <p className="text-[24px] font-semibold text-neutral-900 tabular-nums leading-tight mt-1">
         {value}
       </p>
-      <div className="flex items-center gap-2 mt-1">
+      <div className="flex items-center gap-1.5 mt-1">
         <DeltaText value={delta} />
-        <span className="text-[11px] text-neutral-400">vs previous period</span>
+        <span className="text-[11px] text-neutral-400">vs previous</span>
       </div>
-      <p className="text-[11px] text-neutral-500 mt-2 leading-snug">{hint}</p>
     </Panel>
   );
 }
@@ -411,6 +450,12 @@ function DeltaText({ value }: { value: number | null }) {
   );
 }
 
+function formatDelta(d: number): string {
+  if (d === 0) return "0.0%";
+  const pct = Math.abs(d * 100).toFixed(1);
+  return d > 0 ? `+${pct}%` : `−${pct}%`;
+}
+
 /* ── Revenue-by-touchpoint horizontal bar ──────────────── */
 function TouchpointBars({
   data,
@@ -421,22 +466,20 @@ function TouchpointBars({
 }) {
   const sorted = [...data].sort((a, b) => b.revenue - a.revenue);
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {sorted.map((d) => {
         const pct = total > 0 ? (d.revenue / total) * 100 : 0;
         return (
           <div key={d.touchpointId}>
             <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-0.5">
-              <span className="text-neutral-700 text-[12px]">
+              <span className="text-neutral-800 text-[12px] font-medium">
                 {touchpointLabel(d.touchpointId)}
               </span>
-              <span className="tabular-nums">
-                {formatCurrency(d.revenue)}
-              </span>
+              <span className="tabular-nums">{formatCurrency(d.revenue)}</span>
             </div>
             <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-neutral-800 rounded-full"
+                className="h-full bg-primary rounded-full"
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -450,74 +493,9 @@ function TouchpointBars({
 /* ── Empty chart ───────────────────────────────────────── */
 function EmptyChart() {
   return (
-    <div className="h-full flex items-center justify-center">
+    <div className="h-[180px] flex items-center justify-center">
       <p className="text-[12px] text-neutral-400">No data yet</p>
     </div>
-  );
-}
-
-/* ── Metric definitions (collapsible) ──────────────────── */
-function MetricDefinitions() {
-  const [open, setOpen] = useState(false);
-  const defs = [
-    {
-      name: "Attributed Revenue",
-      def: "Total revenue from orders that include a product surfaced by Sales Agent, Own products only.",
-      calc: "Sum of order totals where ≥1 line item was clicked from a Sales Agent surface within the attribution window.",
-    },
-    {
-      name: "Orders Influenced",
-      def: "Count of distinct orders that include a Sales Agent recommendation.",
-      calc: "Distinct order_id count, 7-day click-to-purchase attribution window.",
-    },
-    {
-      name: "CTR",
-      def: "Fraction of recommendation impressions that received a click.",
-      calc: "Clicks / Impressions, across all selected touchpoints.",
-    },
-    {
-      name: "AOV of Influenced Orders",
-      def: "Average basket size of orders attributed to Sales Agent.",
-      calc: "Attributed Revenue / Orders Influenced.",
-    },
-  ];
-  return (
-    <Panel className="overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3"
-      >
-        <div className="text-left">
-          <p className="text-[13px] font-medium text-neutral-900">
-            Metric definitions
-          </p>
-          <p className="text-[11px] text-neutral-500">
-            How each KPI is calculated.
-          </p>
-        </div>
-        {open ? (
-          <ChevronDown className="w-4 h-4 text-neutral-500" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-neutral-500" />
-        )}
-      </button>
-      {open && (
-        <div className="border-t border-neutral-100 divide-y divide-neutral-100">
-          {defs.map((d) => (
-            <div key={d.name} className="px-4 py-3">
-              <p className="text-[13px] font-medium text-neutral-900">
-                {d.name}
-              </p>
-              <p className="text-[12px] text-neutral-700 mt-0.5">{d.def}</p>
-              <p className="text-[11px] text-neutral-500 mt-1 font-mono">
-                {d.calc}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
   );
 }
 

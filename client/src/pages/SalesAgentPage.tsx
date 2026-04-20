@@ -34,14 +34,11 @@ export default function SalesAgentPage() {
     <div className="flex flex-col h-full bg-[#fafafa]">
       {/* Module header */}
       <div className="shrink-0 bg-white border-b border-neutral-200">
-        <div className="px-6 pt-4">
-          <h1 className="text-[18px] font-bold text-neutral-900 leading-tight">
+        <div className="px-6 pt-5">
+          <h1 className="text-[22px] font-bold text-neutral-900 leading-tight">
             Sales Agent
           </h1>
-          <p className="text-[12px] text-neutral-500 mt-0.5">
-            Configure product recommendations across the shopper journey.
-          </p>
-          <div className="flex items-center gap-1 mt-3 -mb-px">
+          <div className="flex items-center gap-1 mt-4 -mb-px">
             {TABS.map((t) => {
               const href =
                 t.key === "touchpoints" ? "/sales-agent" : `/sales-agent/${t.key}`;
@@ -50,15 +47,15 @@ export default function SalesAgentPage() {
                 <Link key={t.key} href={href}>
                   <button
                     className={cn(
-                      "px-3 pb-2.5 text-[13px] font-medium transition-colors relative",
+                      "px-3 pb-3 text-[14px] font-semibold transition-colors relative",
                       active
-                        ? "text-neutral-900"
+                        ? "text-primary"
                         : "text-neutral-500 hover:text-neutral-900",
                     )}
                   >
                     {t.label}
                     {active && (
-                      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-neutral-900" />
+                      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary" />
                     )}
                   </button>
                 </Link>
