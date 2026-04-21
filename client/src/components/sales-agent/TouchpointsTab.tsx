@@ -198,7 +198,6 @@ export default function TouchpointsTab() {
                       meta={t}
                       active={selected?.id === t.id}
                       onClick={() => setSelectedId(t.id)}
-                      onRequestConfirm={(c) => setConfirm(c)}
                     />
                   ))}
                 </div>
@@ -256,57 +255,21 @@ function TouchpointCard({
   meta,
   active,
   onClick,
-  onRequestConfirm,
 }: {
   meta: TouchpointMeta;
   active: boolean;
   onClick: () => void;
-  onRequestConfirm: (c: {
-    title: string;
-    body: string;
-    onConfirm: () => void;
-  }) => void;
 }) {
   const store = useSalesAgent();
   const tp = store.touchpoints.find((t) => t.id === meta.id);
   const depMet =
     !meta.dependencyKey || store.dependency[meta.dependencyKey] === true;
-  const shopifyPlusMet =
-    !meta.requiresShopifyPlus || store.dependency.shopifyPlus;
-  const needsStrategy = meta.picksStrategy && !tp?.strategyId;
-  const toggleDisabled =
-    !depMet || !shopifyPlusMet || meta.previewOnly || needsStrategy;
 
   const Icon = TOUCHPOINT_ICON[meta.id];
   const isOn = !!tp?.enabled && depMet;
 
   // Only show Seel-exclusive tag in the list
   const showTag = meta.tags?.includes("seel_exclusive");
-
-  const handleToggle = (v: boolean) => {
-    if (toggleDisabled) return;
-    if (v) {
-      onRequestConfirm({
-        title: `Turn on ${meta.label}?`,
-        body: `Once enabled, Sales Agent recommendations will be served on ${meta.label} in production. You can switch it off at any time.`,
-        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
-      });
-    } else {
-      onRequestConfirm({
-        title: `Turn off ${meta.label}?`,
-        body: `Shoppers will stop seeing Sales Agent recommendations at ${meta.label}. You can turn it back on any time.`,
-        onConfirm: () => store.updateTouchpoint(meta.id, { enabled: false }),
-      });
-    }
-  };
-
-  const toggleTooltip = toggleDisabled
-    ? needsStrategy
-      ? "Select a strategy before enabling."
-      : meta.previewOnly
-        ? "Available in V2."
-        : "Dependency not met."
-    : undefined;
 
   return (
     <button
@@ -354,20 +317,33 @@ function TouchpointCard({
             </div>
           )}
         </div>
-        <span
-          onClick={(e) => e.stopPropagation()}
-          className="shrink-0 pt-0.5"
-          title={toggleTooltip}
-        >
-          <SAToggle
-            checked={isOn}
-            disabled={toggleDisabled}
-            onChange={handleToggle}
-            ariaLabel={`Enable ${meta.label}`}
-          />
-        </span>
+        <TouchpointStatusPill isOn={isOn} />
       </div>
     </button>
+  );
+}
+
+/* ── Non-interactive status pill for touchpoint cards ────── */
+function TouchpointStatusPill({ isOn }: { isOn: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 h-6 px-2 rounded-full text-[12px] font-medium shrink-0 border select-none",
+        isOn
+          ? "bg-[#E9F7E2] border-[#CDE9C3] text-[#235935]"
+          : "bg-[#F5F5F5] border-[#E4E4E4] text-[#6B7280]",
+      )}
+      aria-label={isOn ? "On" : "Off"}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-block w-1.5 h-1.5 rounded-full",
+          isOn ? "bg-[#52C41A]" : "bg-[#BFBFBF]",
+        )}
+      />
+      {isOn ? "On" : "Off"}
+    </span>
   );
 }
 
