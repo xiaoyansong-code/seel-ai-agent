@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactElement } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useSalesAgent } from "@/lib/sales-agent/store";
+import { useSalesAgent, type RcNetworkState } from "@/lib/sales-agent/store";
 import {
   STAGE_LABEL,
   TOUCHPOINTS,
@@ -464,10 +465,16 @@ function TouchpointDetail({
         <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
       )}
 
+      {meta.id === "seel_rc" && <SeelRCDebugSwitcher />}
+
       <HowItWorksSection touchpointId={meta.id} />
 
       {meta.dependencyKey ? (
         <DependencyNotice meta={meta} />
+      ) : meta.id === "seel_rc" ? (
+        <DetailSection title="Setting">
+          <SeelRCSetting meta={meta} onRequestConfirm={onRequestConfirm} />
+        </DetailSection>
       ) : (
         <DetailSection title="Setting">
           <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
@@ -477,6 +484,8 @@ function TouchpointDetail({
       <DetailSection title="Statistics">
         <TouchpointStats touchpointId={meta.id} />
       </DetailSection>
+
+      {meta.id === "seel_rc" && <SeelRCSaveBar />}
     </div>
   );
 }
@@ -621,6 +630,367 @@ function StrategySetting({
           className="w-28"
         />
       </Field>
+    </div>
+  );
+}
+
+/* ── Seel RC Setting (Own Products / Network Products split) ─── */
+type RcModalKind =
+  | { kind: "enable" }
+  | { kind: "disable-active"; nextOwn: boolean };
+
+function SeelRCSetting({
+  meta,
+  onRequestConfirm,
+}: {
+  meta: TouchpointMeta;
+  onRequestConfirm: (c: {
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }) => void;
+}) {
+  const store = useSalesAgent();
+  const [, navigate] = useLocation();
+  const tp = store.touchpoints.find((t) => t.id === meta.id)!;
+  const [modal, setModal] = useState<RcModalKind | null>(null);
+
+  const networkOn = store.rcNetworkState !== "disabled";
+  const ownOn = store.rcOwnEnabled;
+
+  // Own → on (mutex: Network goes to disabled; confirm if currently active).
+  const handleOwnToggle = (v: boolean) => {
+    if (!v) {
+      // Exactly one source must be active; can't turn Own off directly.
+      return;
+    }
+    if (ownOn) return;
+    if (store.rcNetworkState === "active") {
+      setModal({ kind: "disable-active", nextOwn: true });
+      return;
+    }
+    // pending → off (no confirmation). Flip directly.
+    store.setRcNetworkState("disabled");
+    store.setRcOwnEnabled(true);
+  };
+
+  // Network toggle.
+  const handleNetworkToggle = (v: boolean) => {
+    if (v) {
+      if (networkOn) return;
+      setModal({ kind: "enable" });
+    } else {
+      if (store.rcNetworkState === "active") {
+        setModal({ kind: "disable-active", nextOwn: true });
+      } else {
+        // pending → off (no confirmation).
+        store.setRcNetworkState("disabled");
+        store.setRcOwnEnabled(true);
+      }
+    }
+  };
+
+  const handleStrategyChange = (v: string) => {
+    if (v === "__new__") {
+      navigate("/sales-agent/strategies");
+      return;
+    }
+    const next = v || null;
+    if (tp.enabled && next !== tp.strategyId) {
+      onRequestConfirm({
+        title: `Change strategy for ${meta.label}?`,
+        body: `This touchpoint is live. Changes apply immediately to shoppers in production.`,
+        onConfirm: () =>
+          store.updateTouchpoint(meta.id, { strategyId: next }),
+      });
+    } else {
+      store.updateTouchpoint(meta.id, { strategyId: next });
+    }
+  };
+
+  const enableConfirm = () => {
+    store.setRcNetworkState("pending");
+    store.setRcOwnEnabled(false);
+    // Mark that the user just enabled Network — next Save click shows the toast.
+    store.setRcPendingSaveToast(true);
+    setModal(null);
+  };
+
+  const disableConfirm = (nextOwn: boolean) => {
+    store.setRcNetworkState("disabled");
+    store.setRcOwnEnabled(nextOwn);
+    setModal(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Own Products */}
+      <RcSourceCard
+        title="Own Products"
+        checked={ownOn}
+        onChange={handleOwnToggle}
+      >
+        <div className="space-y-3">
+          <Field label="Strategy">
+            <SASelect
+              value={tp.strategyId ?? ""}
+              onChange={(e) => handleStrategyChange(e.target.value)}
+              className="w-full"
+              disabled={!ownOn}
+            >
+              <option value="">— None selected —</option>
+              {store.strategies.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+              <option disabled>──────────</option>
+              <option value="__new__">+ Create new strategy…</option>
+            </SASelect>
+          </Field>
+          <Field label="Product count" help="Between 1 and 10.">
+            <SAInput
+              type="number"
+              min={1}
+              max={10}
+              value={tp.productCount}
+              disabled={!ownOn}
+              onChange={(e) =>
+                store.updateTouchpoint(meta.id, {
+                  productCount: Math.max(
+                    1,
+                    Math.min(10, Number(e.target.value) || 1),
+                  ),
+                })
+              }
+              className="w-28"
+            />
+          </Field>
+        </div>
+      </RcSourceCard>
+
+      {/* Network Products */}
+      <RcSourceCard
+        title="Network Products"
+        description="Earn commission by showing partner products on attributed sales."
+        checked={networkOn}
+        onChange={handleNetworkToggle}
+        footer={<NetworkStatusRow state={store.rcNetworkState} />}
+      />
+
+      {/* Enable modal */}
+      <Modal
+        open={modal?.kind === "enable"}
+        onClose={() => setModal(null)}
+        title="Enable Network Recommendations"
+        width="max-w-[440px]"
+        footer={
+          <>
+            <SAButton variant="ghost" onClick={() => setModal(null)}>
+              Cancel
+            </SAButton>
+            <SAButton variant="primary" onClick={enableConfirm}>
+              Enable
+            </SAButton>
+          </>
+        }
+      >
+        <p className="text-[14px] text-[#52525B] leading-relaxed">
+          A Seel team member will reach out within 3 business days to complete
+          setup. You can disable this anytime.
+        </p>
+      </Modal>
+
+      {/* Active → disable modal */}
+      <Modal
+        open={modal?.kind === "disable-active"}
+        onClose={() => setModal(null)}
+        title="Disable Network Recommendations"
+        width="max-w-[440px]"
+        footer={
+          <>
+            <SAButton variant="ghost" onClick={() => setModal(null)}>
+              Cancel
+            </SAButton>
+            <SAButton
+              variant="danger"
+              onClick={() =>
+                disableConfirm(
+                  modal?.kind === "disable-active" ? modal.nextOwn : true,
+                )
+              }
+            >
+              Disable
+            </SAButton>
+          </>
+        }
+      >
+        <p className="text-[14px] text-[#52525B] leading-relaxed">
+          Disabling Network recommendations will stop showing partner products
+          immediately. Continue?
+        </p>
+      </Modal>
+    </div>
+  );
+}
+
+/* A card with a header-level toggle. Tooltip shows on the OFF toggle only. */
+function RcSourceCard({
+  title,
+  description,
+  checked,
+  onChange,
+  children,
+  footer,
+}: {
+  title: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  children?: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  const showTip = !checked && hover;
+  return (
+    <div className="bg-white border border-[#E4E4E0] rounded-[6px]">
+      <div className="flex items-start gap-3 px-4 py-3.5">
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-semibold text-[#1A1A1A] leading-snug">
+            {title}
+          </p>
+          {description && (
+            <p className="text-[13px] text-[#52525B] leading-relaxed mt-1">
+              {description}
+            </p>
+          )}
+        </div>
+        <div
+          className="relative shrink-0 pt-0.5"
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+        >
+          <SAToggle
+            checked={checked}
+            onChange={onChange}
+            ariaLabel={`${title} source`}
+          />
+          {showTip && (
+            <div className="absolute right-0 bottom-[calc(100%+8px)] z-10 whitespace-nowrap rounded-[4px] bg-[#1A1A1A] text-white text-[12px] leading-snug px-2 py-1 shadow">
+              Only one source can be active. Click to switch.
+              <span className="absolute -bottom-1 right-3 w-2 h-2 rotate-45 bg-[#1A1A1A]" />
+            </div>
+          )}
+        </div>
+      </div>
+      {checked && children && (
+        <div className="border-t border-[#E4E4E0] px-4 py-4">{children}</div>
+      )}
+      {footer && (
+        <div className="border-t border-[#E4E4E0] px-4 py-2.5 bg-[#FBFBF9] rounded-b-[6px]">
+          {footer}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NetworkStatusRow({ state }: { state: RcNetworkState }) {
+  if (state === "disabled") return null;
+  if (state === "pending") {
+    return (
+      <div className="flex items-center gap-2 text-[13px] text-[#52525B]">
+        <span
+          className="w-2 h-2 rounded-full bg-[#A85A00] shrink-0"
+          aria-hidden="true"
+        />
+        <span>
+          <span className="font-semibold text-[#1A1A1A]">Pending setup</span>
+          <span className="text-[#8A8A85]"> · </span>
+          A Seel team member will contact you within 3 business days.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-[13px] text-[#52525B]">
+      <span
+        className="w-2 h-2 rounded-full bg-[#0A7A3A] shrink-0"
+        aria-hidden="true"
+      />
+      <span>
+        <span className="font-semibold text-[#1A1A1A]">Enabled</span>
+        <span className="text-[#8A8A85]"> · </span>
+        Activated Apr 21, 2026.
+      </span>
+    </div>
+  );
+}
+
+/* ── Debug switcher — prototype-only (RC detail top) ─────── */
+function SeelRCDebugSwitcher() {
+  const store = useSalesAgent();
+  const options: { value: RcNetworkState; label: string }[] = [
+    { value: "disabled", label: "disabled" },
+    { value: "pending", label: "pending" },
+    { value: "active", label: "active" },
+  ];
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-[4px] bg-[#1A1A1A] text-[#E4E4E0] text-[12px]">
+      <span className="uppercase tracking-[0.08em] text-[#8A8A85] font-semibold">
+        Debug · Network state
+      </span>
+      <div className="inline-flex rounded-[4px] overflow-hidden border border-[#3A3A3A]">
+        {options.map((opt, i) => {
+          const active = store.rcNetworkState === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                store.setRcNetworkState(opt.value);
+                store.setRcOwnEnabled(opt.value === "disabled");
+              }}
+              className={cn(
+                "px-2.5 py-1 text-[12px] font-medium",
+                i > 0 && "border-l border-[#3A3A3A]",
+                active
+                  ? "bg-[#E4E4E0] text-[#1A1A1A]"
+                  : "bg-transparent text-[#E4E4E0] hover:bg-[#2A2A2A]",
+              )}
+              aria-pressed={active}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <span className="ml-auto text-[#8A8A85]">
+        Prototype only — will be removed.
+      </span>
+    </div>
+  );
+}
+
+/* ── Save bar at the bottom of the RC detail ─────────────── */
+function SeelRCSaveBar() {
+  const store = useSalesAgent();
+  const onSave = () => {
+    if (store.rcPendingSaveToast) {
+      toast.success(
+        "Network recommendations enabled. We'll reach out within 3 business days.",
+        { duration: 3000 },
+      );
+      store.setRcPendingSaveToast(false);
+    } else {
+      toast.success("Settings saved.", { duration: 2000 });
+    }
+  };
+  return (
+    <div className="flex justify-end pt-2">
+      <SAButton variant="primary" onClick={onSave}>
+        Save
+      </SAButton>
     </div>
   );
 }

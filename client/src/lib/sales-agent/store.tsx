@@ -99,6 +99,8 @@ function defaultAnalytics(scenario: DemoScenario): AnalyticsData {
 
 /* ── Context ──────────────────────────────────────────────── */
 
+export type RcNetworkState = "disabled" | "pending" | "active";
+
 interface SalesAgentStore {
   scenario: DemoScenario;
   platform: Platform;
@@ -110,6 +112,13 @@ interface SalesAgentStore {
   thankYouWidgets: ThankYouWidget[];
   analytics: AnalyticsData;
 
+  // Seel RC — Network Recommendations opt-in (mutually exclusive with Own)
+  rcOwnEnabled: boolean;
+  rcNetworkState: RcNetworkState;
+  rcNetworkActivatedAt: string | null;
+  /** True right after a first-enable confirmation until the next Save click. */
+  rcPendingSaveToast: boolean;
+
   // scenario controls
   setScenario: (s: DemoScenario) => void;
   setPlatform: (p: Platform) => void;
@@ -117,6 +126,11 @@ interface SalesAgentStore {
 
   // touchpoint mutations
   updateTouchpoint: (id: TouchpointId, patch: Partial<TouchpointConfig>) => void;
+
+  // RC opt-in mutations
+  setRcOwnEnabled: (v: boolean) => void;
+  setRcNetworkState: (s: RcNetworkState) => void;
+  setRcPendingSaveToast: (v: boolean) => void;
 
   // strategy mutations
   addStrategy: (s: Strategy) => void;
@@ -147,6 +161,14 @@ export function SalesAgentProvider({ children }: { children: ReactNode }) {
   const [touchpoints, setTouchpoints] = useState<TouchpointConfig[]>(() =>
     defaultTouchpoints("active"),
   );
+  const [rcOwnEnabled, setRcOwnEnabled] = useState<boolean>(true);
+  const [rcNetworkState, setRcNetworkState] =
+    useState<RcNetworkState>("disabled");
+  const [rcNetworkActivatedAt, setRcNetworkActivatedAt] = useState<
+    string | null
+  >(null);
+  const [rcPendingSaveToast, setRcPendingSaveToast] =
+    useState<boolean>(false);
   const [strategies, setStrategies] = useState<Strategy[]>(() =>
     defaultStrategies("active"),
   );
@@ -166,6 +188,20 @@ export function SalesAgentProvider({ children }: { children: ReactNode }) {
     setStrategies(defaultStrategies(s));
     setExclusion(defaultExclusion(s));
     setAnalytics(defaultAnalytics(s));
+    setRcOwnEnabled(true);
+    setRcNetworkState("disabled");
+    setRcNetworkActivatedAt(null);
+    setRcPendingSaveToast(false);
+  };
+
+  const updateRcNetworkState = (next: RcNetworkState) => {
+    setRcNetworkState(next);
+    if (next === "active" && !rcNetworkActivatedAt) {
+      setRcNetworkActivatedAt("Apr 21, 2026");
+    }
+    if (next === "disabled") {
+      setRcNetworkActivatedAt(null);
+    }
   };
 
   const setDependency = (patch: Partial<DependencyStatus>) => {
@@ -230,10 +266,17 @@ export function SalesAgentProvider({ children }: { children: ReactNode }) {
       exclusion,
       thankYouWidgets,
       analytics,
+      rcOwnEnabled,
+      rcNetworkState,
+      rcNetworkActivatedAt,
+      rcPendingSaveToast,
       setScenario,
       setPlatform,
       setDependency,
       updateTouchpoint,
+      setRcOwnEnabled,
+      setRcNetworkState: updateRcNetworkState,
+      setRcPendingSaveToast,
       addStrategy,
       updateStrategy,
       removeStrategy,
@@ -242,7 +285,20 @@ export function SalesAgentProvider({ children }: { children: ReactNode }) {
       isStrategyReferenced,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scenario, platform, dependency, touchpoints, strategies, exclusion, thankYouWidgets, analytics],
+    [
+      scenario,
+      platform,
+      dependency,
+      touchpoints,
+      strategies,
+      exclusion,
+      thankYouWidgets,
+      analytics,
+      rcOwnEnabled,
+      rcNetworkState,
+      rcNetworkActivatedAt,
+      rcPendingSaveToast,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
