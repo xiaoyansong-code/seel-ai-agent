@@ -638,22 +638,7 @@ function RevenueTrendChart({
               axisLine={false}
               tickFormatter={(v) => `$${v}`}
             />
-            <Tooltip
-              contentStyle={{
-                background: "#202223",
-                border: "none",
-                borderRadius: 6,
-                color: "#fff",
-                fontSize: 12,
-                padding: "6px 8px",
-              }}
-              labelStyle={{ color: "#FFFFFF" }}
-              itemStyle={{ color: "#FFFFFF" }}
-              formatter={(v: number, name: string) => [
-                formatCurrency(v),
-                trendKeyLabel(name as TrendKey),
-              ]}
-            />
+            <Tooltip content={<TrendTooltip />} />
             {activeKeys.has("total") && (
               <Line
                 type="monotone"
@@ -756,6 +741,44 @@ function RevenueByTouchpointChart({
 function trendKeyLabel(k: TrendKey): string {
   if (k === "total") return "All touchpoints";
   return touchpointLabel(k);
+}
+
+/* ── Custom tooltip: colored bullet + white label/value ──────── */
+function TrendTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: { name?: string; value?: number; color?: string; dataKey?: string }[];
+  label?: string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <div
+      className="rounded-md px-2.5 py-1.5 text-[12px] text-white"
+      style={{ background: "#202223" }}
+    >
+      {label && <div className="mb-1 text-white/70">{label}</div>}
+      <div className="space-y-0.5">
+        {payload.map((p) => {
+          const key = (p.dataKey ?? p.name ?? "") as TrendKey;
+          return (
+            <div key={key} className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: p.color }}
+              />
+              <span className="text-white">{trendKeyLabel(key)}</span>
+              <span className="ml-1.5 tabular-nums text-white">
+                {formatCurrency(p.value ?? 0)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function TrendToggle({

@@ -398,12 +398,14 @@ interface SegmentProps<T extends string> {
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
   size?: "sm" | "md";
+  disabled?: boolean;
 }
 export function Segmented<T extends string>({
   value,
   onChange,
   options,
   size = "md",
+  disabled = false,
 }: SegmentProps<T>) {
   const h = size === "sm" ? "h-7" : "h-8";
   const text = size === "sm" ? "text-[12px]" : "text-[14px]";
@@ -412,6 +414,7 @@ export function Segmented<T extends string>({
       className={cn(
         "inline-flex rounded-md bg-[#F7F7FC] p-0.5 border border-[#EAEAEA]",
         h,
+        disabled && "opacity-60",
       )}
     >
       {options.map((opt) => {
@@ -420,13 +423,15 @@ export function Segmented<T extends string>({
           <button
             key={opt.value}
             type="button"
-            onClick={() => onChange(opt.value)}
+            disabled={disabled}
+            onClick={() => !disabled && onChange(opt.value)}
             className={cn(
               "px-3 rounded-[4px] font-medium transition-colors",
               text,
               active
                 ? "bg-white text-[#2121C4] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
                 : "text-[#5C5F62] hover:text-[#202223]",
+              disabled && "cursor-not-allowed hover:text-[#5C5F62]",
             )}
           >
             {opt.label}

@@ -49,7 +49,7 @@ const EMPTY_ANALYTICS: AnalyticsData = {
 function defaultTouchpoints(scenario: DemoScenario): TouchpointConfig[] {
   if (scenario === "active") {
     return [
-      { id: "search_bar", enabled: true, strategyId: null },
+      { id: "search_bar", enabled: false, strategyId: null },
       { id: "live_widget", enabled: true, strategyId: null },
       { id: "thank_you_page", enabled: false, strategyId: null },
       { id: "seel_rc", enabled: true, strategyId: "s_top_sellers_30d" },
@@ -58,7 +58,7 @@ function defaultTouchpoints(scenario: DemoScenario): TouchpointConfig[] {
   }
   if (scenario === "configured_no_traffic") {
     return [
-      { id: "search_bar", enabled: true, strategyId: null },
+      { id: "search_bar", enabled: false, strategyId: null },
       { id: "live_widget", enabled: false, strategyId: null },
       { id: "thank_you_page", enabled: false, strategyId: null },
       { id: "seel_rc", enabled: true, strategyId: "s_top_sellers_30d" },

@@ -292,7 +292,7 @@ function TouchpointCard({
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-[14px] font-semibold text-[#202223] truncate">
               {meta.label}
             </p>
@@ -303,10 +303,7 @@ function TouchpointCard({
               </span>
             )}
           </div>
-          <p className="text-[12px] text-[#6B7280] leading-snug line-clamp-2">
-            {meta.description}
-          </p>
-          <div className="flex items-center gap-1.5 mt-2 text-[12px]">
+          <div className="flex items-center gap-1.5 mt-1.5 text-[12px]">
             <StatusDot kind={isOn ? "on" : "off"} />
             <span className={cn(isOn ? "text-[#235935]" : "text-[#6B7280]")}>
               {isOn ? "On" : "Off"}
@@ -375,11 +372,6 @@ function TouchpointDetail({
     }
   };
 
-  // Setting section only has content beyond Enable when there's a dependency
-  // warning, a strategy picker, or a help note — which is true for all five
-  // current touchpoints. Flag kept explicit so we can drop empty Settings later.
-  const settingHasContent = true;
-
   return (
     <div className="space-y-6">
       <header className="flex items-start gap-3 pb-1">
@@ -425,13 +417,11 @@ function TouchpointDetail({
         <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
       )}
 
-      {settingHasContent && (
+      {meta.dependencyKey ? (
+        <DependencyNotice meta={meta} />
+      ) : (
         <DetailSection title="Setting">
-          {meta.dependencyKey ? (
-            <DependencySetting meta={meta} />
-          ) : (
-            <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
-          )}
+          <StrategySetting meta={meta} onRequestConfirm={onRequestConfirm} />
         </DetailSection>
       )}
 
@@ -452,42 +442,31 @@ function DetailSection({
   return (
     <section>
       <h3 className="text-[14px] font-semibold text-[#202223] mb-2">{title}</h3>
-      <div className="bg-white border border-[#E0E0E0] rounded-[10px]">
-        {children}
-      </div>
+      {children}
     </section>
   );
 }
 
-/* ── Setting: Search Bar / LiveChat Widget ───────────── */
-function DependencySetting({ meta }: { meta: TouchpointMeta }) {
+/* ── Inline dependency notice for Search Bar / LiveChat Widget ── */
+function DependencyNotice({ meta }: { meta: TouchpointMeta }) {
   const store = useSalesAgent();
   const depMet = store.dependency[meta.dependencyKey!];
-
+  if (depMet) return null;
   return (
-    <div className="px-5 py-5 space-y-4">
-      {!depMet && (
-        <Callout tone="warn" title="Dependency not met">
-          <p>
-            {meta.id === "search_bar"
-              ? "AI Search is not enabled for this store. Enable Search Bar in Support Agent before turning on this touchpoint."
-              : "LiveChat Widget is not connected to the storefront. Enable it from Support Agent before turning on this touchpoint."}
-          </p>
-          <div className="mt-2">
-            <Link href="/">
-              <SAButton variant="secondary" size="sm">
-                Set up
-              </SAButton>
-            </Link>
-          </div>
-        </Callout>
-      )}
-
-      <div className="text-[12px] text-[#6B7280] bg-[#F9FAFB] border border-[#E0E0E0] rounded-lg px-3 py-2.5">
-        Recommendations on {meta.label} are driven by the shopper's real-time
-        query or conversation, so no explicit strategy is selected.
+    <Callout tone="warn" title="Dependency not met">
+      <p>
+        {meta.id === "search_bar"
+          ? "AI Search is not enabled for this store. Enable Search Bar in Support Agent before turning on this touchpoint."
+          : "Live Chat Widget is not connected to the storefront. Enable it from Support Agent before turning on this touchpoint."}
+      </p>
+      <div className="mt-2">
+        <Link href="/">
+          <SAButton variant="secondary" size="sm">
+            Set up
+          </SAButton>
+        </Link>
       </div>
-    </div>
+    </Callout>
   );
 }
 
@@ -526,29 +505,25 @@ function StrategySetting({
   };
 
   return (
-    <div className="px-5 py-5">
-      <Field
-        label="Strategy"
-        help="This strategy is shared with other touchpoints using it."
+    <Field
+      label="Strategy"
+      help="This strategy is shared with other touchpoints using it."
+    >
+      <SASelect
+        value={tp.strategyId ?? ""}
+        onChange={(e) => handleStrategyChange(e.target.value)}
+        className="w-full"
       >
-        <div className="flex items-center gap-2">
-          <SASelect
-            value={tp.strategyId ?? ""}
-            onChange={(e) => handleStrategyChange(e.target.value)}
-            className="flex-1"
-          >
-            <option value="">— None selected —</option>
-            {store.strategies.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-            <option disabled>──────────</option>
-            <option value="__new__">+ Create new strategy…</option>
-          </SASelect>
-        </div>
-      </Field>
-    </div>
+        <option value="">— None selected —</option>
+        {store.strategies.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+        <option disabled>──────────</option>
+        <option value="__new__">+ Create new strategy…</option>
+      </SASelect>
+    </Field>
   );
 }
 
@@ -560,9 +535,9 @@ function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
 
   if (isEmpty) {
     return (
-      <div className="px-5 py-8 text-center text-[14px] text-[#6B7280]">
+      <p className="text-[14px] text-[#6B7280]">
         No traffic in the last 30 days.
-      </div>
+      </p>
     );
   }
 
@@ -598,7 +573,7 @@ function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
   ];
 
   return (
-    <div className="px-5 py-5 space-y-4">
+    <div className="space-y-3">
       <div className="grid grid-cols-4 gap-4">
         {cells.map((c) => (
           <div key={c.label}>
@@ -627,7 +602,7 @@ function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
           </div>
         ))}
       </div>
-      <p className="text-[12px] text-[#8C8C8C] pt-3 border-t border-[#F0F0F0]">
+      <p className="text-[12px] text-[#8C8C8C]">
         Last 30 days · attribution window 7 days.
       </p>
     </div>
@@ -697,7 +672,7 @@ function ThankYouPageDetail({
       </Callout>
 
       <DetailSection title="Setting">
-        <div className="px-5 py-5 space-y-3">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-[14px] font-medium text-[#202223]">
               Widgets ({store.thankYouWidgets.length})
@@ -707,7 +682,7 @@ function ThankYouPageDetail({
             </SAButton>
           </div>
 
-          <div className="border border-[#E0E0E0] rounded-lg divide-y divide-[#F0F0F0]">
+          <div className="border border-[#E4E4E0] rounded-lg divide-y divide-[#F0F0F0] bg-white">
             {store.thankYouWidgets.map((w) => {
               const strategy = store.strategies.find(
                 (s) => s.id === w.strategyId,

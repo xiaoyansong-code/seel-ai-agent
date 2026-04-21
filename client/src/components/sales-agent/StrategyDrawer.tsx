@@ -145,30 +145,46 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
   );
   const isReferenced = referencedBy.length > 0;
 
-  /** Count of widgets (touchpoints + thank-you-page widgets) using this strategy. */
-  const widgetCount = useMemo(() => {
-    if (!editingId) return 0;
-    let n = 0;
-    store.touchpoints.forEach((t) => {
-      if (t.strategyId === editingId) n += 1;
-    });
-    store.thankYouWidgets.forEach((w) => {
-      if (w.strategyId === editingId) n += 1;
-    });
-    return n;
-  }, [editingId, store.touchpoints, store.thankYouWidgets]);
-  const touchpointCount = referencedBy.length;
+  /** True when the draft differs from the persisted strategy on any field
+   *  other than `name`. Name-only edits skip the save confirmation. */
+  const hasNonNameChanges = useMemo(() => {
+    if (!existing) return false;
+    if (existing.type !== draft.type) return true;
+    if (existing.maxProducts !== draft.maxProducts) return true;
+    if (existing.type === "best_sellers") {
+      if (draft.timeWindow !== existing.timeWindow) return true;
+      if (draft.sortBy !== existing.sortBy) return true;
+    }
+    if (existing.type === "new_arrivals") {
+      if (draft.timeWindow !== existing.timeWindow) return true;
+    }
+    if (existing.type === "manual") {
+      const wasModeA = existing.mode === "products";
+      const isModeA = draft.type === "manual" && draft.manualMode === "products";
+      if (wasModeA !== isModeA) return true;
+      if (wasModeA && isModeA) {
+        if (existing.productIds.length !== draft.productIds.length) return true;
+        if (existing.productIds.some((id, i) => id !== draft.productIds[i]))
+          return true;
+      }
+      if (!wasModeA && !isModeA) {
+        if (existing.collectionId !== draft.collectionId) return true;
+      }
+    }
+    return false;
+  }, [existing, draft]);
 
-  /** Detect destructive changes against the persisted strategy. */
+  /** Destructive change = something that would wipe config or invalidate
+   *  historical attribution semantics. */
   const isDestructive = useMemo(() => {
     if (!existing) return false;
     if (existing.type !== draft.type) return true;
     if (existing.type === "manual") {
       const wasModeA = existing.mode === "products";
       const isModeA = draft.type === "manual" && draft.manualMode === "products";
-      if (wasModeA && !isModeA) return true; // switched from A to B
+      if (wasModeA && !isModeA) return true;
       if (wasModeA && isModeA && existing.productIds.length > 0 && draft.productIds.length === 0) {
-        return true; // cleared list
+        return true;
       }
     }
     return false;
@@ -197,10 +213,11 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
     onClose();
   };
 
-  /** Save click — if editing an existing strategy and it's either referenced
-   *  or the change is destructive, show a confirmation modal first. */
+  /** Save click — show a confirmation only when an existing strategy
+   *  has non-name changes AND is either live (referenced) or involves
+   *  a destructive edit on an unreferenced baseline. */
   const save = () => {
-    if (existing && (isReferenced || isDestructive)) {
+    if (existing && hasNonNameChanges && (isReferenced || isDestructive)) {
       setConfirmSaveOpen(true);
       return;
     }
@@ -270,20 +287,32 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
             />
           </Field>
 
-          <Field label="Type">
+          <Field
+            label="Type"
+            help={
+              isReferenced
+                ? "Type is locked while this strategy is live. Duplicate to experiment."
+                : undefined
+            }
+          >
             <Segmented
               value={draft.type}
               onChange={(v) => setDraft((d) => ({ ...d, type: v }))}
               options={typeOptions}
+              disabled={isReferenced}
             />
           </Field>
 
           {/* Type-specific fields */}
           {draft.type === "best_sellers" && (
             <div className="space-y-3">
-              <Field label="Time window">
+              <Field
+                label="Time window"
+                help={isReferenced ? "Time window is locked while this strategy is live." : undefined}
+              >
                 <SASelect
                   value={String(draft.timeWindow)}
+                  disabled={isReferenced}
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
@@ -323,9 +352,13 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
 
           {draft.type === "new_arrivals" && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Time window">
+              <Field
+                label="Time window"
+                help={isReferenced ? "Locked while live." : undefined}
+              >
                 <SASelect
                   value={String(draft.timeWindow)}
+                  disabled={isReferenced}
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
@@ -476,28 +509,18 @@ export default function StrategyDrawer({ open, onClose, editingId }: Props) {
           }
         >
           <div className="space-y-2">
-            {isReferenced && (
-              <>
-                <p className="text-[14px] text-[#1A1A1A] leading-relaxed">
-                  This strategy is used by {widgetCount}{" "}
-                  {widgetCount === 1 ? "widget" : "widgets"} across{" "}
-                  {touchpointCount}{" "}
-                  {touchpointCount === 1 ? "touchpoint" : "touchpoints"}.
-                  Changes apply immediately. Historical attribution is preserved
-                  via snapshot.
-                </p>
-                <ul className="text-[14px] text-[#52525B] list-disc pl-5">
-                  {referencedBy.map((id) => (
-                    <li key={id}>{touchpointLabel(id)}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-            {isDestructive && (
-              <p className="text-[12px] text-[#52525B] leading-relaxed pt-1">
-                To preserve the current strategy as a baseline, cancel and use
-                Duplicate &amp; edit instead.
+            {isReferenced ? (
+              <p className="text-[14px] text-[#1A1A1A] leading-relaxed">
+                Changes apply immediately. Historical attribution is preserved
+                via snapshot.
               </p>
+            ) : (
+              isDestructive && (
+                <p className="text-[12px] text-[#52525B] leading-relaxed">
+                  To preserve the current strategy as a baseline, cancel and
+                  use Duplicate &amp; edit instead.
+                </p>
+              )
             )}
           </div>
         </Modal>
