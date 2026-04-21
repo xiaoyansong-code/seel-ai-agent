@@ -342,6 +342,9 @@ function TouchpointCard({
               </span>
             )}
           </div>
+          <p className="text-[12px] text-[#6B7280] mt-0.5 leading-snug">
+            {meta.description}
+          </p>
           {!depMet && meta.dependencyKey && (
             <div className="mt-1.5 text-[12px]">
               <Link href="/">
@@ -584,10 +587,7 @@ function StrategySetting({
   };
 
   return (
-    <Field
-      label="Strategy"
-      help="This strategy is shared with other touchpoints using it."
-    >
+    <Field label="Strategy">
       <SASelect
         value={tp.strategyId ?? ""}
         onChange={(e) => handleStrategyChange(e.target.value)}
