@@ -304,6 +304,9 @@ function TouchpointCard({
               </span>
             )}
           </div>
+          <p className="text-[12px] text-[#6B7280] mt-0.5 leading-snug">
+            {meta.description}
+          </p>
           {!depMet && meta.dependencyKey && (
             <div className="mt-1.5 text-[12px]">
               <Link href="/">
@@ -536,22 +539,41 @@ function StrategySetting({
   };
 
   return (
-    <Field label="Strategy">
-      <SASelect
-        value={tp.strategyId ?? ""}
-        onChange={(e) => handleStrategyChange(e.target.value)}
-        className="w-full"
-      >
-        <option value="">— None selected —</option>
-        {store.strategies.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-        <option disabled>──────────</option>
-        <option value="__new__">+ Create new strategy…</option>
-      </SASelect>
-    </Field>
+    <div className="space-y-3">
+      <Field label="Strategy">
+        <SASelect
+          value={tp.strategyId ?? ""}
+          onChange={(e) => handleStrategyChange(e.target.value)}
+          className="w-full"
+        >
+          <option value="">— None selected —</option>
+          {store.strategies.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+          <option disabled>──────────</option>
+          <option value="__new__">+ Create new strategy…</option>
+        </SASelect>
+      </Field>
+      <Field label="Product count" help="Between 1 and 10.">
+        <SAInput
+          type="number"
+          min={1}
+          max={10}
+          value={tp.productCount}
+          onChange={(e) =>
+            store.updateTouchpoint(meta.id, {
+              productCount: Math.max(
+                1,
+                Math.min(10, Number(e.target.value) || 1),
+              ),
+            })
+          }
+          className="w-28"
+        />
+      </Field>
+    </div>
   );
 }
 
