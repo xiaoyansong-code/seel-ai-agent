@@ -367,8 +367,8 @@ function TouchpointCard({
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-[14px] font-semibold text-[#202223] truncate">
+          <div className="flex items-center gap-1.5">
+            <p className="text-[14px] font-semibold text-[#202223] truncate min-w-0">
               {meta.label}
             </p>
             <TouchpointHelpTip meta={meta} />
@@ -676,51 +676,65 @@ function SourceSetting({
   };
 
   const radioGroupName = `source-${meta.id}`;
+  const showSourceRadios = meta.id !== "wfp_email";
+
+  const strategyField = (
+    <Field label="Strategy">
+      <SASelect
+        value={tp.strategyId ?? ""}
+        onChange={(e) => handleStrategyChange(e.target.value)}
+        className="w-full"
+      >
+        <option value="">— None selected —</option>
+        {store.strategies.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+        <option disabled>──────────</option>
+        <option value="__new__">+ Create new strategy…</option>
+      </SASelect>
+    </Field>
+  );
 
   return (
     <div className="bg-white border border-[#E4E4E0] rounded-[6px] px-4 py-4">
-      <SourceRadio
-        name={radioGroupName}
-        value="own"
-        checked={source === "own"}
-        onSelect={handleSelectOwn}
-        label="Your products"
-      />
+      {showSourceRadios ? (
+        <>
+          <div className="text-[13px] font-semibold text-[#202223] mb-2">
+            Product Source
+          </div>
+          <SourceRadio
+            name={radioGroupName}
+            value="own"
+            checked={source === "own"}
+            onSelect={handleSelectOwn}
+            label="Your products"
+          />
 
-      <div className="mt-3">
-        <SourceRadio
-          name={radioGroupName}
-          value="partner"
-          checked={source === "partner"}
-          onSelect={handleSelectPartner}
-          label="Partner products"
-          subtitle="Recommend from Seel's network and earn commission on attributed sales"
-        >
-          {networkState === "pending" && (
-            <NetworkStatusRow tone="pending" label="Request in progress" />
-          )}
-        </SourceRadio>
-      </div>
-
-      {source === "own" && (
-        <div className="mt-4 pt-4 border-t border-[#E4E4E0]">
-          <Field label="Strategy">
-            <SASelect
-              value={tp.strategyId ?? ""}
-              onChange={(e) => handleStrategyChange(e.target.value)}
-              className="w-full"
+          <div className="mt-3">
+            <SourceRadio
+              name={radioGroupName}
+              value="partner"
+              checked={source === "partner"}
+              onSelect={handleSelectPartner}
+              label="Partner products"
+              subtitle="Recommend from Seel's network and earn commission on attributed sales"
             >
-              <option value="">— None selected —</option>
-              {store.strategies.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-              <option disabled>──────────</option>
-              <option value="__new__">+ Create new strategy…</option>
-            </SASelect>
-          </Field>
-        </div>
+              {networkState === "pending" && (
+                <NetworkStatusRow tone="pending" label="Request in progress" />
+              )}
+            </SourceRadio>
+          </div>
+
+          {source === "own" && (
+            <div className="mt-4 pt-4 border-t border-[#E4E4E0]">
+              {strategyField}
+            </div>
+          )}
+        </>
+      ) : (
+        strategyField
       )}
 
       {/* Enable modal (first-time Partner activation) */}
