@@ -23,7 +23,14 @@ import {
   StatusDot,
 } from "./primitives";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ChevronRight,
+  HelpCircle,
+  Image as ImageIcon,
   MessageSquare,
   Package,
   Search,
@@ -148,6 +155,70 @@ const TOUCHPOINT_ICON: Record<TouchpointId, TouchpointIconComponent> = {
   seel_rc: SeelRCIcon,
   wfp_email: Mail,
 };
+
+/* ── Touchpoint illustration banner (placeholder) ──────────
+   Image-only placeholder under the detail header. Aspect is
+   roughly 3:1 so it reads as an image, not a thin strip. Real
+   artwork will slot in here later. */
+function TouchpointBanner({ meta }: { meta: TouchpointMeta }) {
+  const Icon = TOUCHPOINT_ICON[meta.id];
+  return (
+    <div
+      className="relative w-full aspect-[3/1] rounded-[10px] border border-dashed border-[#D6D2FF] bg-gradient-to-br from-[#F4F1FF] via-[#F7F7FC] to-[#ECE9FF] overflow-hidden flex items-center justify-center"
+      role="img"
+      aria-label={`${meta.label} illustration placeholder`}
+    >
+      <div className="w-16 h-16 rounded-lg bg-white/70 border border-[#E0DEFF] flex items-center justify-center text-[#2121C4]">
+        <Icon className="w-8 h-8" />
+      </div>
+      <div className="absolute bottom-2 right-2.5 inline-flex items-center gap-1 text-[11px] text-[#8C8C8C] uppercase tracking-[0.08em]">
+        <ImageIcon className="w-3.5 h-3.5" />
+        Placeholder
+      </div>
+    </div>
+  );
+}
+
+/* ── Touchpoint help tip on list cards (image preview tooltip)
+   Hover the "?" next to the label → portal tooltip with just
+   a placeholder image (text will live inside the image). */
+function TouchpointHelpTip({ meta }: { meta: TouchpointMeta }) {
+  const Icon = TOUCHPOINT_ICON[meta.id];
+  return (
+    <Tooltip delayDuration={120}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center justify-center shrink-0 text-[#8C8C8C] hover:text-[#2121C4] transition-colors"
+          aria-label={`About ${meta.label}`}
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="start"
+        sideOffset={10}
+        className="w-[260px] p-0 bg-white border border-[#E0E0E0] rounded-[10px] shadow-[0_10px_32px_-12px_rgba(0,0,0,0.25)] overflow-hidden"
+      >
+        <div
+          className="relative w-full aspect-[3/1] bg-gradient-to-br from-[#F4F1FF] via-[#F7F7FC] to-[#ECE9FF] flex items-center justify-center"
+          role="img"
+          aria-label={`${meta.label} preview placeholder`}
+        >
+          <div className="w-12 h-12 rounded-lg bg-white/70 border border-[#E0DEFF] flex items-center justify-center text-[#2121C4]">
+            <Icon className="w-6 h-6" />
+          </div>
+          <div className="absolute bottom-1.5 right-2 inline-flex items-center gap-1 text-[10px] text-[#8C8C8C] uppercase tracking-[0.08em]">
+            <ImageIcon className="w-3 h-3" />
+            Preview
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function TouchpointsTab() {
   const store = useSalesAgent();
@@ -300,6 +371,7 @@ function TouchpointCard({
             <p className="text-[14px] font-semibold text-[#202223] truncate">
               {meta.label}
             </p>
+            <TouchpointHelpTip meta={meta} />
             {showTag && <TouchpointTagChip tag="seel_exclusive" />}
             {meta.previewOnly && (
               <span className="text-[12px] text-[#5C5F62] bg-[#E7EBF5] border border-[#DADEE9] px-1.5 py-[1px] rounded shrink-0">
@@ -439,6 +511,8 @@ function TouchpointDetail({
           />
         </div>
       </header>
+
+      <TouchpointBanner meta={meta} />
 
       {meta.requiresShopifyPlus && (
         <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
@@ -970,6 +1044,8 @@ function ThankYouPageDetail({
           />
         </div>
       </header>
+
+      <TouchpointBanner meta={meta} />
 
       {meta.requiresShopifyPlus && (
         <ShopifyPlusWidget met={store.dependency.shopifyPlus} />
