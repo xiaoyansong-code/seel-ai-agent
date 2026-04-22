@@ -4,8 +4,6 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -187,46 +185,25 @@ export default function AnalyticsTab() {
         />
       </div>
 
-      {/* Charts row: Revenue Trend (2/3) + Revenue by Touchpoint (1/3) */}
-      <div className="grid grid-cols-3 gap-4">
-        <Panel className="p-6 col-span-2">
-          <div className="flex items-center gap-1.5">
-            <p className="text-[18px] font-semibold text-[#202223]">
-              Sales trend
-            </p>
-            <InfoTip>
-              Sales amount is based on Shopify subtotal_price. See Attributed
-              Sales for full definition.
-            </InfoTip>
+      {/* Sales trend chart */}
+      <Panel className="p-6">
+        <div className="flex items-center gap-1.5">
+          <p className="text-[18px] font-semibold text-[#202223]">
+            Sales trend
+          </p>
+          <InfoTip>
+            Sales amount is based on Shopify subtotal_price. See Attributed
+            Sales for full definition.
+          </InfoTip>
+        </div>
+        {isEmpty ? (
+          <div className="h-[300px] mt-3">
+            <EmptyChart />
           </div>
-          {isEmpty ? (
-            <div className="h-[300px] mt-3">
-              <EmptyChart />
-            </div>
-          ) : (
-            <RevenueTrendChart data={data} selected={selected} />
-          )}
-        </Panel>
-
-        <Panel className="p-6 col-span-1">
-          <div className="flex items-center gap-1.5">
-            <p className="text-[18px] font-semibold text-[#202223]">
-              Sales by touchpoint
-            </p>
-            <InfoTip>
-              Sales amount is based on Shopify subtotal_price. See Attributed
-              Sales for full definition.
-            </InfoTip>
-          </div>
-          {isEmpty ? (
-            <div className="h-[300px] mt-3">
-              <EmptyChart />
-            </div>
-          ) : (
-            <RevenueByTouchpointChart data={data} selected={selected} />
-          )}
-        </Panel>
-      </div>
+        ) : (
+          <RevenueTrendChart data={data} selected={selected} />
+        )}
+      </Panel>
 
       {/* Detail table */}
       <Panel className="overflow-hidden">
@@ -686,73 +663,6 @@ function RevenueTrendChart({
         </ResponsiveContainer>
       </div>
     </>
-  );
-}
-
-/* ── Revenue by touchpoint horizontal bar chart ────────── */
-function RevenueByTouchpointChart({
-  data,
-  selected,
-}: {
-  data: import("@/lib/sales-agent/types").AnalyticsData;
-  selected: TouchpointId[];
-}) {
-  const chartData = useMemo(() => {
-    return data.byTouchpoint
-      .filter((r) => selected.includes(r.touchpointId))
-      .map((r) => ({
-        id: r.touchpointId,
-        name: touchpointLabel(r.touchpointId),
-        revenue: r.revenue,
-      }))
-      .sort((a, b) => b.revenue - a.revenue);
-  }, [data.byTouchpoint, selected]);
-
-  return (
-    <div className="h-[300px] mt-3">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={chartData}
-          layout="vertical"
-          margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#F0F0F0"
-            horizontal={false}
-          />
-          <XAxis
-            type="number"
-            tick={{ fontSize: 12, fill: "#6B7280" }}
-            tickLine={false}
-            axisLine={{ stroke: "#E0E0E0" }}
-            tickFormatter={(v) => `$${v}`}
-          />
-          <YAxis
-            type="category"
-            dataKey="name"
-            tick={{ fontSize: 12, fill: "#5C5F62" }}
-            tickLine={false}
-            axisLine={false}
-            width={110}
-          />
-          <Tooltip
-            contentStyle={{
-              background: "#202223",
-              border: "none",
-              borderRadius: 6,
-              color: "#fff",
-              fontSize: 12,
-              padding: "6px 8px",
-            }}
-            labelStyle={{ color: "#FFFFFF" }}
-            cursor={{ fill: "rgba(0,0,0,0.03)" }}
-            formatter={(v: number) => [formatCurrency(v), "Revenue"]}
-          />
-          <Bar dataKey="revenue" fill="#2121C4" radius={[0, 3, 3, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
   );
 }
 
