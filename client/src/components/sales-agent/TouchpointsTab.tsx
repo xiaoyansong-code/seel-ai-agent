@@ -165,6 +165,8 @@ export default function TouchpointsTab() {
   const [confirm, setConfirm] = useState<{
     title: string;
     body: string;
+    confirmLabel: string;
+    variant?: "primary" | "danger";
     onConfirm: () => void;
   } | null>(null);
 
@@ -232,13 +234,13 @@ export default function TouchpointsTab() {
               Cancel
             </SAButton>
             <SAButton
-              variant="primary"
+              variant={confirm?.variant ?? "primary"}
               onClick={() => {
                 confirm?.onConfirm();
                 setConfirm(null);
               }}
             >
-              Confirm
+              {confirm?.confirmLabel ?? "Confirm"}
             </SAButton>
           </>
         }
@@ -357,6 +359,8 @@ function TouchpointDetail({
   onRequestConfirm: (c: {
     title: string;
     body: string;
+    confirmLabel: string;
+    variant?: "primary" | "danger";
     onConfirm: () => void;
   }) => void;
 }) {
@@ -381,12 +385,16 @@ function TouchpointDetail({
       onRequestConfirm({
         title: `Turn on ${meta.label}?`,
         body: `Once enabled, Sales Agent recommendations will be served on ${meta.label} in production. You can switch it off at any time.`,
+        confirmLabel: "Turn on",
+        variant: "primary",
         onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
       });
     } else {
       onRequestConfirm({
         title: `Turn off ${meta.label}?`,
         body: `Shoppers will stop seeing Sales Agent recommendations at ${meta.label}. You can turn it back on any time.`,
+        confirmLabel: "Turn off",
+        variant: "danger",
         onConfirm: () => store.updateTouchpoint(meta.id, { enabled: false }),
       });
     }
@@ -513,6 +521,8 @@ function StrategySetting({
   onRequestConfirm: (c: {
     title: string;
     body: string;
+    confirmLabel: string;
+    variant?: "primary" | "danger";
     onConfirm: () => void;
   }) => void;
 }) {
@@ -530,6 +540,8 @@ function StrategySetting({
       onRequestConfirm({
         title: `Change strategy for ${meta.label}?`,
         body: `This touchpoint is live. Changes apply immediately to shoppers in production.`,
+        confirmLabel: "Update strategy",
+        variant: "primary",
         onConfirm: () =>
           store.updateTouchpoint(meta.id, { strategyId: next }),
       });
@@ -561,7 +573,9 @@ function StrategySetting({
 }
 
 /* ── Seel RC Setting — Source radio + conditional Strategy ─── */
-type RcModalKind = "enable" | "disable-active";
+type RcModalKind =
+  | { kind: "enable" }
+  | { kind: "switch"; target: "own" | "partner" };
 
 function SeelRCSetting({
   meta,
@@ -571,6 +585,8 @@ function SeelRCSetting({
   onRequestConfirm: (c: {
     title: string;
     body: string;
+    confirmLabel: string;
+    variant?: "primary" | "danger";
     onConfirm: () => void;
   }) => void;
 }) {
@@ -584,21 +600,33 @@ function SeelRCSetting({
 
   const handleSelectOwn = () => {
     if (source === "own") return;
-    if (store.rcNetworkState === "active") {
-      setModal("disable-active");
+    // Pending is an in-progress request, not live yet — switching is cheap
+    // and doesn't warrant a prompt regardless of touchpoint state.
+    if (store.rcNetworkState === "pending") {
+      store.setRcNetworkState("disabled");
+      return;
+    }
+    // active → own. Only confirm when the touchpoint is live; otherwise
+    // nothing is visible to shoppers yet, so flip silently.
+    if (tp.enabled) {
+      setModal({ kind: "switch", target: "own" });
     } else {
-      // pending → off (no confirmation)
       store.setRcNetworkState("disabled");
     }
   };
 
   const handleSelectPartner = () => {
     if (source === "partner") return;
-    if (store.rcProvisionedAt) {
-      // Previously onboarded — skip modal, go straight to active.
-      store.setRcNetworkState("active");
+    // First-time onboarding flow is independent of touchpoint state —
+    // enabling Network is about establishing the Seel relationship.
+    if (!store.rcProvisionedAt) {
+      setModal({ kind: "enable" });
+      return;
+    }
+    if (tp.enabled) {
+      setModal({ kind: "switch", target: "partner" });
     } else {
-      setModal("enable");
+      store.setRcNetworkState("active");
     }
   };
 
@@ -612,6 +640,8 @@ function SeelRCSetting({
       onRequestConfirm({
         title: `Change strategy for ${meta.label}?`,
         body: `This touchpoint is live. Changes apply immediately to shoppers in production.`,
+        confirmLabel: "Update strategy",
+        variant: "primary",
         onConfirm: () =>
           store.updateTouchpoint(meta.id, { strategyId: next }),
       });
@@ -629,8 +659,8 @@ function SeelRCSetting({
     setModal(null);
   };
 
-  const disableConfirm = () => {
-    store.setRcNetworkState("disabled");
+  const switchConfirm = (target: "own" | "partner") => {
+    store.setRcNetworkState(target === "own" ? "disabled" : "active");
     setModal(null);
   };
 
@@ -660,42 +690,33 @@ function SeelRCSetting({
               detail="We'll follow up within 3 business days."
             />
           )}
-          {store.rcNetworkState === "active" && (
-            <RcNetworkStatusRow
-              tone="active"
-              label="Enabled"
-              detail={`Activated ${store.rcProvisionedAt ?? "Apr 21, 2026"}`}
-            />
-          )}
         </RcSourceRadio>
       </div>
 
       {source === "own" && (
-        <>
-          <div className="mt-4 pt-4 border-t border-[#E4E4E0]">
-            <Field label="Strategy">
-              <SASelect
-                value={tp.strategyId ?? ""}
-                onChange={(e) => handleStrategyChange(e.target.value)}
-                className="w-full"
-              >
-                <option value="">— None selected —</option>
-                {store.strategies.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-                <option disabled>──────────</option>
-                <option value="__new__">+ Create new strategy…</option>
-              </SASelect>
-            </Field>
-          </div>
-        </>
+        <div className="mt-4 pt-4 border-t border-[#E4E4E0]">
+          <Field label="Strategy">
+            <SASelect
+              value={tp.strategyId ?? ""}
+              onChange={(e) => handleStrategyChange(e.target.value)}
+              className="w-full"
+            >
+              <option value="">— None selected —</option>
+              {store.strategies.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+              <option disabled>──────────</option>
+              <option value="__new__">+ Create new strategy…</option>
+            </SASelect>
+          </Field>
+        </div>
       )}
 
       {/* Enable modal (first-time Partner activation) */}
       <Modal
-        open={modal === "enable"}
+        open={modal?.kind === "enable"}
         onClose={() => setModal(null)}
         title="Enable Network Recommendations"
         width="max-w-[440px]"
@@ -716,26 +737,34 @@ function SeelRCSetting({
         </p>
       </Modal>
 
-      {/* Active → disable modal */}
+      {/* Source-switch modal — shown only when the touchpoint is live. */}
       <Modal
-        open={modal === "disable-active"}
+        open={modal?.kind === "switch"}
         onClose={() => setModal(null)}
-        title="Disable Network Recommendations"
+        title="Switch recommendation source?"
         width="max-w-[440px]"
         footer={
           <>
             <SAButton variant="ghost" onClick={() => setModal(null)}>
               Cancel
             </SAButton>
-            <SAButton variant="danger" onClick={disableConfirm}>
-              Disable
+            <SAButton
+              variant="primary"
+              onClick={() =>
+                modal?.kind === "switch" && switchConfirm(modal.target)
+              }
+            >
+              Switch source
             </SAButton>
           </>
         }
       >
         <p className="text-[14px] text-[#52525B] leading-relaxed">
-          Disabling Network recommendations will stop showing partner products
-          immediately. Continue?
+          {meta.label} is live. Shoppers will immediately start seeing{" "}
+          {modal?.kind === "switch" && modal.target === "own"
+            ? "your products instead of partner products"
+            : "partner products instead of your products"}
+          .
         </p>
       </Modal>
     </div>
@@ -966,6 +995,8 @@ function ThankYouPageDetail({
   onRequestConfirm: (c: {
     title: string;
     body: string;
+    confirmLabel: string;
+    variant?: "primary" | "danger";
     onConfirm: () => void;
   }) => void;
 }) {
@@ -1086,6 +1117,8 @@ function ThankYouWidgetDrawer({
   onRequestConfirm: (c: {
     title: string;
     body: string;
+    confirmLabel: string;
+    variant?: "primary" | "danger";
     onConfirm: () => void;
   }) => void;
 }) {
@@ -1100,6 +1133,8 @@ function ThankYouWidgetDrawer({
       onRequestConfirm({
         title: `Turn on "${widget.name}"?`,
         body: "Widget will start appearing on the Thank You Page for eligible shoppers.",
+        confirmLabel: "Turn on",
+        variant: "primary",
         onConfirm: () =>
           store.updateThankYouWidget(widget.id, { enabled: true }),
       });
