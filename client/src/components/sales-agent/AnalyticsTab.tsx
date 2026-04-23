@@ -563,18 +563,20 @@ function RevenueTrendChart({
   }, [data.byTouchpoint]);
 
   const chartData = useMemo(() => {
+    const selectedSet = new Set(selected);
     return data.daily.map((d) => {
-      const row: Record<string, number | string> = {
-        date: d.date.slice(5),
-        total: d.revenue,
-      };
+      const row: Record<string, number | string> = { date: d.date.slice(5) };
+      let filteredTotal = 0;
       TOUCHPOINTS.forEach((t) => {
         const share = shareByTp.get(t.id) ?? 0;
-        row[t.id] = Math.round(d.revenue * share);
+        const value = Math.round(d.revenue * share);
+        row[t.id] = value;
+        if (selectedSet.has(t.id)) filteredTotal += value;
       });
+      row.total = filteredTotal;
       return row;
     });
-  }, [data.daily, shareByTp]);
+  }, [data.daily, shareByTp, selected]);
 
   const toggleKey = (k: TrendKey) => {
     setActiveKeys((prev) => {
@@ -587,17 +589,20 @@ function RevenueTrendChart({
   };
 
   const visibleTps = TOUCHPOINTS.filter((t) => selected.includes(t.id));
+  const showTotal = visibleTps.length > 1;
 
   return (
     <>
       {/* Toggle chips integrated with chart — series color + name only */}
       <div className="flex items-center gap-1.5 flex-wrap mt-3">
-        <TrendToggle
-          label="All"
-          active={activeKeys.has("total")}
-          color={TREND_COLORS.total}
-          onClick={() => toggleKey("total")}
-        />
+        {showTotal && (
+          <TrendToggle
+            label="Total"
+            active={activeKeys.has("total")}
+            color={TREND_COLORS.total}
+            onClick={() => toggleKey("total")}
+          />
+        )}
         {visibleTps.map((t) => (
           <TrendToggle
             key={t.id}
@@ -634,7 +639,7 @@ function RevenueTrendChart({
               tickFormatter={(v) => `$${v}`}
             />
             <Tooltip content={<TrendTooltip />} />
-            {activeKeys.has("total") && (
+            {showTotal && activeKeys.has("total") && (
               <Line
                 type="monotone"
                 dataKey="total"
@@ -667,7 +672,7 @@ function RevenueTrendChart({
 }
 
 function trendKeyLabel(k: TrendKey): string {
-  if (k === "total") return "All touchpoints";
+  if (k === "total") return "Total";
   return touchpointLabel(k);
 }
 
