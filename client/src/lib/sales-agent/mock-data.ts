@@ -155,9 +155,9 @@ export const ACTIVE_ANALYTICS = {
     { touchpointId: "thank_you_page" as const, revenue: Math.round(TOTAL_REVENUE * 0.04) },
   ],
   rows: [
-    { touchpointId: "seel_rc", widget: "seel_rc_default", strategyId: "s_top_sellers_30d", impressions: 14820, clicks: 892, orders: 103, revenue: 4184, delta: 0.087 },
-    { touchpointId: "wfp_email", widget: "wfp_email_default", strategyId: "s_top_sellers_30d", impressions: 9240, clicks: 612, orders: 74, revenue: 2973, delta: 0.142 },
-    { touchpointId: "search_bar", widget: "search_bar_default", strategyId: null as unknown as string, impressions: 7184, clicks: 486, orders: 41, revenue: 1609, delta: -0.021 },
-    { touchpointId: "live_widget", widget: "live_widget_default", strategyId: null as unknown as string, impressions: 3120, clicks: 214, orders: 22, revenue: 884, delta: 0.056 },
+    { touchpointId: "seel_rc", widget: "seel_rc_default", strategyId: "s_top_sellers_30d", impressions: 14820, clicks: 892, orders: 103, revenue: 4184, delta: 0.087, deltaOrders: 0.064, deltaCtr: -0.018, deltaAov: 0.022 },
+    { touchpointId: "wfp_email", widget: "wfp_email_default", strategyId: "s_top_sellers_30d", impressions: 9240, clicks: 612, orders: 74, revenue: 2973, delta: 0.142, deltaOrders: 0.109, deltaCtr: 0.031, deltaAov: 0.029 },
+    { touchpointId: "search_bar", widget: "search_bar_default", strategyId: null as unknown as string, impressions: 7184, clicks: 486, orders: 41, revenue: 1609, delta: -0.021, deltaOrders: -0.047, deltaCtr: 0.012, deltaAov: 0.026 },
+    { touchpointId: "live_widget", widget: "live_widget_default", strategyId: null as unknown as string, impressions: 3120, clicks: 214, orders: 22, revenue: 884, delta: 0.056, deltaOrders: 0.018, deltaCtr: -0.009, deltaAov: 0.037 },
   ] as TouchpointAnalyticsRow[],
 };

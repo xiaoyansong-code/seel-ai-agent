@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Download, Calendar } from "lucide-react";
+import { ChevronDown, Calendar } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -9,17 +9,11 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/utils";
 import { useSalesAgent } from "@/lib/sales-agent/store";
 import { TOUCHPOINTS, touchpointLabel } from "@/lib/sales-agent/constants";
 import { METRIC_COPY } from "@/lib/sales-agent/metric-copy";
 import type { TouchpointId } from "@/lib/sales-agent/types";
-import {
-  Tooltip as UITooltip,
-  TooltipContent as UITooltipContent,
-  TooltipTrigger as UITooltipTrigger,
-} from "@/components/ui/tooltip";
 import { InfoTip, Panel, SAButton, SAInput } from "./primitives";
 
 type TrendKey = "total" | TouchpointId;
@@ -53,47 +47,13 @@ export default function AnalyticsTab() {
   const isEmpty = data.daily.length === 0;
 
   const filteredRows = useMemo(
-    () => data.rows.filter((r) => selected.includes(r.touchpointId)),
+    () =>
+      data.rows
+        .filter((r) => selected.includes(r.touchpointId))
+        .slice()
+        .sort((a, b) => b.revenue - a.revenue),
     [data.rows, selected],
   );
-
-  const exportCsv = () => {
-    const headers = [
-      "Touchpoint",
-      "Widget",
-      "Strategy",
-      "Impressions",
-      "CTR",
-      "Orders",
-      "AOV",
-      "Attributed Sales",
-      "Attributed Sales Δ",
-    ];
-    const lines = filteredRows.map((r) => {
-      const ctr = r.impressions > 0 ? r.clicks / r.impressions : 0;
-      const aov = r.orders > 0 ? (r.revenue / r.orders).toFixed(2) : "0";
-      const strategy = store.strategies.find((s) => s.id === r.strategyId)?.name ?? "—";
-      return [
-        touchpointLabel(r.touchpointId),
-        r.widget,
-        strategy,
-        r.impressions,
-        (ctr * 100).toFixed(2) + "%",
-        r.orders,
-        aov,
-        r.revenue,
-        (r.delta * 100).toFixed(1) + "%",
-      ].join(",");
-    });
-    const csv = [headers.join(","), ...lines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sales-agent-${range.preset}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div className="max-w-[1200px] mx-auto px-8 py-8 space-y-6">
@@ -104,25 +64,6 @@ export default function AnalyticsTab() {
           <DateRangePicker value={range} onChange={setRange} />
         </div>
         <TouchpointFilter selected={selected} onChange={setSelected} />
-        <div className="ml-auto">
-          <UITooltip delayDuration={300}>
-            <UITooltipTrigger asChild>
-              <SAButton variant="secondary" size="md" onClick={exportCsv}>
-                <Download className="w-3.5 h-3.5" />
-                Export CSV
-              </SAButton>
-            </UITooltipTrigger>
-            <UITooltipContent
-              side="bottom"
-              align="center"
-              sideOffset={6}
-              className="max-w-[280px] whitespace-normal bg-[#1A1A1A] text-white text-[12px] font-normal leading-snug px-2.5 py-1.5 rounded-[4px]"
-            >
-              Download a CSV of all attributed orders in the current filter. One row per order, with the strategy and touchpoint that drove it.
-              <TooltipPrimitive.Arrow width={10} height={5} className="fill-[#1A1A1A]" />
-            </UITooltipContent>
-          </UITooltip>
-        </div>
       </div>
 
       {/* KPI cards */}
@@ -184,34 +125,35 @@ export default function AnalyticsTab() {
           <p className="text-[18px] font-semibold text-[#202223]">
             Performance breakdown
           </p>
+          <p className="text-[12px] text-[#6B7280] mt-1">
+            Delta only on Attributed Sales. Cross-touchpoint comparison itself is the primary signal.
+          </p>
         </div>
-        <div className="grid grid-cols-[minmax(0,2fr)_130px_110px_90px_90px_100px_180px] px-6 py-4 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[14px] font-semibold text-[#202223]">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_200px_130px_90px_100px_110px_130px] px-6 py-4 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[14px] font-semibold text-[#202223]">
           <div>Touchpoint</div>
           <div className="flex items-center gap-1 justify-end">
-            <span>Impressions</span>
-            <InfoTip>{METRIC_COPY.impressions.definition}</InfoTip>
+            <span>Attributed Sales</span>
+            <InfoTip>{METRIC_COPY.revenue.definition}</InfoTip>
           </div>
           <div className="flex items-center gap-1 justify-end">
-            <span>Clicks</span>
-            <InfoTip>{METRIC_COPY.clicks.definition}</InfoTip>
+            <span>Orders Influenced</span>
+            <InfoTip>{METRIC_COPY.orders.definition}</InfoTip>
           </div>
           <div className="flex items-center gap-1 justify-end">
             <span>CTR</span>
             <InfoTip>{METRIC_COPY.ctr.definition}</InfoTip>
           </div>
           <div className="flex items-center gap-1 justify-end">
-            <span>Orders</span>
-            <InfoTip>{METRIC_COPY.orders.definition}</InfoTip>
-          </div>
-          <div className="flex items-center gap-1 justify-end">
             <span>AOV</span>
             <InfoTip>{METRIC_COPY.aov.definition}</InfoTip>
           </div>
           <div className="flex items-center gap-1 justify-end">
-            <span>Attributed Sales</span>
-            <InfoTip>
-              Attributed sales in the selected window, with % change vs the previous equal-length window in parentheses.
-            </InfoTip>
+            <span>Clicks</span>
+            <InfoTip>{METRIC_COPY.clicks.definition}</InfoTip>
+          </div>
+          <div className="flex items-center gap-1 justify-end">
+            <span>Impressions</span>
+            <InfoTip>{METRIC_COPY.impressions.definition}</InfoTip>
           </div>
         </div>
         {filteredRows.length === 0 ? (
@@ -225,30 +167,13 @@ export default function AnalyticsTab() {
               return (
                 <div
                   key={`${r.touchpointId}-${r.widget}`}
-                  className="grid grid-cols-[minmax(0,2fr)_130px_110px_90px_90px_100px_180px] items-center px-6 py-4 text-[14px] text-[#202223] hover:bg-[#F5F5F5]"
+                  className="grid grid-cols-[minmax(0,1.4fr)_200px_130px_90px_100px_110px_130px] items-center px-6 py-4 text-[14px] text-[#202223] hover:bg-[#F5F5F5]"
                 >
                   <div className="truncate font-medium">
                     {touchpointLabel(r.touchpointId)}
                   </div>
                   <div className="text-right tabular-nums">
-                    {r.impressions.toLocaleString()}
-                  </div>
-                  <div className="text-right tabular-nums">
-                    {r.clicks.toLocaleString()}
-                  </div>
-                  <div className="text-right tabular-nums">
-                    {formatPct(ctr)}
-                  </div>
-                  <div className="text-right tabular-nums">
-                    {r.orders.toLocaleString()}
-                  </div>
-                  <div className="text-right tabular-nums">
-                    {r.orders > 0 ? formatCurrency(r.revenue / r.orders) : "—"}
-                  </div>
-                  <div className="text-right tabular-nums">
-                    <span className="font-medium">
-                      {formatCurrency(r.revenue)}
-                    </span>
+                    <span>{formatCurrency(r.revenue)}</span>
                     <span
                       className={cn(
                         "ml-1.5 text-[12px]",
@@ -257,8 +182,23 @@ export default function AnalyticsTab() {
                         r.delta === 0 && "text-[#8C8C8C]",
                       )}
                     >
-                      ({formatDelta(r.delta)})
+                      ({formatDelta(r.delta)} vs prev)
                     </span>
+                  </div>
+                  <div className="text-right tabular-nums">
+                    {r.orders.toLocaleString()}
+                  </div>
+                  <div className="text-right tabular-nums">
+                    {formatPct(ctr)}
+                  </div>
+                  <div className="text-right tabular-nums">
+                    {r.orders > 0 ? formatCurrency(r.revenue / r.orders) : "—"}
+                  </div>
+                  <div className="text-right tabular-nums">
+                    {r.clicks.toLocaleString()}
+                  </div>
+                  <div className="text-right tabular-nums">
+                    {r.impressions.toLocaleString()}
                   </div>
                 </div>
               );
