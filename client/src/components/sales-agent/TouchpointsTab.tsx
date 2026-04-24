@@ -980,38 +980,42 @@ function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
   }
 
   const ctr = row.impressions > 0 ? row.clicks / row.impressions : 0;
+  const aov = row.orders > 0 ? row.revenue / row.orders : 0;
 
   const cells: {
     label: string;
     value: string;
     tip: string;
-    sub?: string;
+    sub: string;
   }[] = [
-    {
-      label: METRIC_COPY.impressions.label,
-      value: row.impressions.toLocaleString(),
-      tip: METRIC_COPY.impressions.definition,
-    },
-    {
-      label: METRIC_COPY.ctr.label,
-      value: `${(ctr * 100).toFixed(1)}%`,
-      tip: METRIC_COPY.ctr.definition,
-    },
-    {
-      label: METRIC_COPY.orders.label,
-      value: row.orders.toLocaleString(),
-      tip: METRIC_COPY.orders.definition,
-    },
     {
       label: METRIC_COPY.revenue.label,
       value: `$${row.revenue.toLocaleString()}`,
       tip: METRIC_COPY.revenue.definition,
       sub: formatDeltaInline(row.delta),
     },
+    {
+      label: METRIC_COPY.orders.label,
+      value: row.orders.toLocaleString(),
+      tip: METRIC_COPY.orders.definition,
+      sub: formatDeltaInline(row.deltaOrders),
+    },
+    {
+      label: METRIC_COPY.ctr.label,
+      value: `${(ctr * 100).toFixed(1)}%`,
+      tip: METRIC_COPY.ctr.definition,
+      sub: formatDeltaInline(row.deltaCtr),
+    },
+    {
+      label: METRIC_COPY.aov.label,
+      value: `$${aov.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      tip: METRIC_COPY.aov.definition,
+      sub: formatDeltaInline(row.deltaAov),
+    },
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="grid grid-cols-4 gap-4">
         {cells.map((c) => (
           <Panel key={c.label} className="px-5 py-5">
@@ -1022,25 +1026,27 @@ function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
             <p className="text-[30px] font-bold text-[#202223] tabular-nums leading-tight mt-1">
               {c.value}
             </p>
-            {c.sub ? (
-              <div className="flex items-center gap-1.5 mt-1">
-                <span
-                  className={cn(
-                    "text-[12px] font-medium tabular-nums",
-                    c.sub.startsWith("+") && "text-[#235935]",
-                    c.sub.startsWith("−") && "text-[#FF0000]",
-                  )}
-                >
-                  {c.sub}
-                </span>
-                <span className="text-[12px] text-[#8C8C8C]">vs previous</span>
-              </div>
-            ) : (
-              <div className="h-[18px] mt-1" aria-hidden="true" />
-            )}
+            <div className="flex items-center gap-1.5 mt-1">
+              <span
+                className={cn(
+                  "text-[12px] font-medium tabular-nums",
+                  c.sub.startsWith("+") && "text-[#235935]",
+                  c.sub.startsWith("−") && "text-[#FF0000]",
+                  !c.sub.startsWith("+") &&
+                    !c.sub.startsWith("−") &&
+                    "text-[#8C8C8C]",
+                )}
+              >
+                {c.sub}
+              </span>
+              <span className="text-[12px] text-[#8C8C8C]">vs previous</span>
+            </div>
           </Panel>
         ))}
       </div>
+      <p className="text-[12px] text-[#8C8C8C] text-right">
+        Your products only
+      </p>
     </div>
   );
 }

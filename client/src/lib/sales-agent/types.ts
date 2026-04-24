@@ -135,7 +135,11 @@ export interface TouchpointAnalyticsRow {
   clicks: number;
   orders: number;
   revenue: number;
-  delta: number; // -1..1
+  /** Attributed Sales delta vs previous window (-1..1). */
+  delta: number;
+  deltaOrders: number;
+  deltaCtr: number;
+  deltaAov: number;
 }
 
 export interface AnalyticsData {

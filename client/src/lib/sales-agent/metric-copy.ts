@@ -30,7 +30,7 @@ export const METRIC_COPY: Record<
   revenue: {
     label: "Attributed Sales",
     definition:
-      "Sales from attributed orders, after discounts, before tax & shipping. Returns not deducted.",
+      "Sum of subtotal for orders attributed to Sales Agent (Your products only). Uses Shopify subtotal_price (after discounts, before tax/shipping). Returns not deducted.",
   },
   aov: {
     label: "AOV of Influenced Orders",
