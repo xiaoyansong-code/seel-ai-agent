@@ -48,21 +48,21 @@ const METRIC_COPY: Record<
   revenue: {
     label: "Attributed Sales",
     definition:
-      "Subtotal of orders attributed to Sales Agent. Uses Shopify subtotal_price (after discounts, before tax/shipping). Returns are not deducted.",
+      "Total sales from orders attributed to Sales Agent, after discounts and before tax and shipping. Returns aren't deducted.",
   },
   orders: {
     label: "Orders Influenced",
     definition:
-      "Distinct orders that include a recommended product, counted within a 7-day click-to-purchase attribution window.",
+      "Unique orders that include a recommended product, counted within 7 days of the shopper's first click.",
   },
   ctr: {
     label: "CTR",
-    definition: "Clicks divided by impressions across Sales Agent touchpoints.",
+    definition: "Share of impressions that led to a click within 24 hours, across all Sales Agent touchpoints.",
   },
   aov: {
     label: "AOV of Influenced Orders",
     definition:
-      "Average order value for orders attributed to Sales Agent. Calculated as Attributed Revenue ÷ Orders Influenced.",
+      "Average order value for orders attributed to Sales Agent. Calculated as Attributed Sales ÷ Orders Influenced.",
   },
   impressions: {
     label: "Impressions",
@@ -99,8 +99,8 @@ export default function AnalyticsTab() {
       "Impressions",
       "CTR",
       "Orders",
-      "Revenue",
-      "Revenue Δ",
+      "Attributed Sales",
+      "Attributed Sales Δ",
     ];
     const lines = filteredRows.map((r) => {
       const ctr = r.impressions > 0 ? r.clicks / r.impressions : 0;
@@ -149,7 +149,7 @@ export default function AnalyticsTab() {
               sideOffset={6}
               className="max-w-[280px] whitespace-normal bg-[#1A1A1A] text-white text-[12px] font-normal leading-snug px-2.5 py-1.5 rounded-[4px]"
             >
-              Exports the orders attributed to Sales Agent in the selected time range and touchpoint filter. Each row is one attributed order with the strategy that drove the purchase.
+              Download a CSV of all attributed orders in the current filter. One row per order, with the strategy and touchpoint that drove it.
               <TooltipPrimitive.Arrow width={10} height={5} className="fill-[#1A1A1A]" />
             </UITooltipContent>
           </UITooltip>
@@ -197,8 +197,7 @@ export default function AnalyticsTab() {
             Sales trend
           </p>
           <InfoTip>
-            Sales amount is based on Shopify subtotal_price. See Attributed
-            Sales for full definition.
+            Daily attributed sales. Toggle series below the chart to compare touchpoints.
           </InfoTip>
         </div>
         {isEmpty ? (
@@ -217,10 +216,10 @@ export default function AnalyticsTab() {
             Performance breakdown
           </p>
         </div>
-        <div className="grid grid-cols-[minmax(0,2fr)_110px_110px_90px_90px_150px] px-6 py-4 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[14px] font-semibold text-[#202223]">
+        <div className="grid grid-cols-[minmax(0,2fr)_130px_110px_90px_90px_180px] px-6 py-4 bg-[#F7F7FC] border-b border-[#F0F0F0] text-[14px] font-semibold text-[#202223]">
           <div>Touchpoint</div>
           <div className="flex items-center gap-1 justify-end">
-            <span>Impr.</span>
+            <span>Impressions</span>
             <InfoTip>{METRIC_COPY.impressions.definition}</InfoTip>
           </div>
           <div className="flex items-center gap-1 justify-end">
@@ -236,10 +235,9 @@ export default function AnalyticsTab() {
             <InfoTip>{METRIC_COPY.orders.definition}</InfoTip>
           </div>
           <div className="flex items-center gap-1 justify-end">
-            <span>Sales</span>
+            <span>Attributed Sales</span>
             <InfoTip>
-              {METRIC_COPY.revenue.definition} Parenthesis shows change vs the
-              previous equal-length window.
+              Attributed sales in the selected window, with % change vs the previous equal-length window in parentheses.
             </InfoTip>
           </div>
         </div>
@@ -254,7 +252,7 @@ export default function AnalyticsTab() {
               return (
                 <div
                   key={`${r.touchpointId}-${r.widget}`}
-                  className="grid grid-cols-[minmax(0,2fr)_110px_110px_90px_90px_150px] items-center px-6 py-4 text-[14px] text-[#202223] hover:bg-[#F5F5F5]"
+                  className="grid grid-cols-[minmax(0,2fr)_130px_110px_90px_90px_180px] items-center px-6 py-4 text-[14px] text-[#202223] hover:bg-[#F5F5F5]"
                 >
                   <div className="truncate font-medium">
                     {touchpointLabel(r.touchpointId)}

@@ -78,7 +78,7 @@ export default function StrategiesTab() {
               Strategies
             </h2>
             <InfoTip>
-              Reusable Strategies Referenced by Touchpoints
+              Reusable rules that decide which products to recommend. Attach a strategy to one or more touchpoints to go live.
             </InfoTip>
           </div>
           <SAButton variant="primary" onClick={openNew}>
@@ -146,8 +146,7 @@ export default function StrategiesTab() {
                 ))}
               </ul>
               <p className="text-[12px] text-[#6B7280] mt-2">
-                Detach from these touchpoints, or pick a replacement strategy,
-                before deleting.
+                Remove it from these touchpoints first, or swap in a different strategy.
               </p>
             </div>
           ) : (

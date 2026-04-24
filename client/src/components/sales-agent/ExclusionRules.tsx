@@ -30,8 +30,7 @@ export default function ExclusionRules({ embedded = false }: Props) {
           Exclusion rules
         </h3>
         <InfoTip>
-          Applied globally to every strategy output — these products,
-          collections, or tags never surface in recommendations.
+          These products, collections, or tags will never appear in any recommendation, regardless of which strategy is running.
         </InfoTip>
       </div>
       <Panel className="overflow-hidden">
@@ -76,7 +75,7 @@ function ExcludedProducts({ onOpen }: { onOpen: () => void }) {
   return (
     <RuleRow
       title="Excluded products"
-      tip="Never surface these, regardless of strategy."
+      tip="Never include these in any recommendation."
       action={
         <SAButton variant="secondary" size="sm" onClick={onOpen}>
           <Plus className="w-3 h-3" />
@@ -193,7 +192,7 @@ function ExcludedTags() {
   return (
     <RuleRow
       title="Excluded tags"
-      tip="Case-insensitive exact match. Press Enter to add, Esc to cancel."
+      tip="Case-insensitive exact match."
       action={
         !editing && (
           <SAButton
@@ -230,7 +229,7 @@ function ExcludedTags() {
             onKeyDown={onKey}
             onBlur={submit}
             autoFocus
-            placeholder="e.g. giftcard"
+            placeholder="e.g. giftcard, then press Enter"
             className="h-7 w-40"
           />
         )}
