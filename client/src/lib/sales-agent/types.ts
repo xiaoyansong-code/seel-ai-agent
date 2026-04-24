@@ -116,8 +116,7 @@ export interface DependencyStatus {
 /** Touchpoint tag variants — picked per-touchpoint for display. */
 export type TouchpointTag =
   | "seel_exclusive"
-  | "network_ready"
-  | "ai_powered"
+  | "partner_ready"
   | "new";
 
 export interface DailyPoint {

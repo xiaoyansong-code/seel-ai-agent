@@ -30,19 +30,17 @@ export const TOUCHPOINTS: TouchpointMeta[] = [
     previewOnly: false,
     picksStrategy: false,
     dependencyKey: "searchBar",
-    tags: ["ai_powered"],
   },
   {
     id: "live_widget",
-    label: "Support Agent",
+    label: "Support Chat",
     stage: "pre_purchase",
     description:
-      "Shoppers asking product questions mid-chat get relevant picks inline, without leaving the conversation.",
+      "Shoppers asking product questions in the support chat get relevant picks inline, without leaving the conversation.",
     shopifyOnly: true,
     previewOnly: false,
     picksStrategy: false,
     dependencyKey: "liveWidget",
-    tags: ["ai_powered"],
   },
   {
     id: "thank_you_page",
@@ -64,7 +62,7 @@ export const TOUCHPOINTS: TouchpointMeta[] = [
     shopifyOnly: false,
     previewOnly: false,
     picksStrategy: true,
-    tags: ["seel_exclusive", "network_ready"],
+    tags: ["seel_exclusive", "partner_ready"],
   },
   {
     id: "wfp_email",
@@ -88,13 +86,9 @@ export const TOUCHPOINT_TAG_META: Record<
     label: "Seel-exclusive",
     className: "bg-[#ECE9FF] text-[#2121C4] border-[#D6D2FF]",
   },
-  network_ready: {
-    label: "Network-ready",
+  partner_ready: {
+    label: "Partner-ready",
     className: "bg-[#F2F6FE] text-[#2121C4] border-[#D6E7FF]",
-  },
-  ai_powered: {
-    label: "AI-powered",
-    className: "bg-[#E2F7DA] text-[#235935] border-[#CDE9C3]",
   },
   new: {
     label: "New",

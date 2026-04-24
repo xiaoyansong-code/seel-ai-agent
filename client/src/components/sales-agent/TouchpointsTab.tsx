@@ -113,7 +113,7 @@ function ShopifyPlusWidget({ met }: { met: boolean }) {
         >
           {met
             ? "Your store is on Shopify Plus, so this touchpoint is available."
-            : "This touchpoint relies on Shopify Plus-only customizations. Upgrade to Shopify Plus to enable it."}
+            : "Showing recommendations on the Thank You Page requires Shopify Plus. Upgrade your plan to enable this touchpoint."}
         </p>
       </div>
     </div>
@@ -510,7 +510,7 @@ function TouchpointDetail({
     if (v) {
       onRequestConfirm({
         title: `Turn on ${meta.label}?`,
-        body: `Once enabled, Sales Agent recommendations will be served on ${meta.label} in production. You can switch it off at any time.`,
+        body: `Shoppers will start seeing recommendations here right away. You can turn it off anytime.`,
         confirmLabel: "Turn on",
         variant: "primary",
         onConfirm: () => store.updateTouchpoint(meta.id, { enabled: true }),
@@ -518,7 +518,7 @@ function TouchpointDetail({
     } else {
       onRequestConfirm({
         title: `Turn off ${meta.label}?`,
-        body: `Shoppers will stop seeing Sales Agent recommendations at ${meta.label}. You can turn it back on any time.`,
+        body: `Shoppers will no longer see recommendations here. You can turn it back on anytime.`,
         confirmLabel: "Turn off",
         variant: "danger",
         onConfirm: () => store.updateTouchpoint(meta.id, { enabled: false }),
@@ -566,7 +566,16 @@ function TouchpointDetail({
         </DetailSection>
       ) : null}
 
-      <DetailSection title="Statistics">
+      <DetailSection
+        title={
+          <span className="inline-flex items-center gap-1">
+            Statistics
+            <InfoTip>
+              Last 30 days. Orders are counted within 7 days of the shopper's first click on a recommendation.
+            </InfoTip>
+          </span>
+        }
+      >
         <TouchpointStats touchpointId={meta.id} />
       </DetailSection>
 
@@ -579,7 +588,7 @@ function DetailSection({
   title,
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -599,7 +608,7 @@ function DependencyNotice({ meta }: { meta: TouchpointMeta }) {
   const message =
     meta.id === "search_bar"
       ? "AI Search isn't enabled for this store yet."
-      : "Support Agent isn't connected to your storefront yet.";
+      : "Seel Support Agent isn't connected to your storefront yet.";
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-[#F0E2C2] bg-[#FFFBEB] px-3 py-2">
       <div className="flex items-center gap-2 min-w-0">
@@ -691,7 +700,7 @@ function SourceSetting({
     if (tp.enabled && next !== tp.strategyId) {
       onRequestConfirm({
         title: `Change strategy for ${meta.label}?`,
-        body: `This touchpoint is live. Changes apply immediately to shoppers in production.`,
+        body: `This touchpoint is live — changes apply to shoppers right away.`,
         confirmLabel: "Update strategy",
         variant: "primary",
         onConfirm: () =>
@@ -704,7 +713,7 @@ function SourceSetting({
 
   const enableConfirm = () => {
     store.setNetworkState(meta.id, "pending");
-    toast.success("Network recommendations enabled.", { duration: 3000 });
+    toast.success("Partner products request submitted.", { duration: 3000 });
     setModal(null);
   };
 
@@ -757,7 +766,7 @@ function SourceSetting({
               checked={source === "partner"}
               onSelect={handleSelectPartner}
               label="Partner products"
-              subtitle="Recommend from Seel's network and earn commission on attributed sales"
+              subtitle="Show products from other Seel merchants. Earn a commission when shoppers buy through your recommendation."
             >
               {networkState === "pending" && (
                 <NetworkStatusRow tone="pending" label="Request in progress" />
@@ -779,7 +788,7 @@ function SourceSetting({
       <Modal
         open={modal?.kind === "enable"}
         onClose={() => setModal(null)}
-        title="Enable Network Recommendations"
+        title="Enable Partner Products"
         width="max-w-[440px]"
         footer={
           <>
@@ -793,8 +802,8 @@ function SourceSetting({
         }
       >
         <p className="text-[14px] text-[#52525B] leading-relaxed">
-          A Seel team member will reach out to follow up. You can disable this
-          anytime.
+          A Seel team member will reach out within 3 business days to follow up.
+          You can disable this anytime.
         </p>
       </Modal>
 
@@ -815,17 +824,15 @@ function SourceSetting({
                 modal?.kind === "switch" && switchConfirm(modal.target)
               }
             >
-              Switch source
+              {modal?.kind === "switch" && modal.target === "own"
+                ? "Switch to your products"
+                : "Switch to partner products"}
             </SAButton>
           </>
         }
       >
         <p className="text-[14px] text-[#52525B] leading-relaxed">
-          {meta.label} is live. Shoppers will immediately start seeing{" "}
-          {modal?.kind === "switch" && modal.target === "own"
-            ? "your products instead of partner products"
-            : "partner products instead of your products"}
-          .
+          {meta.label} is currently live. Switching will change what shoppers see right away.
         </p>
       </Modal>
     </div>
@@ -992,17 +999,17 @@ function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
     {
       label: "CTR",
       value: `${(ctr * 100).toFixed(1)}%`,
-      tip: "Clicks divided by impressions.",
+      tip: "Share of impressions that led to a click within 24 hours.",
     },
     {
       label: "Orders",
       value: row.orders.toLocaleString(),
-      tip: "Orders attributed to this touchpoint within the 7-day window.",
+      tip: "Orders attributed to this touchpoint, counted within 7 days of the shopper's first click.",
     },
     {
-      label: "Revenue",
+      label: "Attributed Sales",
       value: `$${row.revenue.toLocaleString()}`,
-      tip: "Attributed revenue from recommended products (Own products only).",
+      tip: "Total sales from orders attributed to recommendations at this touchpoint, after discounts and before tax/shipping. Your products only.",
       sub: formatDeltaInline(row.delta),
     },
   ];
@@ -1038,9 +1045,6 @@ function TouchpointStats({ touchpointId }: { touchpointId: TouchpointId }) {
           </Panel>
         ))}
       </div>
-      <p className="text-[12px] text-[#8C8C8C]">
-        Last 30 days · attribution window 7 days.
-      </p>
     </div>
   );
 }
@@ -1090,8 +1094,7 @@ function ThankYouPageDetail({
       )}
 
       <Callout tone="info" title="Preview — not in this release">
-        The Thank You Page composer ships in V2. Widgets below are read-only
-        previews of the upcoming capability set.
+        Thank You Page configuration is coming in a future release. The widgets below are a read-only preview.
       </Callout>
 
       <DetailSection title="Setting">
@@ -1141,7 +1144,16 @@ function ThankYouPageDetail({
         </div>
       </DetailSection>
 
-      <DetailSection title="Statistics">
+      <DetailSection
+        title={
+          <span className="inline-flex items-center gap-1">
+            Statistics
+            <InfoTip>
+              Last 30 days. Orders are counted within 7 days of the shopper's first click on a recommendation.
+            </InfoTip>
+          </span>
+        }
+      >
         <TouchpointStats touchpointId="thank_you_page" />
       </DetailSection>
 
@@ -1215,8 +1227,7 @@ function ThankYouWidgetDrawer({
       {widget && (
         <div className="p-5 space-y-4">
           <Callout tone="info">
-            This drawer is a V2 preview. Fields are editable locally, but Save
-            is disabled for this release.
+            This is a preview. You can edit fields to explore the experience, but changes can't be saved in this release.
           </Callout>
 
           <Field label="Widget name" htmlFor="ty_name">

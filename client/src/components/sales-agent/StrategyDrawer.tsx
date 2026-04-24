@@ -358,8 +358,7 @@ export default function StrategyDrawer({
                   sideOffset={6}
                   className="max-w-[260px] bg-[#202223] text-white text-[12px] leading-snug px-2.5 py-1.5 rounded-md"
                 >
-                  Type is locked while this strategy is live. Duplicate to
-                  experiment.
+                  Type can't be changed after a strategy is created. Use Duplicate to create a new strategy with a different type.
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -556,14 +555,12 @@ export default function StrategyDrawer({
           <div className="space-y-2">
             {isReferenced ? (
               <p className="text-[14px] text-[#1A1A1A] leading-relaxed">
-                Changes apply immediately. Historical attribution is preserved
-                via snapshot.
+                This strategy is used by {referencedBy.length} touchpoint(s). Saving applies the new configuration to shoppers right away.
               </p>
             ) : (
               isDestructive && (
                 <p className="text-[12px] text-[#52525B] leading-relaxed">
-                  To preserve the current strategy as a baseline, cancel and
-                  use Duplicate &amp; edit instead.
+                  If you want to keep the current setup for comparison, cancel and use Duplicate instead.
                 </p>
               )
             )}
