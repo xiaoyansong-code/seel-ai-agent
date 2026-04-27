@@ -628,7 +628,7 @@ function DependencyNotice({ meta }: { meta: TouchpointMeta }) {
 }
 
 /* ── Unified Source + Strategy setting for Seel-exclusive touchpoints.
- *    Used by both Seel Resolution Center and WFP Confirmation Email. */
+ *    Used by both Resolution Center and WFP Confirmation Email. */
 type SourceModalKind =
   | { kind: "enable" }
   | { kind: "switch"; target: "own" | "partner" };
