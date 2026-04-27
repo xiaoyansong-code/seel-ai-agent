@@ -56,7 +56,7 @@ export const TOUCHPOINTS: TouchpointMeta[] = [
   },
   {
     id: "seel_rc",
-    label: "Seel Resolution Center",
+    label: "Resolution Center",
     stage: "post_purchase",
     description:
       "AI product recommendations in Seel's return portal. Convert return traffic into purchases for better-fit products.",
